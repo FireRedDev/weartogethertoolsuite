@@ -39,11 +39,12 @@ def openFile():
     #df["Individualisierungstext(zählt nur wenn Individualisierung Ja)"] = np.where((~df['Input Fields'].isnull()) & (~df['Individualisierung']== 'Ja') ,df['Nachnahme (Rechnungsadresse)'],"")
     df["Individualisierungstext(zählt nur wenn Individualisierung Ja)"] = df["Individualisierungstext(zählt nur wenn Individualisierung Ja)"].str[50:]
     df["Individualisierungstext(zählt nur wenn Individualisierung Ja)"] = df.apply(lambda x: x['Nachnahme (Rechnungsadresse)'] if pd.isnull(x['Individualisierungstext(zählt nur wenn Individualisierung Ja)']) else x['Individualisierungstext(zählt nur wenn Individualisierung Ja)'], axis=1)
-    df["Karton"] = (df.index / 25 + 1).astype(int)
+    df["Karton"] = (df.index / 20 + 1).astype(int)
     df.drop(['Input Fields'], axis=1, inplace=True)
     
     df.sort_values(by=['Karton', 'Klasse','Produktname','Farbe','Größe'], inplace=True,ignore_index=True)
     df['Checkbox']='☐'
+    df['Unterschrift']=' '
     print(df.to_string)
 
     df["Anzahl"]=1
