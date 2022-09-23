@@ -1,6 +1,7 @@
 from tkinter import *
 from tkinter import filedialog
 from tkinter import messagebox
+from tkinter import simpledialog
 from openpyxl import load_workbook
 import os
 from openpyxl import load_workbook
@@ -9,16 +10,19 @@ from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 import pandas as pd
 import traceback
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+from pretty_html_table import build_table
+import shutil
 def openFile():
-    tf = filedialog.askopenfilename(
+    file = filedialog.askopenfilename(
         initialdir="C:/Users/MainFrame/Desktop/", 
         title="Open Excel file", 
         filetypes=[("Excel files", ".xlsx .xltx")]
         )
-    pathh.insert(END, tf)
-    
-  
-    df = pd.read_excel(tf)
+    pathh.insert(END, file)
+    orderinformation = simpledialog.askstring("Bestellinformationen", "Bitte gib die Informationen für den Lieferanten ein")
+    df = pd.read_excel(file)
     df["Klasse"] = df["Product Variation"].str.split("|",n=4,expand=True)[2].str.replace("Klasse:","")
     df.rename(columns={"Item Name(löschen)" : "Produktname", "Anzahl ":"Anzahl"}, inplace=True)
 
@@ -27,7 +31,7 @@ def openFile():
     pd.set_option('display.max_colwidth', 100)
     df = pd.DataFrame(df.values.repeat(df.Anzahl, axis=0), columns=df.columns)
     df.drop(['Anzahl','Product Variation','Bestellnotiz', 'Bestellung Gesamtsumme(löschen)'], axis=1, inplace=True)
-    print(df.to_string)
+    
     t = pd.CategoricalDtype(categories=['XS', 'S','M','L','XL','XXL','XXXL'], ordered=True)
     df['Größe']=pd.Series(df.Größe, dtype=t)
     df.sort_values(by=['Klasse','Produktname','Farbe','Größe'], inplace=True,ignore_index=True)
@@ -42,7 +46,7 @@ def openFile():
     df.sort_values(by=['Karton', 'Klasse','Produktname','Farbe','Größe'], inplace=True,ignore_index=True)
     df['Checkbox']='☐'
     df['Unterschrift']=' '
-    print(df.to_string)
+    
 
     df["Anzahl"]=1
     #df2= df2.pivot_table(index=['Produktname','Größe','Farbe'], 
@@ -57,11 +61,32 @@ def openFile():
     #print(bestellungen)
     
     df.columns = df.columns.astype(str)
-
+    pd.options.display.float_format = '{:,.0f}'.format
+    pivottableastable = df.pivot_table(
+    index=["Produktname","Farbe","Größe"], values=["Anzahl","Individualisierung"], aggfunc={'Anzahl':len,'Individualisierung':(lambda x:(x=='Ja').sum())}, margins=True, margins_name='Grand Totals')
+    
+    pivottableastable = pivottableastable.rename(columns={'Individualisierung': 'Anzahl Personalisierungen'})
+    
+    pivottableaslist = pd.DataFrame(pivottableastable.to_records())
+    key = {"Schulpullover": "JH001",
+       "Schulshirt": "B&C001",
+       }
+    pivottableaslist['Produktname-Lieferant']=pivottableaslist['Produktname']
+    pivottableaslist.replace({"Produktname-Lieferant": key}, regex=True, inplace = True)
+    with pd.ExcelWriter('orderreport.xlsx', engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Orders')
+        pivottableastable.to_excel(writer, sheet_name='Übersicht_Tabelle')
+        pivottableaslist.to_excel(writer, sheet_name='Übersicht_Liste')
+        text_sheet = writer.book.create_sheet(title='Auftragsinformationen')
+        text_sheet.cell(column=1, row=1, value=orderinformation)    
+    utf8='<head><meta charset="utf-8"></head>'
+    html = build_table(df, 'blue_light')
+    #pivottableastable=build_table(pivottableastable, 'blue_light')
+    pivottableastable= pivottableastable.to_html()
+    pivottableaslist=build_table(pivottableaslist, 'blue_light')
     def createpdf(df):
         try:
-            import matplotlib.pyplot as plt
-            from matplotlib.backends.backend_pdf import PdfPages
+
             #https://stackoverflow.com/questions/32137396/how-do-i-plot-only-a-table-in-matplotlib
             fig, ax =plt.subplots(figsize=(12,4))
             ax.axis('tight')
@@ -78,7 +103,7 @@ def openFile():
             pp.close()    
         except:
             print("Exception occurred when creating a pdf")
-            traceback.print_exc()   
+            traceback.print_exc()    
     createpdf(df)
     try:
         ws.destroy()
