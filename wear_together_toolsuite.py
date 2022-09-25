@@ -1,0 +1,181 @@
+
+from tkinter import *
+from tkinter import filedialog
+from tkinter import messagebox
+from tkinter import simpledialog
+from openpyxl import load_workbook
+import os
+from openpyxl import load_workbook
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.utils.dataframe import dataframe_to_rows
+import pandas as pd
+import traceback
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+from pretty_html_table import build_table
+from pandastable import Table, TableModel, config
+import shutil
+
+class App(Tk):
+    def loadDfFromExcel(self):
+        file = filedialog.askopenfilename(
+            initialdir="C:/Users/MainFrame/Desktop/", 
+            title="Open Excel file", 
+            filetypes=[("Excel files", ".xlsx .xltx")]
+            )
+        self.pathh.insert(END, file)
+        return pd.read_excel(file)
+
+    def createHTML(self,pivottableastable, pivottableaslist):
+        utf8='<head><meta charset="utf-8"></head>'
+        html = build_table(self.df, 'blue_light')
+        #pivottableastable=build_table(pivottableastable, 'blue_light')
+        pivottableastable= pivottableastable.to_html()
+        pivottableaslist=build_table(pivottableaslist, 'blue_light')
+
+    def writeToExcel(self, orderinformation, pivottableastable, pivottableaslist):
+        with pd.ExcelWriter('orderreport.xlsx', engine='openpyxl') as writer:
+            self.df.to_excel(writer, sheet_name='Orders')
+            pivottableastable.to_excel(writer, sheet_name='Übersicht_Tabelle')
+            pivottableaslist.to_excel(writer, sheet_name='Übersicht_Liste')
+            text_sheet = writer.book.create_sheet(title='Auftragsinformationen')
+            text_sheet.cell(column=1, row=1, value=orderinformation)
+
+    def transformData(self):
+        self.df["Klasse"] = self.df["Product Variation"].str.split("|",n=4,expand=True)[2].str.replace("Klasse:","")
+        self.df.rename(columns={"Item Name(löschen)" : "Produktname", "Anzahl ":"Anzahl"}, inplace=True)
+
+        pd.set_option('display.max_columns', 100)  # or 1000
+        pd.set_option('display.max_rows', 100)  # or 1000
+        pd.set_option('display.max_colwidth', 100)
+        self.df = pd.DataFrame(self.df.values.repeat(self.df.Anzahl, axis=0), columns=self.df.columns)
+        self.df.drop(['Anzahl','Product Variation','Bestellnotiz', 'Bestellung Gesamtsumme(löschen)'], axis=1, inplace=True)
+        
+        t = pd.CategoricalDtype(categories=['XS', 'S','M','L','XL','XXL','XXXL'], ordered=True)
+        self.df['Größe']=pd.Series(self.df.Größe, dtype=t)
+        self.df.sort_values(by=['Klasse','Produktname','Farbe','Größe'], inplace=True,ignore_index=True)
+        #=WENN(UND(I2="Ja";J2="");D2;WENN(I2="Nein";"";WENNFEHLER(RECHTS(J2;LÄNGE(J2)-50);"")))
+        self.df["Individualisierungstext(zählt nur wenn Individualisierung Ja)"] = self.df.apply(lambda x: x['Input Fields'] if x['Individualisierung']=='Ja' else "", axis=1)
+        #self.df["Individualisierungstext(zählt nur wenn Individualisierung Ja)"] = np.where((~self.df['Input Fields'].isnull()) & (~self.df['Individualisierung']== 'Ja') ,self.df['Nachnahme (Rechnungsadresse)'],"")
+        self.df["Individualisierungstext(zählt nur wenn Individualisierung Ja)"] = self.df["Individualisierungstext(zählt nur wenn Individualisierung Ja)"].str[50:]
+        self.df["Individualisierungstext(zählt nur wenn Individualisierung Ja)"] = self.df.apply(lambda x: x['Nachnahme (Rechnungsadresse)'] if pd.isnull(x['Individualisierungstext(zählt nur wenn Individualisierung Ja)']) else x['Individualisierungstext(zählt nur wenn Individualisierung Ja)'], axis=1)
+        self.df["Karton"] = (self.df.index / 20 + 1).astype(int)
+        self.df.drop(['Input Fields'], axis=1, inplace=True)
+        
+        self.df.sort_values(by=['Karton', 'Klasse','Produktname','Farbe','Größe'], inplace=True,ignore_index=True)
+        self.df['Checkbox']='☐'
+        self.df['Unterschrift']=' '
+        
+
+        self.df["Anzahl"]=1
+        #self.df2= self.df2.pivot_table(index=['Produktname','Größe','Farbe'], 
+                    # columns='Individualisierung', 
+                    # margins = True,
+                    # aggfunc='size', 
+                    # fill_value=0)
+    
+        #wb = load_workbook(filename = 'vorlage_bestellliste_shop.xltx')
+        #self = wb["Orders"]
+        #bestellungen = self.tables["Bestellungen"]
+        #print(bestellungen)
+        
+        self.df.columns = self.df.columns.astype(str)
+        pd.options.display.float_format = '{:,.0f}'.format
+        pivottableastable = self.df.pivot_table(
+        index=["Produktname","Farbe","Größe"], values=["Anzahl","Individualisierung"], aggfunc={'Anzahl':len,'Individualisierung':(lambda x:(x=='Ja').sum())}, margins=True, margins_name='Grand Totals')
+        
+        pivottableastable = pivottableastable.rename(columns={'Individualisierung': 'Anzahl Personalisierungen'})
+        
+        pivottableaslist = pd.DataFrame(pivottableastable.to_records())
+        key = {"Schulpullover": "JH001",
+        "Schulshirt": "B&C001",
+        }
+        pivottableaslist['Produktname-Lieferant']=pivottableaslist['Produktname']
+        pivottableaslist.replace({"Produktname-Lieferant": key}, regex=True, inplace = True)
+        return pivottableastable,pivottableaslist
+    def __init__(self):
+            super().__init__()
+
+            # configure the root window
+            #self.title('My Awesome App')
+            #self.geometry('300x50')
+
+            # label
+            #self.label = ttk.Label(self, text='Hello, Tkinter!')
+            #self.label.pack()
+
+            # button
+            #self.button = ttk.Button(self, text='Click Me')
+            #self.button['command'] = self.button_clicked
+            #self.button.pack()
+            
+            self.title("Wear Together Toolsuite")
+            self.geometry("400x450")
+            self['bg']='#fb0'
+
+            self.txtarea = Text(self, width=40, height=20)
+            self.txtarea.pack(pady=20)
+            self.appendToLog("wear Together Toolsuite gestartet. Bitte eine Excel im Format eines Webshop-Export-CSV auswählen")
+            self.pathh = Entry(self)
+            self.pathh.pack(side=LEFT, expand=True, fill=X, padx=20)
+            Button(
+                self, 
+                text="Open File", 
+                command=self.handleFileSelected
+                ).pack(side=RIGHT, expand=True, fill=X, padx=20)
+    def appendToLog(self,text):
+        self.txtarea.insert(1.0,'\n'+'-------'+ '\n')
+        self.txtarea.insert(1.0,'\n'+text+ '\n')
+
+    def handleFileSelected(self):
+            self.df = self.loadDfFromExcel()
+            self.appendToLog("Excel geladen")
+            orderinformation = simpledialog.askstring("Bestellinformationen", "Bitte gib die Informationen für den Lieferanten ein")
+            self.appendToLog("Infos für Lieferanten geladen")
+            pivottableastable, pivottableaslist = self.transformData()
+            self.appendToLog("Daten Transformiert")
+            self.writeToExcel(orderinformation, pivottableastable, pivottableaslist) 
+            self.appendToLog("Daten in Excel geschrieben")   
+            self.createHTML(pivottableastable, pivottableaslist)
+            self.appendToLog("Creating PDF")
+            self.createpdf()
+            self.appendToLog("PDF erstellt")
+            newWindow = Toplevel(self)
+        
+            # sets the title of the
+            # Toplevel widget
+            newWindow.title("GUI Editor (Änderungen sind nicht automatisch in Excel)")
+        
+            # sets the geometry of toplevel
+            newWindow.geometry("200x200")
+            f = Frame(newWindow)
+            f.pack(fill=BOTH,expand=1)
+            pt = Table(f,dataframe=self.df,
+                                            showtoolbar=True, shoselftatusbar=True)
+            pt.show()
+            
+    def createpdf(self):
+        try:
+
+            #https://stackoverflow.com/questions/32137396/how-do-i-plot-only-a-table-in-matplotlib
+            fig, ax =plt.subplots(figsize=(12,4))
+            ax.axis('tight')
+            ax.axis('off')
+            the_table = ax.table(cellText=self.df.values,colLabels=self.df.columns,loc='center')
+                    
+            [t.auto_set_font_size(False) for t in [the_table]]
+            [t.set_fontsize(8) for t in [the_table]]
+
+            the_table.auto_set_column_width(col=list(range(len(self.df.columns)))) # Provide integer list of columns to adjust
+            #https://stackoverflow.com/questions/4042192/reduce-left-and-right-margins-in-matplotlib-plot
+            pp = PdfPages("bestellliste.pdf")
+            pp.savefig(fig, bbox_inches='tight')
+            pp.close()    
+        except:
+            print("Exception occurred when creating a pdf")
+            traceback.print_exc()    
+                
+if __name__ == "__main__":
+  app = App()
+  app.mainloop()
