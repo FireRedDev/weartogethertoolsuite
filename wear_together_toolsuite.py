@@ -5,12 +5,15 @@ from tkinter import messagebox
 from tkinter import simpledialog
 from openpyxl import load_workbook
 import os
+from typing import NoReturn
 from openpyxl import load_workbook
+import openpyxl as openpyxl
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 import pandas as pd
 import traceback
+import sys
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from pretty_html_table import build_table
@@ -34,14 +37,44 @@ class App(Tk):
         pivottableastable= pivottableastable.to_html()
         pivottableaslist=build_table(pivottableaslist, 'blue_light')
 
-    def writeToExcel(self, orderinformation, pivottableastable, pivottableaslist):
-        with pd.ExcelWriter('orderreport.xlsx', engine='openpyxl') as writer:
-            self.df.to_excel(writer, sheet_name='Orders')
-            pivottableastable.to_excel(writer, sheet_name='Übersicht_Tabelle')
-            pivottableaslist.to_excel(writer, sheet_name='Übersicht_Liste')
-            text_sheet = writer.book.create_sheet(title='Auftragsinformationen')
-            text_sheet.cell(column=1, row=1, value=orderinformation)
+    def writeToExcel(self, orderinformation, df, pivottableastable, pivottableaslist,reporttype):
+        try:
+            with pd.ExcelWriter(os.path.join(self.saveToDirectory, self.ordername+"_orderreport_"+reporttype + '.' + "xlsx"), engine='openpyxl') as writer:
+                pivottableastable.to_excel(writer, sheet_name='Übersicht_Tabelle')
+                if(reporttype!='customer'):
+                    pivottableaslist.to_excel(writer, sheet_name='Übersicht_Liste')
+                    df.to_excel(writer, sheet_name='Orders')
+                    text_sheet = writer.book.create_sheet(title='Auftragsinformationen')
+                    text_sheet.cell(column=1, row=1, value=orderinformation)
+                    
+                
+                
+                
+                def columns_best_fit(ws: openpyxl.worksheet.worksheet.Worksheet) -> NoReturn:
+                    column_letters = tuple(openpyxl.utils.get_column_letter(col_number + 1) for col_number in range(ws.max_column))
+                    for column_letter in column_letters:
+                        ws.column_dimensions[column_letter].width = 15
+                        ws.column_dimensions[column_letter].bestFit = True
+                def columns_setWidth(ws: openpyxl.worksheet.worksheet.Worksheet, width) -> NoReturn:
+                    column_letters = tuple(openpyxl.utils.get_column_letter(col_number + 1) for col_number in range(ws.max_column))
+                    for column_letter in column_letters:
+                        ws.column_dimensions[column_letter].width = width
 
+                
+                columns_setWidth(writer.sheets['Übersicht_Tabelle'],20)
+                
+                if(reporttype!='customer'):
+                    columns_setWidth(writer.sheets['Übersicht_Liste'],20)
+                    columns_best_fit(writer.sheets['Orders'])
+                    openpyxl.worksheet.worksheet.Worksheet.set_printer_settings(writer.sheets['Orders'],
+                    paper_size =writer.sheets['Orders'].PAPERSIZE_A4, orientation=writer.sheets['Orders'].ORIENTATION_LANDSCAPE)
+                    writer.sheets['Orders'].sheet_properties.pageSetUpPr.fitToPage = True
+                    writer.sheets['Orders'].page_setup.fitToHeight = False
+        except: 
+            self.appendToLog("Fehler beim Schreiben in die Excel")
+            raise
+
+           
     def transformData(self):
         self.df["Klasse"] = self.df["Product Variation"].str.split("|",n=4,expand=True)[2].str.replace("Klasse:","")
         self.df.rename(columns={"Item Name(löschen)" : "Produktname", "Anzahl ":"Anzahl"}, inplace=True)
@@ -85,7 +118,7 @@ class App(Tk):
         pivottableastable = self.df.pivot_table(
         index=["Produktname","Farbe","Größe"], values=["Anzahl","Individualisierung"], aggfunc={'Anzahl':len,'Individualisierung':(lambda x:(x=='Ja').sum())}, margins=True, margins_name='Grand Totals')
         
-        pivottableastable = pivottableastable.rename(columns={'Individualisierung': 'Anzahl Personalisierungen'})
+        pivottableastable = pivottableastable.rename(columns={'Individualisierung': 'Davon Personalisierungen', 'Anzahl': 'Anzahl gesamt'})
         
         pivottableaslist = pd.DataFrame(pivottableastable.to_records())
         key = {"Schulpullover": "JH001",
@@ -131,11 +164,17 @@ class App(Tk):
     def handleFileSelected(self):
             self.df = self.loadDfFromExcel()
             self.appendToLog("Excel geladen")
+            self.ordername = simpledialog.askstring("Kundenname", "Bitte gib den Namen der Kundenschule/Organisation ein für die Dateinamen")
             orderinformation = simpledialog.askstring("Bestellinformationen", "Bitte gib die Informationen für den Lieferanten ein")
             self.appendToLog("Infos für Lieferanten geladen")
+            self.saveToDirectory = filedialog.askdirectory(title="Auswählen, in welchem Ordner die Orderreports gespeichert werden sollen")
+            self.appendToLog("Speichere Dateien in "+self.saveToDirectory)
             pivottableastable, pivottableaslist = self.transformData()
             self.appendToLog("Daten Transformiert")
-            self.writeToExcel(orderinformation, pivottableastable, pivottableaslist) 
+            dfForExcel = self.df[['Produktname', 'Karton','Größe','Farbe','Individualisierung','Individualisierungstext(zählt nur wenn Individualisierung Ja)', 'Checkbox', 'Anzahl']]
+            self.writeToExcel(orderinformation, dfForExcel, pivottableastable, pivottableaslist, 'supplier') 
+            self.writeToExcel(orderinformation, self.df, pivottableastable, pivottableaslist, 'internal') 
+            self.writeToExcel(orderinformation, self.df, pivottableastable, pivottableaslist, 'customer') 
             self.appendToLog("Daten in Excel geschrieben")   
             self.createHTML(pivottableastable, pivottableaslist)
             self.appendToLog("Creating PDF")
@@ -169,7 +208,7 @@ class App(Tk):
 
             the_table.auto_set_column_width(col=list(range(len(self.df.columns)))) # Provide integer list of columns to adjust
             #https://stackoverflow.com/questions/4042192/reduce-left-and-right-margins-in-matplotlib-plot
-            pp = PdfPages("bestellliste.pdf")
+            pp = PdfPages(os.path.join(self.saveToDirectory, self.ordername+"_orderreport" + '.' + "pdf"))
             pp.savefig(fig, bbox_inches='tight')
             pp.close()    
         except:
