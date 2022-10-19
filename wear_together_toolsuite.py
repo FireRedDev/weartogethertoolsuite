@@ -19,7 +19,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from pretty_html_table import build_table
 from pandastable import Table, TableModel, config
 import shutil
-
+import math
 class App(Tk):
     def loadDfFromExcel(self):
         file = filedialog.askopenfilename(
@@ -123,6 +123,14 @@ class App(Tk):
         pivottableaslist = pd.DataFrame(pivottableastable.to_records())
         key = {"Schulpullover": "JH001",
         "Schulshirt": "B&C001",
+        "Schulzoodie" : "JH050",
+        "Schuljacke" : "JH043",
+        "Schulsweater" : "JH030",
+        "Schulshirt" : "BCTU01T",
+        "Schulpolo" : "BCPUI10",
+        "Sportshirt" : "JC001",
+        "Match-Polo" : "JC021",
+        "Schulhemnd" : "JC021"
         }
         pivottableaslist['Produktname-Lieferant']=pivottableaslist['Produktname']
         pivottableaslist.replace({"Produktname-Lieferant": key}, regex=True, inplace = True)
@@ -178,7 +186,7 @@ class App(Tk):
             self.appendToLog("Daten in Excel geschrieben")   
             self.createHTML(pivottableastable, pivottableaslist)
             self.appendToLog("Creating PDF")
-            self.createpdf()
+            self.dataframe_to_pdf()
             self.appendToLog("PDF erstellt")
             newWindow = Toplevel(self)
         
@@ -194,26 +202,44 @@ class App(Tk):
                                             showtoolbar=True, shoselftatusbar=True)
             pt.show()
             
-    def createpdf(self):
-        try:
+    def _draw_as_table(self,df, pagesize):
+        alternating_colors = [['white'] * len(df.columns), ['lightgray'] * len(df.columns)] * len(df)
+        alternating_colors = alternating_colors[:len(df)]
+        fig, ax = plt.subplots(figsize=pagesize)
+        ax.axis('tight')
+        ax.axis('off')
+        the_table = ax.table(cellText=df.values,
+                            rowLabels=df.index,
+                            colLabels=df.columns,
+                            rowColours=['lightblue']*len(df),
+                            colColours=['lightblue']*len(df.columns),
+                            cellColours=alternating_colors,
+                            loc='center')
+        [t.auto_set_font_size(False) for t in [the_table]]
+        [t.set_fontsize(8) for t in [the_table]]
+        the_table.auto_set_column_width(col=list(range(len(self.df.columns)))) # Provide integer list of columns to adjust
+        return fig
+  
 
-            #https://stackoverflow.com/questions/32137396/how-do-i-plot-only-a-table-in-matplotlib
-            fig, ax =plt.subplots(figsize=(12,4))
-            ax.axis('tight')
-            ax.axis('off')
-            the_table = ax.table(cellText=self.df.values,colLabels=self.df.columns,loc='center')
+    def dataframe_to_pdf(self, numpages=(1, 1), pagesize=(11, 8.5)):
+        with PdfPages(os.path.join(self.saveToDirectory, self.ordername+"_orderreport" + '.' + "pdf")) as pdf:
+            nh, nv = numpages
+            nh = math.ceil(len(self.df)/40)
+            rows_per_page = len(self.df) // nh
+            cols_per_page = len(self.df.columns) // nv
+            for i in range(0, nh):
+                for j in range(0, nv):
+                    page = self.df.iloc[(i*rows_per_page):min((i+1)*rows_per_page, len(self.df)),
+                                (j*cols_per_page):min((j+1)*cols_per_page, len(self.df.columns))]
+                    fig = self._draw_as_table(page, pagesize)
+                    if nh > 1 or nv > 1:
+                        # Add a part/page number at bottom-center of page
+                        fig.text(0.5, 0.5/pagesize[0],
+                                "Part-{}x{}: Page-{}".format(i+1, j+1, i*nv + j + 1),
+                                ha='center', fontsize=8)
+                    pdf.savefig(fig, bbox_inches='tight')
                     
-            [t.auto_set_font_size(False) for t in [the_table]]
-            [t.set_fontsize(8) for t in [the_table]]
-
-            the_table.auto_set_column_width(col=list(range(len(self.df.columns)))) # Provide integer list of columns to adjust
-            #https://stackoverflow.com/questions/4042192/reduce-left-and-right-margins-in-matplotlib-plot
-            pp = PdfPages(os.path.join(self.saveToDirectory, self.ordername+"_orderreport" + '.' + "pdf"))
-            pp.savefig(fig, bbox_inches='tight')
-            pp.close()    
-        except:
-            print("Exception occurred when creating a pdf")
-            traceback.print_exc()    
+                    plt.close()
                 
 if __name__ == "__main__":
   app = App()
