@@ -1,4 +1,5 @@
 
+from ast import For
 from tkinter import *
 from tkinter import filedialog
 from tkinter import messagebox
@@ -46,7 +47,9 @@ class App(Tk):
                     df.to_excel(writer, sheet_name='Orders')
                     text_sheet = writer.book.create_sheet(title='Auftragsinformationen')
                     text_sheet.cell(column=1, row=1, value=orderinformation)
-                    
+                else:
+                    text_sheet = writer.book.create_sheet(title='Provisionsinformationen')
+                    text_sheet.cell(column=1, row=1, value=self.provision)    
                 
                 
                 
@@ -180,6 +183,7 @@ class App(Tk):
             pivottableastable, pivottableaslist = self.transformData()
             self.appendToLog("Daten Transformiert")
             dfForExcel = self.df[['Produktname', 'Karton','Größe','Farbe','Individualisierung','Individualisierungstext(zählt nur wenn Individualisierung Ja)', 'Checkbox', 'Anzahl']]
+            self.provision_ausrechnen()
             self.writeToExcel(orderinformation, dfForExcel, pivottableastable, pivottableaslist, 'supplier') 
             self.writeToExcel(orderinformation, self.df, pivottableastable, pivottableaslist, 'internal') 
             self.writeToExcel(orderinformation, self.df, pivottableastable, pivottableaslist, 'customer') 
@@ -220,7 +224,25 @@ class App(Tk):
         the_table.auto_set_column_width(col=list(range(len(self.df.columns)))) # Provide integer list of columns to adjust
         return fig
   
+    def provision_ausrechnen(self):
+        provision = 0.0
+        for index in range(len(self.df)):
+            if(index>=50):
+                if(index <=99):
+                    provision+=0.50
+                elif(index <=199):
+                    provision +=1
+                elif(index <=299):
+                    provision +=1.25
+                elif(index <=499):
+                    provision += 1.5
+                else:
+                    provision += 2
+        if(provision <20 and len(self.df) >=50):
+            provision = 20
+        self.provision = provision
 
+            
     def dataframe_to_pdf(self, numpages=(1, 1), pagesize=(11, 8.5)):
         with PdfPages(os.path.join(self.saveToDirectory, self.ordername+"_orderreport" + '.' + "pdf")) as pdf:
             nh, nv = numpages
