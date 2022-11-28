@@ -137,6 +137,10 @@ class App(Tk):
         }
         pivottableaslist['Produktname-Lieferant']=pivottableaslist['Produktname']
         pivottableaslist.replace({"Produktname-Lieferant": key}, regex=True, inplace = True)
+        pivottableastable['Kartonnummer'] = ""
+        pivottableastable['Ausschuss'] = ""
+        pivottableastable['Anmerkungen'] = ""
+        pivottableastable['Davon Personalisierungen'].replace(0,'',regex = True, inplace=True)
         return pivottableastable,pivottableaslist
     def __init__(self):
             super().__init__()
