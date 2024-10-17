@@ -1,4 +1,4 @@
-Erst Python (ink. Pip installieren) https://www.python.org/downloads/ dann dieses repository runterladen: https://github.com/FireRedDev/weartogethertoolsuite/tree/master
+Erst Python (ink. Pip installieren) https://www.python.org/downloads/ dann dieses repository runterladen als ZIP und entpacken: https://github.com/FireRedDev/weartogethertoolsuite/tree/master
 
 Option A Ausführen mit Python
 
