@@ -3,7 +3,7 @@ Erst Python (ink. Pip installieren) https://www.python.org/downloads/ dann diese
 Ausführen mit Python
 pip3 install -r requirements.txt (könnte auch statt pip3 pip sein)
 mac: auf wear_together_toolsuite.py rechtsklick machen mit python launcher und ausführen
-
+windows: terminal IN DEM ORDNER DER .py DATEI öffnen, Python wear_together_toolsuite.py (oder statt Python Python3)
    
 Für permanente Datei erstellen 
 (Macos https://stackoverflow.com/questions/62451711/pyinstaller-icon-option-doesnt-work-on-mac) beachten, ein icon.icns ist notwendig)
