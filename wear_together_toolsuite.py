@@ -214,8 +214,8 @@ class App(Tk):
         )
 
         pivotlist = pivottable.reset_index()
-
         self.df = df
+        self.df.insert(0, "ID", range(1, len(df) + 1))
         return pivottable, pivotlist
 
     # =================================================
