@@ -157,9 +157,6 @@ class App(Tk):
             ignore_index=True
         )
 
-        # =================================================
-        # Individualisierungstext – 1:1 wie ALTVERSION
-        # =================================================
         df["Individualisierungstext(zählt nur wenn Individualisierung Ja)"] = df.apply(
             lambda x: x["Input Fields"] if x["Individualisierung"] == "Ja" else "",
             axis=1
@@ -169,14 +166,19 @@ class App(Tk):
             df["Individualisierungstext(zählt nur wenn Individualisierung Ja)"]
             .astype(str)
             .str[50:]
+            .replace("nan", "")
+            .str.strip()
         )
 
-        df["Individualisierungstext(zählt nur wenn Individualisierung Ja)"] = df.apply(
-            lambda x: x["Nachnahme (Rechnungsadresse)"]
-            if pd.isna(x["Individualisierungstext(zählt nur wenn Individualisierung Ja)"])
-               or x["Individualisierungstext(zählt nur wenn Individualisierung Ja)"] in ("", "nan")
-            else x["Individualisierungstext(zählt nur wenn Individualisierung Ja)"],
-            axis=1
+        # =================================================
+        # >>> GEÄNDERT: Prüfspalte für INTERNAL-Excel
+        # =================================================
+        df["⚠ Fehlender Individualisierungstext"] = (
+            (
+                (df["Individualisierung"] == "Ja") &
+                (df["Individualisierungstext(zählt nur wenn Individualisierung Ja)"] == "")
+            )
+            .map({True: "TRUE", False: ""})
         )
         # =================================================
 
@@ -212,8 +214,27 @@ class App(Tk):
                 "Individualisierung": "Davon Personalisierungen"
             }
         )
-
+        pivottable["Kartonnummer"] = ""
+        pivottable["Ausschuss"] = ""
+        pivottable["Anmerkungen"] = ""
         pivotlist = pivottable.reset_index()
+        supplier_map = {
+            "Schulpullover": "JH001",
+            "Schulshirt": "B&C001",
+            "Schulzoodie": "JH050",
+            "Schuljacke": "JH043",
+            "Schulsweater": "JH030",
+            "Schulpolo": "BCPUI10",
+            "Sportshirt": "JC001",
+            "Match-Polo": "JC021",
+            "Schulhemnd": "JC021"
+        }
+
+        pivotlist["Produktname-Lieferant"] = pivotlist["Produktname"]
+        pivotlist["Produktname-Lieferant"] = pivotlist["Produktname-Lieferant"].replace(
+            supplier_map,
+            regex=True
+        )
         self.df = df
         self.df.insert(0, "ID", range(1, len(df) + 1))
         return pivottable, pivotlist
@@ -230,14 +251,35 @@ class App(Tk):
         with pd.ExcelWriter(path, engine="openpyxl") as writer:
             pivottable.to_excel(writer, sheet_name="Übersicht_Tabelle")
             pivotlist.to_excel(writer, sheet_name="Übersicht_Liste", index=False)
-            df.to_excel(writer, sheet_name="Orders", index=False)
+             # =================================================
+            # >>> GEÄNDERT: Prüfspalte NUR im internal-Report
+            # =================================================
+            orders_df = df.copy()
+            if reporttype != "internal":
+                orders_df = orders_df.drop(columns=["⚠ Fehlender Individualisierungstext"])
+            # =================================================
+            orders_df.to_excel(writer, sheet_name="Orders", index=False)
+
+            def set_column_widths(ws, default_width=20):
+                for column_cells in ws.columns:
+                    col_letter = column_cells[0].column_letter
+                    ws.column_dimensions[col_letter].width = default_width
+
+            ws_orders = writer.book["Orders"]
+            set_column_widths(ws_orders, default_width=20)
+
+            ws_uebersicht_tabelle = writer.book["Übersicht_Tabelle"]
+            set_column_widths(ws_uebersicht_tabelle, default_width=22)
+
+            ws_uebersicht_liste = writer.book["Übersicht_Liste"]
+            set_column_widths(ws_uebersicht_liste, default_width=22)
 
             sheetname = (
                 "Provisionsinformationen"
                 if reporttype == "customer"
                 else "Auftragsinformationen"
             )
-
+            
             ws = writer.book.create_sheet(sheetname)
             ws.cell(row=1, column=1, value=self.provision if reporttype == "customer" else orderinformation)
 
@@ -276,8 +318,23 @@ class App(Tk):
             rows_per_page = len(self.df) // nh + 1
 
             for i in range(nh):
-                page = self.df.iloc[
-                    i * rows_per_page : min((i + 1) * rows_per_page, len(self.df))
+                # >>> START PDF-SPALTENFILTER
+                pdf_columns_to_drop = [
+                    "⚠ Fehlender Individualisierungstext",
+                    "Order Total Amount without Tax",
+                    "Order Total Fee",
+                    "Order Line (w/o tax)",
+                    "Order Line Subtotal",
+                    "paypal fee",
+                    "Stripe fee"
+                ]
+
+                pdf_df = self.df.drop(
+                    columns=[c for c in pdf_columns_to_drop if c in self.df.columns]
+                )
+                # >>> ENDE PDF-SPALTENFILTER
+                page = pdf_df.iloc[
+                i * rows_per_page : min((i + 1) * rows_per_page, len(pdf_df))
                 ]
 
                 fig, ax = plt.subplots(figsize=(11, 8.5))
@@ -292,6 +349,21 @@ class App(Tk):
                 table.auto_set_font_size(False)
                 table.set_fontsize(8)
                 table.auto_set_column_width(col=list(range(len(page.columns))))
+
+                header_color = "#b1dce4"
+                id_column_color = "#b1dce4"
+                row_colors = ["#ffffff", "#e4e4e4"]
+
+                id_col_index = list(page.columns).index("ID")
+
+                for (row, col), cell in table.get_celld().items():
+                    if row == 0:
+                        cell.set_facecolor(header_color)
+                        cell.set_text_props(weight="bold")
+                    elif col == id_col_index:
+                        cell.set_facecolor(id_column_color)
+                    else:
+                        cell.set_facecolor(row_colors[(row - 1) % 2])
 
                 fig.text(
                     0.5,
