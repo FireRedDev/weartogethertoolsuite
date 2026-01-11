@@ -220,14 +220,13 @@ class App(Tk):
         pivotlist = pivottable.reset_index()
         supplier_map = {
             "Schulpullover": "JH001",
-            "Schulshirt": "B&C001",
+            "Schulshirt": "B&C #E150",
             "Schulzoodie": "JH050",
             "Schuljacke": "JH043",
             "Schulsweater": "JH030",
-            "Schulpolo": "BCPUI10",
+            "Schulpolo": "B&C ID.001",
             "Sportshirt": "JC001",
-            "Match-Polo": "JC021",
-            "Schulhemnd": "JC021"
+            "Match-Polo": "JC021"
         }
 
         pivotlist["Produktname-Lieferant"] = pivotlist["Produktname"]
