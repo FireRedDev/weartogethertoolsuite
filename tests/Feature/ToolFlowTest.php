@@ -13,7 +13,7 @@ class ToolFlowTest extends TestCase
         $fixture = sys_get_temp_dir().'/upload_'.uniqid().'.xlsx';
         copy(base_path('tests/golden/fixtures/orders_ahs_korneuburg.xlsx'), $fixture);
 
-        $this->get('/')->assertOk()->assertSee('Shop-Export hochladen');
+        $this->get('/')->assertOk()->assertSee('Weg 2: Datei hochladen');
 
         $upload = new UploadedFile($fixture, 'orders.xlsx', null, null, true);
         $response = $this->post('/upload', ['export' => $upload]);

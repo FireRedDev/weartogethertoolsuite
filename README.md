@@ -51,12 +51,51 @@ php artisan test
 php artisan orders:generate export.xlsx AHS_Korneuburg ./output --info="Liefertermin Ende Juni"
 ```
 
+## Zwei Wege, Bestellungen zu laden
+
+1. **Weg 1 — direkt aus dem Shop (empfohlen):** Die App holt die Bestellungen
+   über die WooCommerce REST API (nur Lesezugriff). Auswählbar sind
+   Schule/Organisation (= Produktkategorie), Bestellstatus (vorausgewählt wie
+   der bisherige Plugin-Export: In Bearbeitung, In Wartestellung,
+   Abgeschlossen) und optional der Bestellzeitraum. Die erzeugte Rohtabelle
+   ist identisch zum bisherigen Plugin-Export (gleiche Spalten, gleiche
+   Formate, Bestellungen nach Order-ID absteigend, eine Zeile pro
+   Bestellposition) und kann im Ergebnis auch heruntergeladen werden.
+2. **Weg 2 — Datei hochladen (wie bisher):** XLSX-Export aus dem
+   WordPress-Plugin „Advanced Order Export For WooCommerce" hochladen.
+
+Beide Wege laufen ab dem Prüfbericht identisch weiter.
+
+## Shop-Verbindung einrichten (für Weg 1)
+
+1. In WordPress: **WooCommerce → Einstellungen → Erweitert → REST-API →
+   „Schlüssel hinzufügen"**. Beschreibung z. B. „Order Suite",
+   Benutzer: ein Admin-Konto, Berechtigung: **Lesen** (mehr braucht die App
+   nicht und sollte sie aus Sicherheitsgründen auch nicht bekommen).
+2. Den angezeigten **Consumer Key** (`ck_…`) und das **Consumer Secret**
+   (`cs_…`) sofort kopieren — das Secret wird nur einmal angezeigt.
+3. In der `.env`-Datei der App eintragen und danach
+   `php artisan config:cache` ausführen (bzw. neu deployen):
+
+   ```ini
+   WC_STORE_URL=https://www.wear-together.at
+   WC_CONSUMER_KEY=ck_xxxxxxxx
+   WC_CONSUMER_SECRET=cs_xxxxxxxx
+   ```
+
+Verbindungsfehler zeigt die App direkt auf der „Aus dem Shop laden"-Seite an —
+mit einer verständlichen Erklärung für häufige Ursachen (falscher Schlüssel,
+Shop nicht erreichbar, Firewall/Sicherheits-Plugin, Wartungsmodus) und
+aufklappbaren technischen Details für den Support.
+
 ## Konfiguration (`.env`)
 
 | Variable | Bedeutung | Default |
 |---|---|---|
 | `TOOL_PASSWORD` | Team-Passwort für den Zugang. **Leer = kein Login** (nur lokal empfohlen!) | leer |
 | `ORDER_RETENTION_HOURS` | Automatische Löschung von Uploads/Reports nach X Stunden (DSGVO) | 24 |
+| `WC_STORE_URL` | Shop-Adresse für Weg 1 (ohne `/wp-json`) | leer (Weg 1 deaktiviert) |
+| `WC_CONSUMER_KEY` / `WC_CONSUMER_SECRET` | Read-only-API-Schlüssel des Shops | leer |
 
 Fachliche Defaults (Größenliste, Kartongröße 20, Artikelmapping,
 Provisionsstaffel, PDF-Spaltenfilter) liegen in `config/ordersuite.php` —

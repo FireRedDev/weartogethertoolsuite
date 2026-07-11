@@ -15,7 +15,12 @@
     <div class="card">
         <h1>Prüfbericht</h1>
         <p class="lead">
-            {{ $meta['original_filename'] ?? 'Export' }} —
+            @if (($meta['source'] ?? 'upload') === 'api')
+                Aus dem Shop geladen{{ ($meta['source_details']['category_name'] ?? null) ? ': '.$meta['source_details']['category_name'] : '' }}
+                ({{ $meta['source_details']['order_count'] ?? '?' }} Bestellungen) —
+            @else
+                {{ $meta['original_filename'] ?? 'Export' }} —
+            @endif
             <strong>{{ $meta['positions'] }}</strong> Positionen,
             <strong>{{ $meta['pieces'] }}</strong> Stück gesamt
         </p>

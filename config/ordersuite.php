@@ -60,4 +60,52 @@ return [
 
     // PDF-Paginierung: max. Basiszeilen pro Seite (Legacy: ceil(n/40))
     'pdf_rows_basis' => 40,
+
+    /*
+     * Weg 1: Direkter Bestell-Import über die WooCommerce REST API.
+     * Repliziert den Export des Plugins "Advanced Order Export For WooCommerce"
+     * mit den produktiv genutzten Einstellungen (Statusfilter, Kategorie je
+     * Schule, Sortierung Order-ID absteigend, eine Zeile pro Produktposition).
+     */
+    'woocommerce' => [
+        // z. B. https://www.wear-together.at — ohne /wp-json
+        'store_url' => env('WC_STORE_URL', ''),
+        // Read-only API-Schlüssel (WooCommerce → Einstellungen → Erweitert → REST-API)
+        'consumer_key' => env('WC_CONSUMER_KEY', ''),
+        'consumer_secret' => env('WC_CONSUMER_SECRET', ''),
+        'timeout_seconds' => 30,
+        'per_page' => 100,
+
+        // Bestellstatus wie im Plugin vorausgewählt
+        'default_statuses' => ['processing', 'on-hold', 'completed'],
+        'statuses' => [
+            'processing' => 'In Bearbeitung',
+            'on-hold' => 'In Wartestellung',
+            'completed' => 'Abgeschlossen',
+            'pending' => 'Zahlung ausstehend',
+            'cancelled' => 'Storniert',
+            'refunded' => 'Rückerstattet',
+            'failed' => 'Fehlgeschlagen',
+        ],
+
+        // Zuordnung Export-Spalte -> mögliche Meta-Keys der Bestellposition
+        // (wie die [P]-Felder pa_size/pa_color/klasse/pa_individualisierung im Plugin).
+        // Es wird der erste Treffer verwendet; Attribut-Labels (display_key)
+        // werden als Fallback ebenfalls verglichen.
+        'attribute_meta_keys' => [
+            'Größe' => ['pa_size', 'Größe'],
+            'Farbe' => ['pa_color', 'Farbe'],
+            'Klasse' => ['klasse', 'pa_klasse', 'Klasse'],
+            'Individualisierung' => ['pa_individualisierung', 'Individualisierung'],
+        ],
+
+        // Positions-Metas, deren Label diesen Text enthält, bilden die Spalte
+        // "Input Fields" (Format wie das Plugin: "\n{Label}: {Wert}") und werden
+        // aus "Product Variation" ausgeschlossen.
+        'input_fields_label_contains' => 'Individualisierungstext',
+
+        // Bestell-Meta für die Spalte "Individualisierungstext(zählt nur wenn
+        // Individualisierung Ja)" (Checkout-Feld _additional_wooccm4).
+        'order_meta_indiv_text' => '_additional_wooccm4',
+    ],
 ];

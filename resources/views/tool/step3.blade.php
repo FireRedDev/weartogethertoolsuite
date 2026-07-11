@@ -47,6 +47,9 @@
 
         <div style="margin-top:1rem;">
             <a class="btn secondary" href="{{ route('job.zip', $jobId) }}">⬇ Alle 4 Dokumente als ZIP</a>
+            @if (($meta['source'] ?? 'upload') === 'api')
+                <a class="btn secondary" href="{{ route('job.download', [$jobId, 'input.xlsx']) }}" style="margin-left:0.5rem;">Rohdaten (wie Plugin-Export)</a>
+            @endif
             <a class="btn secondary" href="{{ route('tool.index') }}" style="margin-left:0.5rem;">Neuen Auftrag starten</a>
         </div>
         <p class="hint" style="margin-top:0.75rem;">Die Dateien werden nach {{ config('ordersuite.retention_hours') }} Stunden automatisch gelöscht.</p>

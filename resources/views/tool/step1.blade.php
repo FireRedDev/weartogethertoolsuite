@@ -1,17 +1,32 @@
 @extends('layouts.app')
 
-@section('title', 'Shop-Export hochladen — Wear Together Order Suite')
+@section('title', 'Bestellungen laden — Wear Together Order Suite')
 
 @section('content')
     <div class="steps">
-        <span class="step active">1 · Hochladen</span>
+        <span class="step active">1 · Bestellungen laden</span>
         <span class="step">2 · Auftrag & Prüfung</span>
         <span class="step">3 · Dokumente</span>
     </div>
 
     <div class="card">
-        <h1>Shop-Export hochladen</h1>
-        <p class="lead">Lade den Bestell-Export aus dem Wear-Together-Shop hoch (.xlsx). Daraus entstehen die drei Excel-Reports (Lieferant, intern, Kunde) und das Verteil-PDF — exakt wie bisher.</p>
+        <h1>Weg 1: Direkt aus dem Shop laden <span class="hint">(empfohlen)</span></h1>
+        <p class="lead">Bestellungen werden über die Shop-Schnittstelle geladen — Schule auswählen, fertig. Kein Plugin-Export mehr nötig.</p>
+        @if ($apiConfigured)
+            <a class="btn" href="{{ route('shop.form') }}">Aus dem Shop laden</a>
+        @else
+            <div class="alert warn">
+                ⚠ Die Shop-Verbindung ist noch nicht eingerichtet. Ein:e Administrator:in muss in der
+                <code>.env</code>-Datei der App <code>WC_STORE_URL</code>, <code>WC_CONSUMER_KEY</code> und
+                <code>WC_CONSUMER_SECRET</code> hinterlegen (Anleitung im README unter „Shop-Verbindung einrichten").
+                Bis dahin funktioniert Weg 2 wie gewohnt.
+            </div>
+        @endif
+    </div>
+
+    <div class="card">
+        <h1>Weg 2: Datei hochladen <span class="hint">(wie bisher)</span></h1>
+        <p class="lead">Export aus dem WordPress-Plugin „Advanced Order Export" hochladen (.xlsx).</p>
 
         @if ($errors->any())
             @foreach ($errors->all() as $error)

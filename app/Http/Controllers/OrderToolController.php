@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\OrderJobFactory;
 use App\Services\OrderReportGenerator;
-use App\Services\OrderValidator;
-use App\Services\ShopExportReader;
+use App\Services\WooCommerceClient;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -15,14 +15,16 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 class OrderToolController extends Controller
 {
     public function __construct(
-        private readonly ShopExportReader $reader,
-        private readonly OrderValidator $validator,
+        private readonly OrderJobFactory $jobFactory,
         private readonly OrderReportGenerator $generator,
+        private readonly WooCommerceClient $wooCommerce,
     ) {}
 
     public function index(): View
     {
-        return view('tool.step1');
+        return view('tool.step1', [
+            'apiConfigured' => $this->wooCommerce->isConfigured(),
+        ]);
     }
 
     public function upload(Request $request): RedirectResponse
@@ -36,37 +38,20 @@ class OrderToolController extends Controller
             ],
         );
 
-        $jobId = (string) Str::uuid();
-        $dir = $this->jobDir($jobId);
-        mkdir($dir, 0775, true);
-        $request->file('export')->move($dir, 'input.xlsx');
+        $jobId = $this->jobFactory->newJobId();
+        $originalFilename = $request->file('export')?->getClientOriginalName();
+        $request->file('export')->move($this->jobFactory->jobDir($jobId), 'input.xlsx');
 
         try {
-            $table = $this->reader->read($dir.'/input.xlsx');
+            $this->jobFactory->createFromInputFile($jobId, [
+                'source' => 'upload',
+                'original_filename' => $originalFilename,
+            ]);
         } catch (\Throwable) {
             Storage::disk('local')->deleteDirectory('jobs/'.$jobId);
 
             return back()->withErrors(['export' => 'Die Datei konnte nicht als Excel-Datei gelesen werden. Bitte den Standard-Shop-Export verwenden.']);
         }
-
-        $validation = $this->validator->validate($table);
-
-        $pieces = 0;
-        if ($validation['errors'] === []) {
-            $anzahlKey = in_array('Anzahl', $table['columns'], true) ? 'Anzahl' : 'Anzahl ';
-            foreach ($table['rows'] as $row) {
-                $pieces += max(0, (int) ($row[$anzahlKey] ?? 0));
-            }
-        }
-
-        $this->writeMeta($jobId, [
-            'created_at' => now()->toIso8601String(),
-            'original_filename' => $request->file('export')?->getClientOriginalName(),
-            'positions' => count($table['rows']),
-            'pieces' => $pieces,
-            'validation' => $validation,
-            'generated' => false,
-        ]);
 
         return redirect()->route('job.show', $jobId);
     }
@@ -145,6 +130,7 @@ class OrderToolController extends Controller
     {
         $meta = $this->readMeta($jobId);
         $allowed = array_values($meta['files'] ?? []);
+        $allowed[] = 'input.xlsx'; // Rohdaten (Plugin-Export bzw. API-Abzug)
         abort_unless(in_array($file, $allowed, true), 404);
 
         return response()->download($this->jobDir($jobId).'/'.$file);
