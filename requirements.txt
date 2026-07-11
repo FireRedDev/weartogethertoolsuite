@@ -1,5 +1,0 @@
-matplotlib
-openpyxl
-pandas 
-pandastable
-pretty_html_table

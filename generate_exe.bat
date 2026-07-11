@@ -1,1 +1,0 @@
-pyinstaller --onefile --windowed wear_together_toolsuite.py
