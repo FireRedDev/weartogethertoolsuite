@@ -121,6 +121,23 @@ class WooCommerceClient
                 ->timeout((int) $config['timeout_seconds'])
                 ->acceptJson()
                 ->get($url, $query);
+
+            // Viele Hosting-Setups (Apache/LiteSpeed/FastCGI) verwerfen den
+            // Authorization-Header, bevor WordPress ihn sieht — WooCommerce
+            // meldet dann "woocommerce_rest_cannot_view". Offizieller Fallback:
+            // Schlüssel als Query-Parameter, ausschließlich über HTTPS.
+            if (
+                $response->status() === 401
+                && str_starts_with($url, 'https://')
+                && str_contains($response->body(), 'woocommerce_rest_cannot_view')
+            ) {
+                $response = Http::timeout((int) $config['timeout_seconds'])
+                    ->acceptJson()
+                    ->get($url, $query + [
+                        'consumer_key' => $config['consumer_key'],
+                        'consumer_secret' => $config['consumer_secret'],
+                    ]);
+            }
         } catch (ConnectionException $e) {
             $details = "GET {$url}: {$e->getMessage()}";
             if (str_contains(strtolower($e->getMessage()), 'timed out') || str_contains(strtolower($e->getMessage()), 'timeout')) {

@@ -57,10 +57,14 @@ class WooCommerceApiException extends \RuntimeException
 
     public static function unauthorized(string $details): self
     {
+        $hint = str_contains($details, 'woocommerce_rest_cannot_view')
+            ? 'Der Schlüssel kommt zwar an, aber der Shop erlaubt damit keinen Lesezugriff. Häufigste Ursache: Der API-Schlüssel ist an ein Benutzerkonto ohne Administrator-/Shop-Manager-Rolle gebunden. Ein:e Administrator:in sollte in WooCommerce → Einstellungen → Erweitert → REST-API einen neuen Read-only-Schlüssel erstellen und dabei als Benutzer ein Administrator-Konto auswählen.'
+            : 'Der hinterlegte Schlüssel ist falsch, wurde gelöscht oder ist abgelaufen. Ein:e Administrator:in muss in WooCommerce → Einstellungen → Erweitert → REST-API einen neuen Read-only-Schlüssel erstellen und in der .env-Datei eintragen (danach: php artisan config:cache).';
+
         return new self(
             'Der Shop hat den API-Schlüssel abgelehnt (Anmeldung fehlgeschlagen).',
             $details,
-            'Der hinterlegte Schlüssel ist falsch, wurde gelöscht oder ist abgelaufen. Ein:e Administrator:in muss in WooCommerce → Einstellungen → Erweitert → REST-API einen neuen Read-only-Schlüssel erstellen und in der .env-Datei eintragen.',
+            $hint,
         );
     }
 

@@ -164,12 +164,41 @@ class ShopExportApiTest extends TestCase
 
     public function test_unauthorized_key_shows_friendly_error(): void
     {
-        Http::fake(['shop.example/*' => Http::response(['code' => 'woocommerce_rest_cannot_view'], 401)]);
+        Http::fake(['shop.example/*' => Http::response(['code' => 'woocommerce_rest_authentication_error'], 401)]);
 
         $this->get('/shop-export')
             ->assertOk()
             ->assertSee('Der Shop hat den API-Schlüssel abgelehnt')
             ->assertSee('Technische Details');
+    }
+
+    public function test_cannot_view_falls_back_to_query_param_auth(): void
+    {
+        // Server verwirft den Authorization-Header (Basic Auth -> 401
+        // cannot_view); der Fallback mit consumer_key/secret als
+        // Query-Parameter muss durchgehen (nur über HTTPS).
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), 'consumer_key=ck_test')) {
+                return Http::response(
+                    [['id' => 7, 'name' => 'AHS Korneuburg', 'count' => 12]],
+                    200,
+                    ['X-WP-TotalPages' => '1'],
+                );
+            }
+
+            return Http::response(['code' => 'woocommerce_rest_cannot_view'], 401);
+        });
+
+        $this->get('/shop-export')->assertOk()->assertSee('AHS Korneuburg');
+    }
+
+    public function test_cannot_view_after_fallback_hints_at_user_role(): void
+    {
+        Http::fake(['shop.example/*' => Http::response(['code' => 'woocommerce_rest_cannot_view'], 401)]);
+
+        $this->get('/shop-export')
+            ->assertOk()
+            ->assertSee('Administrator-/Shop-Manager-Rolle');
     }
 
     public function test_unreachable_shop_shows_friendly_error_on_fetch(): void
