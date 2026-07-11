@@ -63,6 +63,9 @@ class ShopExportController extends Controller
         );
 
         try {
+            // Mehrere API-Roundtrips (ein Abruf je Produkt der Schule) können
+            // zusammen länger dauern als das PHP-Standardlimit von 30 s.
+            set_time_limit(180);
             $table = $this->fetcher->fetch(
                 (int) $validated['category'],
                 array_values($validated['statuses']),

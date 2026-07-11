@@ -223,6 +223,45 @@ class ShopExportApiTest extends TestCase
         $this->get('/shop-export')->assertOk()->assertSee('noch nicht eingerichtet');
     }
 
+    public function test_category_fetch_filters_server_side_per_product_and_dedupes(): void
+    {
+        // Bei Kategorie-Auswahl darf NICHT der gesamte Bestellbestand geladen
+        // werden (Gateway-Timeout bei >10.000 Bestellungen), sondern je ein
+        // serverseitig gefilterter Abruf pro Produkt der Kategorie.
+        $order = [
+            'id' => 500, 'total' => '10', 'customer_note' => '',
+            'billing' => ['first_name' => 'A', 'last_name' => 'B'],
+            'meta_data' => [],
+            'line_items' => [
+                ['product_id' => 101, 'name' => 'Hoodie', 'quantity' => 1, 'meta_data' => []],
+                ['product_id' => 102, 'name' => 'Shirt', 'quantity' => 1, 'meta_data' => []],
+            ],
+        ];
+        Http::fake([
+            'shop.example/wp-json/wc/v3/products?*' => Http::response([['id' => 101], ['id' => 102]], 200, ['X-WP-TotalPages' => '1']),
+            'shop.example/wp-json/wc/v3/orders*' => Http::response([$order], 200, ['X-WP-TotalPages' => '1']),
+        ]);
+
+        $table = app(ShopOrderFetcher::class)->fetch(7, ['completed']);
+
+        // Bestellung enthält beide Produkte -> kommt aus beiden Produkt-Abrufen,
+        // zählt aber nur einmal (2 Zeilen = 2 Positionen, 1 Bestellung)
+        $this->assertCount(2, $table['rows']);
+        $this->assertSame(1, $table['orderCount']);
+
+        // Jeder Bestellabruf muss serverseitig nach Produkt filtern
+        $orderRequests = 0;
+        Http::recorded(function ($request) use (&$orderRequests) {
+            if (str_contains($request->url(), '/orders')) {
+                $orderRequests++;
+                $this->assertStringContainsString('product=', $request->url());
+            }
+
+            return true;
+        });
+        $this->assertSame(2, $orderRequests);
+    }
+
     public function test_pagination_fetches_all_pages(): void
     {
         config(['ordersuite.woocommerce.per_page' => 2]);

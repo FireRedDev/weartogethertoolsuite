@@ -56,6 +56,12 @@ class WooCommerceClient
     }
 
     /**
+     * Nur die Felder, die für den Export gebraucht werden — hält die
+     * Antworten klein und den Abruf schnell.
+     */
+    private const ORDER_FIELDS = 'id,total,customer_note,billing,meta_data,line_items';
+
+    /**
      * Bestellungen mit den gewünschten Status, sortiert nach Order-ID absteigend
      * (wie der Plugin-Export). Optional nach Bestelldatum eingegrenzt.
      *
@@ -64,10 +70,33 @@ class WooCommerceClient
      */
     public function orders(array $statuses, ?string $dateFrom = null, ?string $dateTo = null): array
     {
+        return $this->fetchAllPages('orders', $this->orderQuery($statuses, $dateFrom, $dateTo));
+    }
+
+    /**
+     * Bestellungen, die ein bestimmtes Produkt enthalten (serverseitiger
+     * Filter — entscheidend bei großen Shops, damit nicht der komplette
+     * Bestellbestand geladen werden muss).
+     *
+     * @param  list<string>  $statuses
+     * @return list<array<string, mixed>>
+     */
+    public function ordersForProduct(int $productId, array $statuses, ?string $dateFrom = null, ?string $dateTo = null): array
+    {
+        return $this->fetchAllPages(
+            'orders',
+            $this->orderQuery($statuses, $dateFrom, $dateTo) + ['product' => (string) $productId],
+        );
+    }
+
+    /** @param  list<string>  $statuses */
+    private function orderQuery(array $statuses, ?string $dateFrom, ?string $dateTo): array
+    {
         $query = [
             'status' => implode(',', $statuses),
             'orderby' => 'id',
             'order' => 'desc',
+            '_fields' => self::ORDER_FIELDS,
         ];
         if ($dateFrom !== null) {
             $query['after'] = $dateFrom.'T00:00:00';
@@ -76,7 +105,7 @@ class WooCommerceClient
             $query['before'] = $dateTo.'T23:59:59';
         }
 
-        return $this->fetchAllPages('orders', $query);
+        return $query;
     }
 
     /** Verbindungstest: eine minimale Anfrage. */

@@ -36,11 +36,25 @@ class ShopOrderFetcher
      */
     public function fetch(?int $categoryId, array $statuses, ?string $dateFrom = null, ?string $dateTo = null): array
     {
-        $categoryProductIds = $categoryId !== null
-            ? array_flip($this->client->productIdsInCategory($categoryId))
-            : null;
-
-        $orders = $this->client->orders($statuses, $dateFrom, $dateTo);
+        $categoryProductIds = null;
+        if ($categoryId !== null) {
+            $productIds = $this->client->productIdsInCategory($categoryId);
+            $categoryProductIds = array_flip($productIds);
+            // Serverseitig pro Produkt filtern statt den kompletten
+            // Bestellbestand zu laden (bei >10.000 Bestellungen sonst
+            // Gateway-Timeout). Bestellungen mit mehreren Produkten der
+            // Kategorie werden über die Order-ID dedupliziert.
+            $byId = [];
+            foreach ($productIds as $productId) {
+                foreach ($this->client->ordersForProduct($productId, $statuses, $dateFrom, $dateTo) as $order) {
+                    $byId[(int) $order['id']] = $order;
+                }
+            }
+            krsort($byId); // Order-ID absteigend, wie der Plugin-Export
+            $orders = array_values($byId);
+        } else {
+            $orders = $this->client->orders($statuses, $dateFrom, $dateTo);
+        }
 
         $rows = [];
         $ordersWithRows = 0;
