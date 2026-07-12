@@ -23,10 +23,16 @@ class FluentFormsMapper
         $formProducts = $this->list($payload, $deliveryType === 'ondemand' ? 'multi_select_1' : 'multi_select_4');
         $formColors = $this->list($payload, $deliveryType === 'ondemand' ? 'multi_select_2' : 'multi_select_3');
 
-        $windowStart = $this->parseDate($this->str($payload, 'datetime'));
-        $windowDays = (int) config('schoolshop.default_window_days');
-
         $schoolName = trim($this->str($payload, 'input_text_6')) ?: 'Unbenannte Schule';
+
+        if ($deliveryType === 'ondemand') {
+            // On-Demand: Produkte werden laufend einzeln verschickt, kein Bestellfenster nötig.
+            $windowStart = \Illuminate\Support\Carbon::parse(SchoolOnboarding::ONDEMAND_WINDOW_START);
+            $windowEnd = \Illuminate\Support\Carbon::parse(SchoolOnboarding::ONDEMAND_WINDOW_END);
+        } else {
+            $windowStart = $this->parseDate($this->str($payload, 'datetime'));
+            $windowEnd = $windowStart?->copy()->addDays((int) config('schoolshop.default_window_days'));
+        }
 
         return new SchoolOnboarding([
             'status' => 'neu',
@@ -44,9 +50,9 @@ class FluentFormsMapper
             'delivery_type' => $deliveryType,
             'products' => ProductConfigurator::defaultsFromFormProducts($formProducts, $formColors),
             'print_areas' => $this->list($payload, 'multi_select'),
-            'class_list' => $this->str($payload, 'description_3'),
+            'class_list' => $deliveryType === 'ondemand' ? null : $this->str($payload, 'description_3'),
             'window_start' => $windowStart,
-            'window_end' => $windowStart?->copy()->addDays($windowDays),
+            'window_end' => $windowEnd,
             'logo_files' => $this->files($payload, 'file-upload_1'),
             'logo_notes' => $this->str($payload, 'description_5'),
             'design_notes' => $this->str($payload, 'description'),

@@ -26,7 +26,7 @@ Zeitpunkt: {{ now()->toDateTimeString() }}
 
         <div style="margin-top:1rem;">
             <a class="btn" href="{{ url()->previous() }}">Zurück</a>
-            <a class="btn secondary" href="{{ route('tool.index') }}" style="margin-left:0.5rem;">Zur Startseite</a>
+            <a class="btn secondary" href="{{ route('home') }}" style="margin-left:0.5rem;">Zur Startseite</a>
         </div>
 
         <p class="hint" style="margin-top:1rem;">

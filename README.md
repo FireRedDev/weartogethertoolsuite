@@ -1,8 +1,11 @@
 # Wear Together Order Suite
 
-Web-Nachfolger der Wear Together Toolsuite (Python/Tkinter). Verwandelt den
-Bestell-Export aus dem Wear-Together-Shop in einem geführten 3-Schritte-Flow in
-vier fertige Auftragsdokumente:
+Web-Nachfolger der Wear Together Toolsuite (Python/Tkinter). Die Startseite
+(`/`) verlinkt zu den beiden Modulen: **Auftragsdokumente** (Modul 1) und
+**Schul-Onboarding** (Modul 2).
+
+Modul 1 verwandelt den Bestell-Export aus dem Wear-Together-Shop in einem
+geführten 3-Schritte-Flow in vier fertige Auftragsdokumente:
 
 | Dokument | Datei |
 |---|---|
@@ -216,7 +219,10 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
 2. **Konfigurator:** Produkte (Vorlagenkatalog aus den bisherigen
    Musterschule-Excel-Vorlagen), Preise, Individualisierungs-Aufpreis, Größen,
    Farben, Klassenliste, Bestellfenster und Lieferart anpassen — alles
-   vorbefüllt aus den Formularwünschen.
+   vorbefüllt aus den Formularwünschen. Über „+ Produkt hinzufügen" lassen
+   sich auch Produkte anlegen, die nicht im Vorlagenkatalog stehen (Name,
+   Preis, Größen, Farben frei eintragen). Bestellfenster und Klassenliste
+   werden bei Lieferart On-Demand ausgeblendet (siehe unten).
 3. **Shop-Anlage** (ein Klick, mit Vorschau/Dry-Run): Produktkategorie
    „Schulen > {Name}", variable Produkte mit Variationen (Individualisierung
    Ja/Nein), Individualisierungs-Eingabefeld (Product Input Fields),
@@ -228,9 +234,12 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
    **On-Demand:** Die Produkte werden in Printify angelegt und in den Shop
    published (statt direkt in WooCommerce). Blueprint-ID und Print-Provider-ID
    sind für den ganzen Katalog bereits in `config/schoolshop.php` hinterlegt
-   (recherchiert über `php artisan printify:check --blueprints=… /
-   --providers=…`) und werden im Konfigurator automatisch vorbefüllt — bei
-   Bedarf pro Schule änderbar (z. B. anderer Provider, neues Produkt). Ablauf:
+   und werden im Konfigurator automatisch vorbefüllt — bei Bedarf pro Schule
+   änderbar. Neue IDs lassen sich direkt im Konfigurator suchen (🔍-Button
+   neben den beiden Feldern, sucht live im Printify-Katalog — kein SSH/Terminal
+   nötig), alternativ am Server mit `php artisan printify:check
+   --blueprints=… / --providers=…` oder direkt auf printify.com nachsehen
+   (Tooltip an den Spaltenköpfen fasst das zusammen). Ablauf:
    „Im Shop anlegen" prüft automatisch die Marge (Verkaufspreis ≥
    (Produktionskosten + Versand) × 1,10, sonst Abbruch mit Rechnung) und
    published → einige Minuten warten, bis Printify die Shop-Produkte erstellt
@@ -245,6 +254,13 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
    ein US-Provider hinterlegt (längere Lieferzeit/höhere Versandkosten in die
    Marge einkalkulieren, oder im Konfigurator auf einen anderen Provider
    umstellen, falls verfügbar).
+
+   On-Demand-Produkte werden laufend einzeln an die Privatadresse der
+   Kund:innen verschickt — es gibt kein Bestellfenster und keine Klassenliste
+   (die für die Sammelbestellung sonst als Lieferziel dient). Beide Felder
+   sind im Konfigurator bei Lieferart On-Demand ausgeblendet; im Pods-Eintrag
+   wird stattdessen ein durchgehend offenes Fenster (01.01.2000–01.01.2099)
+   hinterlegt.
 
 **Hinweis „Im Checkout anzeigen" (German Market):** Größe, Farbe, Klasse und
 Individualisierung werden als Variationsattribute angelegt — die Auswahl der

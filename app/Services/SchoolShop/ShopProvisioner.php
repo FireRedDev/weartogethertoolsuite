@@ -33,7 +33,7 @@ class ShopProvisioner
 
         $existing = $onboarding->woo_product_ids ?? [];
         foreach ($onboarding->enabledProducts() as $product) {
-            $name = $onboarding->school_name.' '.config("schoolshop.catalog.{$product['key']}.name_suffix");
+            $name = $onboarding->school_name.' '.ProductConfigurator::preset($product)['name_suffix'];
             $indiv = ($product['indiv_surcharge'] ?? 0) > 0
                 ? sprintf(' + Variante Individualisierung Ja (%.2f EUR)', $product['base_price'] + $product['indiv_surcharge'])
                 : '';
@@ -122,7 +122,7 @@ class ShopProvisioner
 
                         continue;
                     }
-                    $created = $run("Produkt '".$onboarding->school_name.' '.config("schoolshop.catalog.{$product['key']}.name_suffix")."' anlegen (inkl. Variationen)",
+                    $created = $run("Produkt '".$onboarding->school_name.' '.ProductConfigurator::preset($product)['name_suffix']."' anlegen (inkl. Variationen)",
                         fn () => $this->createProduct($onboarding, $product, $attributeIds, $klassen, $shippingClassSlug));
                     $productIds[$product['key']] = (int) $created['id'];
                     $onboarding->woo_product_ids = $productIds;
@@ -180,7 +180,7 @@ class ShopProvisioner
 
     private function createProduct(SchoolOnboarding $onboarding, array $product, array $attributeIds, array $klassen, string $shippingClassSlug): array
     {
-        $preset = config("schoolshop.catalog.{$product['key']}");
+        $preset = ProductConfigurator::preset($product);
         $name = $onboarding->school_name.' '.$preset['name_suffix'];
         $hasIndiv = ($product['indiv_surcharge'] ?? 0) > 0;
 
@@ -295,15 +295,16 @@ class ShopProvisioner
             }
             $blueprintId = (int) ($product['printify_blueprint_id'] ?? 0);
             $providerId = (int) ($product['printify_provider_id'] ?? 0);
+            $preset = ProductConfigurator::preset($product);
             if ($blueprintId === 0 || $providerId === 0) {
                 throw new ProvisionAbortedException([...$log, [
-                    'step' => "Printify-Produkt '".config("schoolshop.catalog.{$key}.label")."'", 'ok' => false,
-                    'detail' => 'Blueprint-ID/Print-Provider-ID fehlen im Konfigurator. IDs nachschlagen mit: php artisan printify:check --blueprints=SUCHBEGRIFF (z. B. JH001), dann im Konfigurator eintragen und speichern.',
+                    'step' => "Printify-Produkt '".$preset['label']."'", 'ok' => false,
+                    'detail' => 'Blueprint-ID/Print-Provider-ID fehlen im Konfigurator. IDs nachschlagen: über die Suche im Konfigurator (🔍-Button), am Server mit php artisan printify:check --blueprints=SUCHBEGRIFF (z. B. JH001), oder direkt auf printify.com — dann im Konfigurator eintragen und speichern.',
                 ]], new \RuntimeException('Printify-Zuordnung fehlt'));
             }
 
             $result = $run(
-                "Printify-Produkt '".$onboarding->school_name.' '.config("schoolshop.catalog.{$key}.name_suffix")."' anlegen + publishen (inkl. Margen-Prüfung)",
+                "Printify-Produkt '".$onboarding->school_name.' '.$preset['name_suffix']."' anlegen + publishen (inkl. Margen-Prüfung)",
                 fn () => $this->printify->createAndPublish(
                     $onboarding,
                     $product,

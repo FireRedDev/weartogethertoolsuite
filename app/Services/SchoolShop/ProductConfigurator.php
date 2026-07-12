@@ -79,27 +79,61 @@ class ProductConfigurator
         return [
             'key' => $key,
             'label' => $preset['label'],
+            'name_suffix' => $preset['name_suffix'] ?? $preset['label'],
+            'description' => $preset['description'] ?? '',
+            'supplier_code' => $preset['supplier_code'] ?? '',
+            'no_individualisierung' => ! empty($preset['no_individualisierung']),
             'enabled' => $enabled,
             'base_price' => $preset['base_price'],
             'indiv_surcharge' => ! empty($preset['no_individualisierung']) ? 0.0 : (float) config('schoolshop.indiv_surcharge'),
             'sizes' => $preset['sizes'],
             'colors' => $colors,
-            // Nur für On-Demand relevant (IDs via: php artisan printify:check)
+            // Nur für On-Demand relevant (IDs via: php artisan printify:check oder Suche im Konfigurator)
             'printify_blueprint_id' => $preset['printify_blueprint_id'] ?? null,
             'printify_provider_id' => $preset['printify_provider_id'] ?? null,
         ];
     }
 
     /**
-     * Übernimmt Formulareingaben des Konfigurators in den products-Zustand.
+     * Katalog-Metadaten eines Produkts für die Shop-Anlage (Name, Beschreibung
+     * usw.). Bevorzugt die im products-JSON gespeicherten Werte — nötig für
+     * im Konfigurator manuell hinzugefügte Produkte, die keinen Eintrag in
+     * config('schoolshop.catalog') haben — und fällt sonst auf den
+     * Katalog-Default zurück (Altbestand vor diesem Feature).
+     *
+     * @param  array<string, mixed>  $product
+     * @return array{label: string, name_suffix: string, description: string, supplier_code: string, no_individualisierung: bool, default_size: ?string}
+     */
+    public static function preset(array $product): array
+    {
+        $catalog = config("schoolshop.catalog.{$product['key']}", []);
+        $label = $product['label'] ?? $catalog['label'] ?? $product['key'];
+
+        return [
+            'label' => $label,
+            'name_suffix' => $product['name_suffix'] ?? $catalog['name_suffix'] ?? $label,
+            'description' => $product['description'] ?? $catalog['description'] ?? '',
+            'supplier_code' => $product['supplier_code'] ?? $catalog['supplier_code'] ?? '',
+            'no_individualisierung' => $product['no_individualisierung'] ?? ! empty($catalog['no_individualisierung']),
+            'default_size' => $catalog['default_size'] ?? null,
+        ];
+    }
+
+    /**
+     * Übernimmt Formulareingaben des Konfigurators in den products-Zustand —
+     * inklusive im Konfigurator neu hinzugefügter Produkte (Feld "new").
      *
      * @param  array<int, array<string, mixed>>  $current
      * @param  array<string, array<string, mixed>>  $input  key => Felder
      */
     public static function applyInput(array $current, array $input): array
     {
+        $existingKeys = [];
         foreach ($current as $i => $product) {
             $key = $product['key'] ?? null;
+            if ($key !== null) {
+                $existingKeys[$key] = true;
+            }
             if ($key === null || ! empty($product['unmapped'])) {
                 continue;
             }
@@ -122,6 +156,33 @@ class ProductConfigurator
                     $current[$i][$idField] = ctype_digit($value) && $value !== '' ? (int) $value : null;
                 }
             }
+        }
+
+        foreach ($input as $rawKey => $fields) {
+            if (empty($fields['new']) || ! is_array($fields)) {
+                continue;
+            }
+            $key = preg_replace('/[^a-z0-9_\-]/', '', mb_strtolower((string) $rawKey));
+            if ($key === '' || isset($existingKeys[$key])) {
+                continue;
+            }
+            $existingKeys[$key] = true;
+            $label = trim((string) ($fields['label'] ?? '')) ?: 'Neues Produkt';
+            $current[] = [
+                'key' => $key,
+                'label' => $label,
+                'name_suffix' => $label,
+                'description' => '',
+                'supplier_code' => '',
+                'no_individualisierung' => false,
+                'enabled' => ! empty($fields['enabled']),
+                'base_price' => is_numeric(str_replace(',', '.', (string) ($fields['base_price'] ?? ''))) ? round((float) str_replace(',', '.', (string) $fields['base_price']), 2) : 0.0,
+                'indiv_surcharge' => is_numeric(str_replace(',', '.', (string) ($fields['indiv_surcharge'] ?? ''))) ? round((float) str_replace(',', '.', (string) $fields['indiv_surcharge']), 2) : 0.0,
+                'sizes' => array_values(array_filter(array_map('trim', explode(',', (string) ($fields['sizes'] ?? ''))))),
+                'colors' => array_values(array_filter(array_map('trim', explode(',', (string) ($fields['colors'] ?? ''))))),
+                'printify_blueprint_id' => isset($fields['printify_blueprint_id']) && ctype_digit(trim((string) $fields['printify_blueprint_id'])) ? (int) $fields['printify_blueprint_id'] : null,
+                'printify_provider_id' => isset($fields['printify_provider_id']) && ctype_digit(trim((string) $fields['printify_provider_id'])) ? (int) $fields['printify_provider_id'] : null,
+            ];
         }
 
         return $current;

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FluentFormsWebhookController;
+use App\Http\Controllers\HomeController;
 use App\Http\Controllers\OrderToolController;
 use App\Http\Controllers\SchoolOnboardingController;
 use App\Http\Controllers\ShopExportController;
@@ -16,7 +17,9 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 Route::post('/webhooks/fluentforms/{secret}', [FluentFormsWebhookController::class, 'receive'])->name('webhooks.fluentforms');
 
 Route::middleware(ToolAuth::class)->group(function () {
-    Route::get('/', [OrderToolController::class, 'index'])->name('tool.index');
+    Route::get('/', [HomeController::class, 'index'])->name('home');
+
+    Route::get('/auftragsdokumente', [OrderToolController::class, 'index'])->name('tool.index');
     Route::post('/upload', [OrderToolController::class, 'upload'])->name('tool.upload');
     Route::get('/shop-export', [ShopExportController::class, 'form'])->name('shop.form');
     Route::post('/shop-export', [ShopExportController::class, 'fetch'])->name('shop.fetch');
@@ -30,6 +33,8 @@ Route::middleware(ToolAuth::class)->group(function () {
     Route::get('/schulen', [SchoolOnboardingController::class, 'index'])->name('schools.index');
     Route::get('/schulen/neu', [SchoolOnboardingController::class, 'create'])->name('schools.create');
     Route::post('/schulen', [SchoolOnboardingController::class, 'store'])->name('schools.store');
+    Route::get('/schulen/printify/blueprints', [SchoolOnboardingController::class, 'printifyBlueprintSearch'])->name('schools.printify.blueprints');
+    Route::get('/schulen/printify/providers', [SchoolOnboardingController::class, 'printifyProviderSearch'])->name('schools.printify.providers');
     Route::get('/schulen/{onboarding}', [SchoolOnboardingController::class, 'show'])->name('schools.show');
     Route::put('/schulen/{onboarding}', [SchoolOnboardingController::class, 'update'])->name('schools.update');
     Route::post('/schulen/{onboarding}/vorschau', [SchoolOnboardingController::class, 'preview'])->name('schools.preview');

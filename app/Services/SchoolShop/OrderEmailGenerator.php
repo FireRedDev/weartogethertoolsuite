@@ -27,7 +27,7 @@ class OrderEmailGenerator
 
         $productLines = [];
         foreach ($onboarding->enabledProducts() as $product) {
-            $preset = config("schoolshop.catalog.{$product['key']}");
+            $preset = ProductConfigurator::preset($product);
             $code = $preset['supplier_code'] !== '' ? ' – '.$preset['supplier_code'] : '';
             $productLines[] = $preset['name_suffix'].$code.' in '.implode(', ', $product['colors']);
         }

@@ -148,10 +148,13 @@
 </head>
 <body>
 <header class="site">
-    <div class="brand">Wear Together <span class="dot">●</span> Order Suite</div>
+    <a href="{{ route('home') }}" class="brand" style="color:#fff;text-decoration:none;">Wear Together <span class="dot">●</span> Order Suite</a>
     <nav style="display:flex;gap:0.6rem;align-items:center;">
+        @php($isTool = request()->routeIs('tool.*', 'shop.*', 'job.*'))
         @php($isSchools = request()->routeIs('schools.*'))
-        <a href="{{ route('tool.index') }}" style="color:{{ $isSchools ? '#cbd5e1' : '#ffbb00' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Auftragsdokumente</a>
+        <a href="{{ route('home') }}" style="color:{{ request()->routeIs('home') ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Startseite</a>
+        <span style="color:#475569;">|</span>
+        <a href="{{ route('tool.index') }}" style="color:{{ $isTool ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Auftragsdokumente</a>
         <span style="color:#475569;">|</span>
         <a href="{{ route('schools.index') }}" style="color:{{ $isSchools ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Schul-Onboarding</a>
         @if (config('ordersuite.password') !== '' && session('tool_authenticated'))

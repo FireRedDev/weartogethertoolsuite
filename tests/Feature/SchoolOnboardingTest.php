@@ -89,6 +89,112 @@ class SchoolOnboardingTest extends TestCase
         $this->assertSame(0, SchoolOnboarding::count());
     }
 
+    public function test_ondemand_webhook_gets_fixed_window_and_no_class_list(): void
+    {
+        $payload = $this->webhookPayload();
+        $payload['input_radio_7'] = 'On-Demand online';
+        $payload['multi_select_1'] = ['Hoodie'];
+        $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
+
+        $onboarding = SchoolOnboarding::sole();
+        $this->assertSame('2000-01-01', $onboarding->window_start->format('Y-m-d'));
+        $this->assertSame('2099-01-01', $onboarding->window_end->format('Y-m-d'));
+        $this->assertNull($onboarding->class_list);
+    }
+
+    public function test_configurator_switches_to_ondemand_forces_fixed_window_and_clears_class_list(): void
+    {
+        $this->postJson('/webhooks/fluentforms/test-secret', $this->webhookPayload())->assertOk();
+        $onboarding = SchoolOnboarding::sole();
+        $this->assertSame('collective', $onboarding->delivery_type);
+        $this->assertNotNull($onboarding->class_list);
+
+        $this->put("/schulen/{$onboarding->id}", [
+            'school_name' => $onboarding->school_name,
+            'delivery_type' => 'ondemand',
+            'status' => $onboarding->status,
+            // Klassenliste/Bestellfenster werden im Konfigurator für On-Demand ausgeblendet,
+            // ein manipulierter Request darf sie trotzdem nicht durchschmuggeln.
+            'class_list' => '1a,1b',
+            'window_start' => '2024-01-01',
+            'window_end' => '2024-02-01',
+        ])->assertRedirect();
+
+        $onboarding->refresh();
+        $this->assertNull($onboarding->class_list);
+        $this->assertSame('2000-01-01', $onboarding->window_start->format('Y-m-d'));
+        $this->assertSame('2099-01-01', $onboarding->window_end->format('Y-m-d'));
+    }
+
+    public function test_configurator_add_custom_product(): void
+    {
+        $this->postJson('/webhooks/fluentforms/test-secret', $this->webhookPayload())->assertOk();
+        $onboarding = SchoolOnboarding::sole();
+
+        $this->put("/schulen/{$onboarding->id}", [
+            'school_name' => $onboarding->school_name,
+            'delivery_type' => 'collective',
+            'status' => $onboarding->status,
+            'products' => [
+                'custom_1234' => [
+                    'new' => '1', 'enabled' => '1', 'label' => 'Regenschirm',
+                    'base_price' => '15,50', 'indiv_surcharge' => '0',
+                    'sizes' => 'Einheitsgröße', 'colors' => 'schwarz',
+                ],
+            ],
+        ])->assertRedirect();
+
+        $onboarding->refresh();
+        $custom = collect($onboarding->products)->firstWhere('key', 'custom_1234');
+        $this->assertNotNull($custom);
+        $this->assertSame('Regenschirm', $custom['label']);
+        $this->assertSame('Regenschirm', $custom['name_suffix']);
+        $this->assertTrue($custom['enabled']);
+        $this->assertSame(15.5, $custom['base_price']);
+        $this->assertSame(['Einheitsgröße'], $custom['sizes']);
+        $this->assertSame(['schwarz'], $custom['colors']);
+        $this->assertContains('custom_1234', collect($onboarding->enabledProducts())->pluck('key')->all());
+    }
+
+    public function test_printify_blueprint_search_endpoint(): void
+    {
+        Http::fake([
+            'api.printify.com/v1/catalog/blueprints.json' => Http::response([
+                ['id' => 92, 'title' => 'Unisex College Hoodie', 'brand' => 'AWDIS', 'model' => 'JH001'],
+                ['id' => 6, 'title' => 'Unisex Heavy Cotton Tee', 'brand' => 'Gildan', 'model' => '5000'],
+            ]),
+        ]);
+
+        $response = $this->getJson('/schulen/printify/blueprints?q=Hoodie');
+
+        $response->assertOk();
+        $results = $response->json('results');
+        $this->assertCount(1, $results);
+        $this->assertSame(92, $results[0]['id']);
+    }
+
+    public function test_printify_provider_search_endpoint_requires_blueprint_id(): void
+    {
+        $this->getJson('/schulen/printify/providers?q=Europa')->assertStatus(422);
+    }
+
+    public function test_printify_provider_search_endpoint_filters_by_query(): void
+    {
+        Http::fake([
+            'api.printify.com/v1/catalog/blueprints/92/print_providers.json' => Http::response([
+                ['id' => 26, 'title' => 'Textildruck Europa'],
+                ['id' => 6, 'title' => 'T Shirt and Sons'],
+            ]),
+        ]);
+
+        $response = $this->getJson('/schulen/printify/providers?blueprint_id=92&q=europa');
+
+        $response->assertOk();
+        $results = $response->json('results');
+        $this->assertCount(1, $results);
+        $this->assertSame(26, $results[0]['id']);
+    }
+
     public function test_ondemand_delivery_uses_ondemand_product_and_color_fields(): void
     {
         $payload = $this->webhookPayload();

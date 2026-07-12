@@ -19,6 +19,13 @@ class SchoolOnboarding extends Model
         'list' => 'Listenbestellung (ohne Webshop)',
     ];
 
+    // On-Demand-Produkte werden laufend einzeln an die Kund:innen verschickt —
+    // es gibt kein Bestellfenster. Statt die Felder leer zu lassen (Pods
+    // erwartet Datumswerte), wird ein durchgehend "offenes" Fenster gesetzt.
+    public const ONDEMAND_WINDOW_START = '2000-01-01';
+
+    public const ONDEMAND_WINDOW_END = '2099-01-01';
+
     protected $guarded = [];
 
     protected function casts(): array

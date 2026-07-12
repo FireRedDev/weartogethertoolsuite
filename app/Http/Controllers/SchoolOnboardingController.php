@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Exceptions\WooCommerceApiException;
 use App\Models\SchoolOnboarding;
 use App\Services\SchoolShop\OrderEmailGenerator;
+use App\Services\SchoolShop\PrintifyClient;
 use App\Services\SchoolShop\PrintifyProvisioner;
 use App\Services\SchoolShop\ProductConfigurator;
 use App\Services\SchoolShop\ProvisionAbortedException;
 use App\Services\SchoolShop\ShopProvisioner;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -103,13 +105,18 @@ class SchoolOnboardingController extends Controller
             'products' => ['nullable', 'array'],
         ]);
 
+        // On-Demand: Produkte werden laufend einzeln verschickt, es gibt kein
+        // Bestellfenster und keine Klassenliste (Lieferung an die Privatadresse
+        // der Kund:innen) — beide Felder sind im Konfigurator daher ausgeblendet.
+        $isOndemand = $validated['delivery_type'] === 'ondemand';
+
         $onboarding->fill([
             'school_name' => $validated['school_name'],
             'delivery_type' => $validated['delivery_type'],
             'status' => $validated['status'],
-            'class_list' => $validated['class_list'] ?? null,
-            'window_start' => $validated['window_start'] ?? null,
-            'window_end' => $validated['window_end'] ?? null,
+            'class_list' => $isOndemand ? null : ($validated['class_list'] ?? null),
+            'window_start' => $isOndemand ? SchoolOnboarding::ONDEMAND_WINDOW_START : ($validated['window_start'] ?? null),
+            'window_end' => $isOndemand ? SchoolOnboarding::ONDEMAND_WINDOW_END : ($validated['window_end'] ?? null),
             'notes' => $validated['notes'] ?? null,
         ]);
         if ($onboarding->status === 'neu') {
@@ -166,6 +173,55 @@ class SchoolOnboardingController extends Controller
 
             return redirect()->route('schools.show', $onboarding)->with('provisionError', $this->describeError($e));
         }
+    }
+
+    /** Blueprint-Suche für den Konfigurator (🔍-Button neben Blueprint-ID) — Alternative zu printify:check am Server. */
+    public function printifyBlueprintSearch(Request $request, PrintifyClient $printify): JsonResponse
+    {
+        $query = trim((string) $request->query('q', ''));
+        if (mb_strlen($query) < 2) {
+            return response()->json(['results' => []]);
+        }
+
+        try {
+            $blueprints = $printify->searchBlueprints($query);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['error' => $this->describeError($e)['user']], 502);
+        }
+
+        return response()->json(['results' => collect($blueprints)->take(30)->map(fn ($b) => [
+            'id' => $b['id'],
+            'title' => trim(($b['brand'] ?? '').' '.($b['model'] ?? '').' ('.($b['title'] ?? '').')'),
+        ])->values()]);
+    }
+
+    /** Provider-Suche für den Konfigurator (🔍-Button neben Provider-ID). */
+    public function printifyProviderSearch(Request $request, PrintifyClient $printify): JsonResponse
+    {
+        $blueprintId = (int) $request->query('blueprint_id', 0);
+        $query = mb_strtolower(trim((string) $request->query('q', '')));
+        if ($blueprintId <= 0) {
+            return response()->json(['error' => 'Bitte zuerst eine Blueprint-ID eintragen (oder über die Blueprint-Suche wählen).'], 422);
+        }
+
+        try {
+            $providers = $printify->printProviders($blueprintId);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['error' => $this->describeError($e)['user']], 502);
+        }
+
+        if ($query !== '') {
+            $providers = array_values(array_filter($providers, fn ($p) => str_contains(mb_strtolower($p['title'] ?? ''), $query)));
+        }
+
+        return response()->json(['results' => collect($providers)->map(fn ($p) => [
+            'id' => $p['id'],
+            'title' => $p['title'] ?? '?',
+        ])->values()]);
     }
 
     public function destroy(SchoolOnboarding $onboarding): RedirectResponse

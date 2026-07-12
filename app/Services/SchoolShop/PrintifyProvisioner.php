@@ -155,7 +155,7 @@ class PrintifyProvisioner
             ];
         }
 
-        $preset = config("schoolshop.catalog.{$product['key']}");
+        $preset = ProductConfigurator::preset($product);
         $created = $this->printify->createProduct([
             'title' => $onboarding->school_name.' '.$preset['name_suffix'],
             'description' => strip_tags($preset['description']),

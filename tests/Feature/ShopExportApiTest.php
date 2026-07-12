@@ -222,7 +222,7 @@ class ShopExportApiTest extends TestCase
     {
         config(['ordersuite.woocommerce.store_url' => '']);
 
-        $this->get('/')->assertOk()->assertSee('Die Shop-Verbindung ist noch nicht eingerichtet');
+        $this->get('/auftragsdokumente')->assertOk()->assertSee('Die Shop-Verbindung ist noch nicht eingerichtet');
         $this->get('/shop-export')->assertOk()->assertSee('noch nicht eingerichtet');
     }
 

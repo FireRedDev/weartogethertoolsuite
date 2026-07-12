@@ -11,7 +11,7 @@ class AuthController extends Controller
     public function showLogin(): View|RedirectResponse
     {
         if ((string) config('ordersuite.password') === '') {
-            return redirect()->route('tool.index');
+            return redirect()->route('home');
         }
 
         return view('auth.login');
@@ -28,7 +28,7 @@ class AuthController extends Controller
         $request->session()->put('tool_authenticated', true);
         $request->session()->regenerate();
 
-        return redirect()->route('tool.index');
+        return redirect()->route('home');
     }
 
     public function logout(Request $request): RedirectResponse
