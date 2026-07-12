@@ -156,6 +156,20 @@
             </div>
         @endif
 
+        @if (session('provisionError'))
+            @php($provisionError = session('provisionError'))
+            <div class="alert error" style="margin-top:1rem;">
+                ✖ <strong>{{ $provisionError['user'] }}</strong>
+                @if ($provisionError['hint'])
+                    <div style="margin-top:0.4rem;">{{ $provisionError['hint'] }}</div>
+                @endif
+                <details class="warnrows" open>
+                    <summary>Technische Details (zum Kopieren, für Support)</summary>
+                    <textarea readonly rows="3" style="font-family:ui-monospace,monospace;font-size:0.8rem;margin-top:0.4rem;" onclick="this.select()">{{ $provisionError['technical'] }}</textarea>
+                </details>
+            </div>
+        @endif
+
         @if (session('provisionLog'))
             <div class="alert {{ collect(session('provisionLog'))->every(fn ($l) => $l['ok']) ? 'ok' : 'error' }}" style="margin-top:1rem;">
                 <strong>Protokoll:</strong>

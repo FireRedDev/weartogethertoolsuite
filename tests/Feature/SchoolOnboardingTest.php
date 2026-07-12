@@ -182,8 +182,10 @@ class SchoolOnboardingTest extends TestCase
         $onboarding = SchoolOnboarding::sole();
 
         $response = $this->post("/schulen/{$onboarding->id}/anlegen");
-        $response->assertSessionHasErrors('provision');
-        $this->assertStringContainsString('Versandklasse', session('errors')->first('provision'));
+        $response->assertRedirect();
+        $provisionError = session('provisionError');
+        $this->assertNotNull($provisionError);
+        $this->assertStringContainsString('Versandklasse', $provisionError['technical']);
     }
 
     public function test_ui_flow_edit_and_email_generation(): void

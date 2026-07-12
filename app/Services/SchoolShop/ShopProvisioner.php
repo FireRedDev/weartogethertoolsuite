@@ -142,6 +142,18 @@ class ShopProvisioner
             }
 
             $onboarding->status = 'angelegt';
+        } catch (ProvisionAbortedException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            // Sicherheitsnetz: Fehler außerhalb eines run()-Schritts (z. B. beim
+            // Speichern oder bei der Klassenlisten-Auswertung) sollen genauso
+            // sichtbar werden wie API-Fehler, statt als nackter 500er zu enden.
+            $log[] = [
+                'step' => 'Unerwarteter Fehler',
+                'ok' => false,
+                'detail' => get_class($e).': '.$e->getMessage().' in '.basename($e->getFile()).':'.$e->getLine(),
+            ];
+            throw new ProvisionAbortedException($log, $e);
         } finally {
             $onboarding->provision_log = array_merge($onboarding->provision_log ?? [], $log);
             $onboarding->save();

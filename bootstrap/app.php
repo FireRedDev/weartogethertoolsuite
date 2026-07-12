@@ -19,4 +19,25 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
+
+        // Sicherheitsnetz: Statt einer kahlen 500-Seite immer eine erklärte
+        // Fehlerseite mit technischen Details zeigen (auch bei APP_DEBUG=false).
+        // Reguläre Fälle (404, Validierung, Auth, Wartungsmodus) bleiben unverändert.
+        $exceptions->render(function (\Throwable $e, Request $request) {
+            if ($request->is('api/*') || $request->is('webhooks/*') || $request->expectsJson()) {
+                return null;
+            }
+            if (
+                $e instanceof \Symfony\Component\HttpKernel\Exception\NotFoundHttpException
+                || $e instanceof \Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException
+                || $e instanceof \Illuminate\Validation\ValidationException
+                || $e instanceof \Illuminate\Auth\AuthenticationException
+                || $e instanceof \Illuminate\Auth\Access\AuthorizationException
+                || $e instanceof \Illuminate\Foundation\Http\Exceptions\MaintenanceModeException
+            ) {
+                return null;
+            }
+
+            return response()->view('errors.friendly', ['exception' => $e], 500);
+        });
     })->create();

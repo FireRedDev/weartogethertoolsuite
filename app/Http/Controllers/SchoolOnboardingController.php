@@ -108,14 +108,39 @@ class SchoolOnboardingController extends Controller
 
             return redirect()->route('schools.show', $onboarding)->with('provisionLog', $log);
         } catch (ProvisionAbortedException $e) {
-            $previous = $e->getPrevious();
-            $hint = $previous instanceof WooCommerceApiException ? $previous->hint() : null;
+            $previous = $e->getPrevious() ?? $e;
+            report($previous);
 
             return redirect()->route('schools.show', $onboarding)
                 ->with('provisionLog', $e->log)
-                ->withErrors(['provision' => 'Die Shop-Anlage wurde abgebrochen: '.(
-                    $previous instanceof WooCommerceApiException ? $previous->userMessage() : $e->getMessage()
-                ).($hint ? ' — '.$hint : '')]);
+                ->with('provisionError', $this->describeError($previous));
+        } catch (\Throwable $e) {
+            // Letztes Sicherheitsnetz: sollte durch ShopProvisioner eigentlich
+            // nie erreicht werden, verhindert aber in jedem Fall einen
+            // unerklärten 500er.
+            report($e);
+
+            return redirect()->route('schools.show', $onboarding)->with('provisionError', $this->describeError($e));
         }
+    }
+
+    /**
+     * Baut eine einheitliche, immer verständliche Fehlerbeschreibung — mit
+     * Klartext-Erklärung (falls bekannt) und immer sichtbaren technischen
+     * Details zum Kopieren/Weiterleiten an den Support.
+     *
+     * @return array{user: string, hint: ?string, technical: string}
+     */
+    private function describeError(\Throwable $e): array
+    {
+        if ($e instanceof WooCommerceApiException) {
+            return ['user' => $e->userMessage(), 'hint' => $e->hint(), 'technical' => $e->getMessage()];
+        }
+
+        return [
+            'user' => 'Die Shop-Anlage wurde durch einen unerwarteten technischen Fehler abgebrochen.',
+            'hint' => 'Bitte die technischen Details unten an den Support weitergeben.',
+            'technical' => get_class($e).': '.$e->getMessage().' in '.basename($e->getFile()).':'.$e->getLine(),
+        ];
     }
 }

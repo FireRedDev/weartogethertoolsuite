@@ -24,15 +24,16 @@ class WooCommerceWriteClient
     /** Kategorie anlegen oder vorhandene zurückgeben. */
     public function ensureCategory(string $name, ?int $parentId = null): array
     {
-        $slugQuery = $this->request('get', 'products/categories', [
+        $searchResponse = $this->request('get', 'products/categories', [
             'search' => $name,
             'per_page' => '100',
             ...($parentId !== null ? ['parent' => (string) $parentId] : []),
-        ])->json();
+        ]);
+        $slugQuery = $searchResponse->json();
         foreach (is_array($slugQuery) ? $slugQuery : [] as $category) {
             $matchesParent = $parentId === null || (int) ($category['parent'] ?? 0) === $parentId;
             if (mb_strtolower(html_entity_decode($category['name'] ?? '', ENT_QUOTES | ENT_HTML5)) === mb_strtolower($name) && $matchesParent) {
-                return $category;
+                return $this->assertHasId($category, "GET products/categories (Suche nach '{$name}')", $searchResponse);
             }
         }
 
@@ -41,7 +42,9 @@ class WooCommerceWriteClient
             $body['parent'] = $parentId;
         }
 
-        return $this->request('post', 'products/categories', [], $body)->json();
+        $createResponse = $this->request('post', 'products/categories', [], $body);
+
+        return $this->assertHasId($createResponse->json(), "POST products/categories (Kategorie '{$name}' anlegen)", $createResponse);
     }
 
     /** @return array<string, mixed>|null */
@@ -94,17 +97,23 @@ class WooCommerceWriteClient
 
     public function createProduct(array $payload): array
     {
-        return $this->request('post', 'products', [], $payload)->json();
+        $response = $this->request('post', 'products', [], $payload);
+
+        return $this->assertHasId($response->json(), "POST products (Produkt '".($payload['name'] ?? '?')."' anlegen)", $response);
     }
 
     public function updateProduct(int $productId, array $payload): array
     {
-        return $this->request('put', "products/{$productId}", [], $payload)->json();
+        $response = $this->request('put', "products/{$productId}", [], $payload);
+
+        return $this->assertHasId($response->json(), "PUT products/{$productId}", $response);
     }
 
     public function createVariation(int $productId, array $payload): array
     {
-        return $this->request('post', "products/{$productId}/variations", [], $payload)->json();
+        $response = $this->request('post', "products/{$productId}/variations", [], $payload);
+
+        return $this->assertHasId($response->json(), "POST products/{$productId}/variations", $response);
     }
 
     /** @return list<array<string, mixed>> */
@@ -113,6 +122,25 @@ class WooCommerceWriteClient
         $products = $this->request('get', 'products', ['search' => $search, 'per_page' => '100'])->json();
 
         return is_array($products) ? $products : [];
+    }
+
+    /**
+     * Prüft, dass eine erfolgreiche Antwort tatsächlich das erwartete Objekt
+     * mit "id" enthält — sonst mit der vollständigen Roh-Antwort abbrechen,
+     * statt später mit einer kryptischen "Undefined array key" zu scheitern.
+     *
+     * @return array<string, mixed>
+     */
+    private function assertHasId(mixed $data, string $context, Response $response): array
+    {
+        if (! is_array($data) || ! isset($data['id'])) {
+            throw WooCommerceApiException::unexpectedResponse(
+                "{$context}: HTTP {$response->status()} war erfolgreich, aber die Antwort enthält keine Objekt-ID. ".
+                'Rohe Antwort: '.mb_substr($response->body(), 0, 800),
+            );
+        }
+
+        return $data;
     }
 
     private function request(string $method, string $endpoint, array $query = [], array $body = []): Response
