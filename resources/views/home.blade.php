@@ -5,7 +5,7 @@
 @section('content')
     <div class="card">
         <h1>Willkommen bei der Wear Together Order Suite</h1>
-        <p class="lead">Zwei Werkzeuge, ein Login — bitte auswählen, womit du starten möchtest.</p>
+        <p class="lead">Drei Werkzeuge, ein Login — bitte auswählen, womit du starten möchtest.</p>
     </div>
 
     <div class="downloads" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));">
