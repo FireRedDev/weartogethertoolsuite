@@ -89,6 +89,38 @@ class SchoolOnboardingTest extends TestCase
         $this->assertSame(0, SchoolOnboarding::count());
     }
 
+    public function test_webhook_verify_get_confirms_correct_url(): void
+    {
+        $this->getJson('/webhooks/fluentforms/test-secret')->assertOk()->assertJson(['ok' => true]);
+        $this->getJson('/webhooks/fluentforms/falsch')->assertNotFound()->assertJson(['ok' => false]);
+    }
+
+    public function test_webhook_reports_missing_server_secret(): void
+    {
+        config(['schoolshop.webhook_secret' => '']);
+        $this->postJson('/webhooks/fluentforms/whatever', $this->webhookPayload())
+            ->assertStatus(503)
+            ->assertJson(['ok' => false]);
+        $this->getJson('/webhooks/fluentforms/whatever')->assertStatus(503);
+    }
+
+    public function test_webhook_never_loses_submission_on_mapping_error(): void
+    {
+        // Mapper-Ausnahme simulieren: der Rohdatensatz muss trotzdem sichtbar werden.
+        $this->mock(\App\Services\SchoolShop\FluentFormsMapper::class, function ($mock) {
+            $mock->shouldReceive('map')->andThrow(new \RuntimeException('Feld xyz fehlt'));
+        });
+
+        $this->postJson('/webhooks/fluentforms/test-secret', ['input_text_6' => 'Kaputte Schule'])
+            ->assertOk()
+            ->assertJson(['ok' => false]);
+
+        $onboarding = SchoolOnboarding::sole();
+        $this->assertSame('webhook', $onboarding->source);
+        $this->assertStringContainsString('Zuordnung fehlgeschlagen', $onboarding->notes);
+        $this->assertSame(['input_text_6' => 'Kaputte Schule'], $onboarding->raw_entry);
+    }
+
     public function test_ondemand_webhook_gets_fixed_window_and_no_class_list(): void
     {
         $payload = $this->webhookPayload();

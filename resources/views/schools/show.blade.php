@@ -44,6 +44,9 @@
     {{-- Formulardaten (Webhook) --}}
     <div class="card">
         <h2>Anfrage-Daten</h2>
+        @if (str_starts_with($onboarding->school_name, '⚠') || ($onboarding->source === 'webhook' && $onboarding->notes && str_contains($onboarding->notes, 'Zuordnung fehlgeschlagen')))
+            <div class="alert warn">⚠ Die automatische Zuordnung dieser Formular-Einsendung ist fehlgeschlagen — die Rohdaten sind unten einsehbar. Bitte Felder im Konfigurator manuell setzen. Details: {{ $onboarding->notes }}</div>
+        @endif
         <div class="tablewrap">
             <table class="data">
                 <tbody>
@@ -62,6 +65,13 @@
                 </tbody>
             </table>
         </div>
+
+        @if ($onboarding->source === 'webhook' && $onboarding->raw_entry)
+            <details class="warnrows" style="margin-top:0.75rem;">
+                <summary>Rohdaten der Formular-Einsendung (Webhook-Payload)</summary>
+                <textarea readonly rows="12" style="font-family:ui-monospace,monospace;font-size:0.8rem;margin-top:0.4rem;" onclick="this.select()">{{ json_encode($onboarding->raw_entry, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</textarea>
+            </details>
+        @endif
     </div>
 
     {{-- Konfigurator --}}

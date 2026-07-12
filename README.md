@@ -216,6 +216,17 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
    `https://DEINE-TOOL-DOMAIN/webhooks/fluentforms/<FLUENTFORMS_WEBHOOK_SECRET>`
    eintragen (Request Format JSON, alle Felder senden). Alternativ: Schule
    manuell anlegen.
+
+   **URL testen:** Dieselbe URL im Browser öffnen (GET). Kommt
+   `{"ok":true,...}`, stimmen URL und Secret — dann liegt ein Problem an der
+   FluentForms-Seite (Trigger/Feldübertragung). Kommt **404**, ist das Secret
+   in der URL falsch oder `FLUENTFORMS_WEBHOOK_SECRET` nicht gesetzt; kommt
+   **503**, ist auf dem Server gar kein Secret konfiguriert. Jeder Aufruf wird
+   in `storage/logs/laravel.log` protokolliert. Schlägt die automatische
+   Zuordnung einer Einsendung fehl, geht sie **nicht verloren**: Der
+   Rohdatensatz wird trotzdem als Antrag gespeichert (mit Warnhinweis und
+   einsehbaren Rohdaten in „Anfrage-Daten"), sodass er in der Schulliste
+   auftaucht und manuell nachbearbeitet werden kann.
 2. **Konfigurator:** Produkte (Vorlagenkatalog aus den bisherigen
    Musterschule-Excel-Vorlagen), Preise, Individualisierungs-Aufpreis, Größen,
    Farben, Klassenliste, Bestellfenster und Lieferart anpassen — alles

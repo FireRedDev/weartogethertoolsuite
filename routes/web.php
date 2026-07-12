@@ -16,6 +16,8 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // FluentForms-Webhook (kein Login/CSRF — Secret in der URL)
 Route::post('/webhooks/fluentforms/{secret}', [FluentFormsWebhookController::class, 'receive'])->name('webhooks.fluentforms');
+// Dieselbe URL im Browser (GET) öffnen = Test, ob Secret/URL stimmen
+Route::get('/webhooks/fluentforms/{secret}', [FluentFormsWebhookController::class, 'verify'])->name('webhooks.fluentforms.verify');
 
 Route::middleware(ToolAuth::class)->group(function () {
     Route::get('/', [HomeController::class, 'index'])->name('home');
