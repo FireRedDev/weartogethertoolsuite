@@ -79,7 +79,7 @@ Beide Wege laufen ab dem Prüfbericht identisch weiter.
    `php artisan config:cache` ausführen (bzw. neu deployen):
 
    ```ini
-   WC_STORE_URL=https://www.wear-together.at
+   WC_STORE_URL=https://wear-together.at
    WC_CONSUMER_KEY=ck_xxxxxxxx
    WC_CONSUMER_SECRET=cs_xxxxxxxx
    ```

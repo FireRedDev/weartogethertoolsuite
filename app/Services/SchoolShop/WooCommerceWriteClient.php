@@ -157,13 +157,27 @@ class WooCommerceWriteClient
         $secret = config('schoolshop.woocommerce_write.consumer_secret');
 
         try {
-            $pending = Http::withBasicAuth($key, $secret)->timeout(60)->acceptJson();
+            // Umleitungen NICHT folgen: Bei einem 301/302 würde aus einem POST
+            // stillschweigend ein GET (so ging real ein 'Kategorie anlegen'
+            // verloren, weil WC_STORE_URL mit www konfiguriert war, der Shop
+            // aber ohne www läuft). Stattdessen klarer Abbruch mit Erklärung.
+            $pending = Http::withBasicAuth($key, $secret)->timeout(60)->acceptJson()
+                ->withOptions(['allow_redirects' => false]);
             $response = $method === 'get' ? $pending->get($url, $query) : $pending->{$method}($url.'?'.http_build_query($query + [
                 // Fallback für Hoster, die den Authorization-Header verwerfen
                 'consumer_key' => $key, 'consumer_secret' => $secret,
             ]), $body);
         } catch (ConnectionException $e) {
             throw WooCommerceApiException::unreachable("{$method} {$url}: {$e->getMessage()}");
+        }
+
+        if ($response->status() >= 300 && $response->status() < 400) {
+            $location = $response->header('Location') ?: '(unbekannt)';
+            throw new WooCommerceApiException(
+                'Die Shop-Adresse in der Konfiguration leitet um — dabei gehen Schreibzugriffe verloren.',
+                strtoupper($method)." {$url}: HTTP {$response->status()} Umleitung nach {$location}",
+                'Bitte WC_STORE_URL in der .env-Datei exakt auf die endgültige Shop-Adresse setzen (auf www./ohne www. und http/https achten — die richtige Adresse steht in der Umleitung in den technischen Details) und danach php artisan config:cache ausführen.',
+            );
         }
 
         if ($method === 'get' && $response->status() === 401 && str_contains($response->body(), 'woocommerce_rest_cannot_view')) {

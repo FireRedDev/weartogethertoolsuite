@@ -219,6 +219,36 @@ class SchoolOnboardingTest extends TestCase
         $this->assertSame(['schulpullover'], collect($onboarding->enabledProducts())->pluck('key')->all());
     }
 
+    public function test_redirecting_store_url_aborts_with_clear_explanation(): void
+    {
+        // Reale Ursache eines Produktionsfehlers: WC_STORE_URL mit www,
+        // Shop läuft ohne www -> 301 machte aus POST ein GET, die Antwort
+        // war eine Kategorien-LISTE statt der neuen Kategorie.
+        Http::fake([
+            'shop.example/*' => Http::response('', 301, ['Location' => 'https://shop-ohne-www.example/wp-json/wc/v3/products/categories']),
+        ]);
+
+        $this->postJson('/webhooks/fluentforms/test-secret', $this->webhookPayload())->assertOk();
+        $onboarding = SchoolOnboarding::sole();
+
+        $this->post("/schulen/{$onboarding->id}/anlegen")->assertRedirect();
+
+        $provisionError = session('provisionError');
+        $this->assertNotNull($provisionError);
+        $this->assertStringContainsString('leitet um', $provisionError['user']);
+        $this->assertStringContainsString('shop-ohne-www.example', $provisionError['technical']);
+        $this->assertStringContainsString('WC_STORE_URL', $provisionError['hint']);
+    }
+
+    public function test_onboarding_can_be_deleted(): void
+    {
+        $this->postJson('/webhooks/fluentforms/test-secret', $this->webhookPayload())->assertOk();
+        $onboarding = SchoolOnboarding::sole();
+
+        $this->delete("/schulen/{$onboarding->id}")->assertRedirect(route('schools.index'));
+        $this->assertSame(0, SchoolOnboarding::count());
+    }
+
     public function test_printify_price_rule_enforces_minimum_margin(): void
     {
         Http::fake([

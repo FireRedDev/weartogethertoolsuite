@@ -13,7 +13,15 @@
                     @if ($onboarding->created_at) · Eingang {{ $onboarding->created_at->format('d.m.Y H:i') }} @endif
                 </p>
             </div>
-            <a class="btn secondary" href="{{ route('schools.index') }}">Zur Übersicht</a>
+            <div style="display:flex;gap:0.5rem;">
+                <a class="btn secondary" href="{{ route('schools.index') }}">Zur Übersicht</a>
+                <form method="post" action="{{ route('schools.destroy', $onboarding) }}"
+                      onsubmit="return confirm('Diesen Antrag wirklich löschen? Bereits im Shop Angelegtes bleibt bestehen und müsste dort separat entfernt werden.');">
+                    @csrf
+                    @method('DELETE')
+                    <button class="btn secondary" type="submit" style="color:var(--error);">Antrag löschen</button>
+                </form>
+            </div>
         </div>
 
         @if (session('saved'))

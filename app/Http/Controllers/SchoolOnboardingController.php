@@ -124,6 +124,15 @@ class SchoolOnboardingController extends Controller
         }
     }
 
+    public function destroy(SchoolOnboarding $onboarding): RedirectResponse
+    {
+        // Löscht nur den Antrag im Tool — bereits im Shop angelegte
+        // Kategorien/Produkte/CPT-Einträge bleiben unberührt.
+        $onboarding->delete();
+
+        return redirect()->route('schools.index')->with('deleted', $onboarding->school_name);
+    }
+
     /**
      * Baut eine einheitliche, immer verständliche Fehlerbeschreibung — mit
      * Klartext-Erklärung (falls bekannt) und immer sichtbaren technischen

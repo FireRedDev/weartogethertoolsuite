@@ -34,4 +34,5 @@ Route::middleware(ToolAuth::class)->group(function () {
     Route::put('/schulen/{onboarding}', [SchoolOnboardingController::class, 'update'])->name('schools.update');
     Route::post('/schulen/{onboarding}/vorschau', [SchoolOnboardingController::class, 'preview'])->name('schools.preview');
     Route::post('/schulen/{onboarding}/anlegen', [SchoolOnboardingController::class, 'provision'])->name('schools.provision');
+    Route::delete('/schulen/{onboarding}', [SchoolOnboardingController::class, 'destroy'])->name('schools.destroy');
 });

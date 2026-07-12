@@ -7,10 +7,14 @@
         <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
             <div>
                 <h1>Schul-Onboarding</h1>
-                <p class="lead">Anfragen aus dem Webshopstartfragebogen — von der Formular-Einsendung bis zur fertigen Shop-Anlage.</p>
+                <p class="lead">Alle Onboarding-Anfragen (auch noch nicht angelegte) — von der Formular-Einsendung bis zur fertigen Shop-Anlage. Ob eine Schule im Shop angelegt ist, zeigt die Spalte „Status".</p>
             </div>
             <a class="btn" href="{{ route('schools.create') }}">+ Schule manuell anlegen</a>
         </div>
+
+        @if (session('deleted'))
+            <div class="alert ok" style="margin-top:1rem;">✓ Antrag „{{ session('deleted') }}" gelöscht.</div>
+        @endif
 
         @if ($onboardings->isEmpty())
             <div class="alert ok" style="margin-top:1rem;">

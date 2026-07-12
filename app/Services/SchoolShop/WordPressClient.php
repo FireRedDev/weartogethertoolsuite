@@ -51,9 +51,19 @@ class WordPressClient
             $response = Http::withBasicAuth(config('schoolshop.wordpress.user'), config('schoolshop.wordpress.password'))
                 ->timeout(60)
                 ->acceptJson()
+                ->withOptions(['allow_redirects' => false])
                 ->{$method}($url, $body);
         } catch (ConnectionException $e) {
             throw WooCommerceApiException::unreachable("{$method} {$url}: {$e->getMessage()}");
+        }
+
+        if ($response->status() >= 300 && $response->status() < 400) {
+            $location = $response->header('Location') ?: '(unbekannt)';
+            throw new WooCommerceApiException(
+                'Die Shop-Adresse in der Konfiguration leitet um — dabei gehen Schreibzugriffe verloren.',
+                strtoupper($method)." {$url}: HTTP {$response->status()} Umleitung nach {$location}",
+                'Bitte WC_STORE_URL in der .env-Datei exakt auf die endgültige Shop-Adresse setzen (auf www./ohne www. achten) und danach php artisan config:cache ausführen.',
+            );
         }
 
         if (! $response->successful()) {
