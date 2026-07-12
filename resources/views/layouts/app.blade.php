@@ -149,12 +149,18 @@
 <body>
 <header class="site">
     <div class="brand">Wear Together <span class="dot">●</span> Order Suite</div>
-    @if (config('ordersuite.password') !== '' && session('tool_authenticated'))
-        <form method="post" action="{{ route('logout') }}">
-            @csrf
-            <button class="btn secondary" type="submit" style="padding:0.35rem 0.9rem;font-size:0.85rem;">Abmelden</button>
-        </form>
-    @endif
+    <nav style="display:flex;gap:0.6rem;align-items:center;">
+        @php($isSchools = request()->routeIs('schools.*'))
+        <a href="{{ route('tool.index') }}" style="color:{{ $isSchools ? '#cbd5e1' : '#ffbb00' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Auftragsdokumente</a>
+        <span style="color:#475569;">|</span>
+        <a href="{{ route('schools.index') }}" style="color:{{ $isSchools ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Schul-Onboarding</a>
+        @if (config('ordersuite.password') !== '' && session('tool_authenticated'))
+            <form method="post" action="{{ route('logout') }}" style="margin-left:0.75rem;">
+                @csrf
+                <button class="btn secondary" type="submit" style="padding:0.35rem 0.9rem;font-size:0.85rem;">Abmelden</button>
+            </form>
+        @endif
+    </nav>
 </header>
 <main>
     @yield('content')

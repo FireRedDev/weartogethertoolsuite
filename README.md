@@ -200,6 +200,46 @@ Bei Problemen mit einer Release: RunCloud → Atomic Deployment → Projekt →
 vorherige Release auswählen → „Activate". Der `current`-Symlink zeigt dann
 sofort wieder auf die alte, funktionierende Release.
 
+## Modul 2: Schul-Onboarding
+
+Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
+(FluentForms) bis zur fertigen Shop-Anlage. Eigener Bereich in der Navigation.
+
+**Ablauf:**
+
+1. **Eingang:** FluentForms-Webhook (Formular „Webshopstartfragebogen") legt
+   automatisch einen Onboarding-Antrag an. In FluentForms unter
+   Integrationen → Webhook die URL
+   `https://DEINE-TOOL-DOMAIN/webhooks/fluentforms/<FLUENTFORMS_WEBHOOK_SECRET>`
+   eintragen (Request Format JSON, alle Felder senden). Alternativ: Schule
+   manuell anlegen.
+2. **Konfigurator:** Produkte (Vorlagenkatalog aus den bisherigen
+   Musterschule-Excel-Vorlagen), Preise, Individualisierungs-Aufpreis, Größen,
+   Farben, Klassenliste, Bestellfenster und Lieferart anpassen — alles
+   vorbefüllt aus den Formularwünschen.
+3. **Shop-Anlage** (ein Klick, mit Vorschau/Dry-Run): Produktkategorie
+   „Schulen > {Name}", variable Produkte mit Variationen (Individualisierung
+   Ja/Nein), Individualisierungs-Eingabefeld (Product Input Fields),
+   Versandklasse (On-Demand) und Pods-CPT-Eintrag „schule". Jeder Schritt wird
+   protokolliert; bei Fehlern bricht die Anlage ab und kann nach Behebung
+   fortgesetzt werden (bereits Angelegtes wird übersprungen).
+4. **Sammelbestellfenster:** Bestellemail an die Partnerdruckerei nach Vorlage
+   (inkl. Lieferanten-Artikelnummern), zum Kopieren oder per mailto.
+   **On-Demand:** Printify-Anlage mit Margen-Prüfung — der Verkaufspreis muss
+   mindestens (Produktionskosten + Versand) × 1,10 betragen.
+
+**Benötigte Zugänge (.env):**
+
+| Variable | Zweck |
+|---|---|
+| `FLUENTFORMS_WEBHOOK_SECRET` | Frei wählbares Secret, Teil der Webhook-URL |
+| `WC_RW_CONSUMER_KEY` / `WC_RW_CONSUMER_SECRET` | WooCommerce-API-Schlüssel mit **Lesen/Schreiben** (separat vom Read-only-Schlüssel!) |
+| `WP_APP_USER` / `WP_APP_PASSWORD` | WordPress-Anwendungspasswort (Benutzer → Profil → Anwendungspasswörter) für den CPT „schule" (wp/v2) — dort gelten WooCommerce-Schlüssel nicht. Im Pods-Admin muss beim Pod „schule" die REST-API aktiviert sein. |
+| `PRINTIFY_API_TOKEN` / `PRINTIFY_SHOP_ID` | Printify (My Profile → Connections); Shop-ID = Zahl in der Printify-URL |
+| `SHIPPING_CLASS_ONDEMAND` | Slug der On-Demand-Versandklasse (Default `on-demand`) — muss im Shop existieren |
+
+Produktkatalog, Preise-Startwerte und Formular-Mapping: `config/schoolshop.php`.
+
 ## Datenschutz
 
 Die Exporte enthalten personenbezogene Daten (teils Minderjähriger). Deshalb:

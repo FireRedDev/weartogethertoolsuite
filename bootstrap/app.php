@@ -12,7 +12,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // FluentForms sendet keine CSRF-Token — der Webhook ist per Secret geschützt
+        $middleware->validateCsrfTokens(except: ['webhooks/fluentforms/*']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
