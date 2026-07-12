@@ -26,6 +26,7 @@ php artisan printify:check --providers=92
   - `ProductConfigurator` — `products`-JSON aufbauen/normalisieren. `preset($product)` liefert Name/Beschreibung/Code (bevorzugt aus `products`-JSON, Fallback `config/schoolshop.php`). Unterstützt im Konfigurator hinzugefügte Custom-Produkte (`new`).
   - `ShopProvisioner` — Orchestrator: `plan()` (Dry-Run), `apply()` (idempotent, Schritt-Protokoll, bricht bei Fehler ab), `ondemandSync()`, `closeOrderWindow()`.
   - `WooCommerceWriteClient` / `WordPressClient` / `PrintifyClient` / `PrintifyProvisioner` — API-Clients (Read/Write-Key bzw. WP App-Password bzw. Printify-Token).
+  - `DynamicMockupsClient` / `MockupGenerator` — optionale Produktfotos (Model + Detail) via Dynamic Mockups; Vorlagen-UUIDs in `config/schoolshop.php` → `mockups.templates` (kuratieren: `php artisan mockups:check`). Render-Fehler brechen `apply()` nie ab; `mockup_images` am Onboarding verhindert doppelte Credits.
   - `OrderEmailGenerator` — Bestellemail (Sammelbestellfenster).
 - **Katalog & Defaults:** `config/schoolshop.php` (12+ Produkte inkl. vorbefüllter Printify Blueprint/Provider-IDs, Preise, Pods-Defaults, Feld-Mapping).
 - **Views:** `resources/views/schools/{index,show,create}.blade.php`, `close-window/index.blade.php`, `home.blade.php`, Layout `layouts/app.blade.php`.

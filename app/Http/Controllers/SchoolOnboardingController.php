@@ -104,6 +104,8 @@ class SchoolOnboardingController extends Controller
             'window_end' => ['nullable', 'date', 'after_or_equal:window_start'],
             'notes' => ['nullable', 'string', 'max:5000'],
             'products' => ['nullable', 'array'],
+            'mockups_enabled' => ['nullable', 'boolean'],
+            'mockup_placement' => ['nullable', 'in:'.implode(',', array_keys(config('schoolshop.mockups.placements')))],
         ]);
 
         // On-Demand: Produkte werden laufend einzeln verschickt, es gibt kein
@@ -119,6 +121,8 @@ class SchoolOnboardingController extends Controller
             'window_start' => $isOndemand ? SchoolOnboarding::ONDEMAND_WINDOW_START : ($validated['window_start'] ?? null),
             'window_end' => $isOndemand ? SchoolOnboarding::ONDEMAND_WINDOW_END : ($validated['window_end'] ?? null),
             'notes' => $validated['notes'] ?? null,
+            'mockups_enabled' => $request->boolean('mockups_enabled'),
+            'mockup_placement' => $validated['mockup_placement'] ?? $onboarding->mockup_placement ?? 'brust_links',
         ]);
         if ($onboarding->status === 'neu') {
             $onboarding->status = 'in_bearbeitung';

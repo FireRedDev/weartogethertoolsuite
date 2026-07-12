@@ -186,6 +186,25 @@
             </div>
             <button type="button" class="btn secondary" style="margin-top:0.6rem;" onclick="addProductRow()">+ Produkt hinzufügen</button>
 
+            <h2 style="margin-top:1.25rem;">Produktfotos (Mockups) <span class="hint">optional</span></h2>
+            <label style="font-weight:400;display:flex;gap:0.5rem;align-items:flex-start;">
+                <input type="checkbox" name="mockups_enabled" value="1" style="margin-top:0.25rem;" {{ old('mockups_enabled', $onboarding->mockups_enabled) ? 'checked' : '' }}>
+                <span>Beim Anlegen automatisch Produktfotos erzeugen und als Produktbild + Galerie setzen —
+                    1–2 Model-Fotos (bevorzugt eine Frau und ein Mann, wechselnd je Schule) plus Detailansichten in den
+                    gewählten Farben, jeweils mit dem Schullogo an der gewählten Position.</span>
+            </label>
+            <div style="max-width:320px;margin-top:0.5rem;">
+                <label for="mockup_placement">Logo-Platzierung</label>
+                <select id="mockup_placement" name="mockup_placement" style="width:100%;padding:0.6rem 0.75rem;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;">
+                    @foreach (config('schoolshop.mockups.placements') as $placementKey => $placement)
+                        <option value="{{ $placementKey }}" {{ old('mockup_placement', $onboarding->mockup_placement ?? 'brust_links') === $placementKey ? 'selected' : '' }}>{{ $placement['label'] }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <p class="hint">Gilt für Sammelbestellfenster-Produkte (On-Demand: Printify erzeugt eigene Produktbilder).
+                Vorlagen je Produkt werden einmalig in <code>config/schoolshop.php</code> (<code>mockups.templates</code>) hinterlegt —
+                nachschlagen mit <code>php artisan mockups:check</code>. Produkte ohne Vorlagen werden übersprungen.</p>
+
             <label for="notes" style="margin-top:1rem;">Interne Notizen</label>
             <textarea id="notes" name="notes" rows="2">{{ old('notes', $onboarding->notes) }}</textarea>
 

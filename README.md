@@ -282,6 +282,31 @@ entweder pro Produkt manuell setzen oder global unter WooCommerce →
 German Market → Allgemein → Produkte die Option für Produkteigenschaften im
 Checkout aktivieren.
 
+**Produktfotos (Mockups, optional):** Im Konfigurator lässt sich pro Schule
+„Produktfotos erzeugen" anhaken (Standard: aus). Beim Anlegen rendert die App
+dann über die **Dynamic-Mockups-API** pro Produkt 1–2 Model-Fotos (bevorzugt
+eine Frau und ein Mann; die Auswahl wechselt von Schule zu Schule, bleibt aber
+pro Schule stabil) sowie Detailansichten in den gewählten Schulfarben — jeweils
+mit dem Schullogo an der gewählten Position (Brust links/rechts/mitte, Mitte
+volle/halbe Breite, unten) — und setzt sie als Produktbild + Produktgalerie.
+Einrichtung:
+
+1. `DYNAMIC_MOCKUPS_API_KEY` in der `.env` setzen (app.dynamicmockups.com → API),
+   `php artisan config:cache`.
+2. Einmalig Vorlagen kuratieren: im Dynamic-Mockups-Dashboard passende
+   Mockups (Model-Fotos + Produktfotos, idealerweise den echten
+   AWDIS/Gildan-Produkten ähnlich — eigene PSD-Uploads sind möglich) zu
+   „My Templates" hinzufügen, dann `php artisan mockups:check` (Liste) bzw.
+   `--mockup=UUID` (Smart-Object-UUIDs) ausführen und die UUIDs in
+   `config/schoolshop.php` → `mockups.templates` je Produkt eintragen
+   (`model: female/male` bei Model-Fotos, `color` bei Detailfotos — mehrere
+   Einträge pro Produkt = mehr Abwechslung zwischen Schulen).
+3. Fertig — Produkte ohne Vorlagen werden einfach übersprungen (mit Hinweis im
+   Protokoll). Fehler beim Rendern brechen die Shop-Anlage nie ab; bereits
+   gerenderte Produkte werden bei erneutem Anlegen übersprungen (keine
+   doppelten Credits). Gilt für Sammelbestellfenster-Produkte; On-Demand-
+   Produkte bekommen ihre Bilder von Printify.
+
 **Benötigte Zugänge (.env):**
 
 | Variable | Zweck |
@@ -291,6 +316,7 @@ Checkout aktivieren.
 | `WP_APP_USER` / `WP_APP_PASSWORD` | WordPress-Anwendungspasswort (Benutzer → Profil → Anwendungspasswörter) für den CPT „schule" (wp/v2) — dort gelten WooCommerce-Schlüssel nicht. Im Pods-Admin muss beim Pod „schule" die REST-API aktiviert sein. |
 | `PRINTIFY_API_TOKEN` / `PRINTIFY_SHOP_ID` | Printify (My Profile → Connections); Shop-ID = Zahl in der Printify-URL |
 | `SHIPPING_CLASS_ONDEMAND` | Slug der On-Demand-Versandklasse (Default `on-demand`) — muss im Shop existieren |
+| `DYNAMIC_MOCKUPS_API_KEY` | Dynamic Mockups (optionale Produktfotos; app.dynamicmockups.com → API) |
 
 Produktkatalog, Preise-Startwerte und Formular-Mapping: `config/schoolshop.php`.
 

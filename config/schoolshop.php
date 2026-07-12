@@ -48,6 +48,58 @@ return [
         'min_margin' => 0.10,
     ],
 
+    /*
+     * Produktfotos (Mockups) über Dynamic Mockups (app.dynamicmockups.com).
+     * Optionaler Schritt der Shop-Anlage (Standard AUS, Häkchen im Konfigurator):
+     * erzeugt Model-Fotos (Lifestyle) + Produktdetail-Fotos mit dem Schullogo
+     * und setzt sie als Produktbild/Galerie der WooCommerce-Produkte.
+     *
+     * Vorlagen kuratieren: php artisan mockups:check (Bibliothek auflisten)
+     * bzw. --mockup=UUID (Smart-Objects/Presets einer Vorlage anzeigen), dann
+     * unten je Produkt-Key eintragen. 'model' => female|male sorgt für
+     * 1 Frau + 1 Mann pro Produkt; mehrere Einträge pro Geschlecht = Abwechslung
+     * zwischen Schulen (Auswahl ist pro Schule deterministisch geseedet).
+     * 'color' bei Detail-Vorlagen muss den Farbnamen aus dem Konfigurator
+     * entsprechen (z. B. burgundy, schwarz, weiß) — gerendert werden nur
+     * Farben, die die Schule gewählt hat.
+     */
+    'mockups' => [
+        'api_key' => env('DYNAMIC_MOCKUPS_API_KEY', ''),
+        'base_url' => 'https://app.dynamicmockups.com/api/v1',
+        'image_size' => 1500,
+
+        // Platzierung des Logos im Druckbereich (relativ: x/y = Mittelpunkt 0..1,
+        // width = Anteil an der Druckbereichsbreite). Auswahl im Konfigurator.
+        'placements' => [
+            'brust_links' => ['label' => 'Brust links (klein)', 'x' => 0.27, 'y' => 0.22, 'width' => 0.28],
+            'brust_rechts' => ['label' => 'Brust rechts (klein)', 'x' => 0.73, 'y' => 0.22, 'width' => 0.28],
+            'brust_mitte' => ['label' => 'Brust mitte', 'x' => 0.50, 'y' => 0.28, 'width' => 0.45],
+            'mitte_voll' => ['label' => 'Mitte, volle Breite', 'x' => 0.50, 'y' => 0.45, 'width' => 0.95],
+            'mitte_halb' => ['label' => 'Mitte, halbe Breite', 'x' => 0.50, 'y' => 0.45, 'width' => 0.50],
+            'unten_mitte' => ['label' => 'Unten mitte', 'x' => 0.50, 'y' => 0.78, 'width' => 0.40],
+        ],
+
+        /*
+         * Vorlagen je Produkt-Key (siehe 'catalog'). Struktur je Eintrag:
+         *   ['mockup_uuid' => '…', 'smart_object_uuid' => '…', 'model' => 'female'|'male']   (lifestyle)
+         *   ['mockup_uuid' => '…', 'smart_object_uuid' => '…', 'color' => 'burgundy']        (detail)
+         * Produkte ohne Vorlagen werden beim Mockup-Schritt übersprungen (mit Protokoll-Hinweis).
+         */
+        'templates' => [
+            'schulpullover' => ['lifestyle' => [], 'detail' => []],
+            'schulzoodie' => ['lifestyle' => [], 'detail' => []],
+            'schuljacke' => ['lifestyle' => [], 'detail' => []],
+            'schulsweater' => ['lifestyle' => [], 'detail' => []],
+            'schulshirt' => ['lifestyle' => [], 'detail' => []],
+            'schulpolo' => ['lifestyle' => [], 'detail' => []],
+            'sportshirt' => ['lifestyle' => [], 'detail' => []],
+            'matchpolo' => ['lifestyle' => [], 'detail' => []],
+            'schultasche' => ['lifestyle' => [], 'detail' => []],
+            'schulpullover_kids' => ['lifestyle' => [], 'detail' => []],
+            'schulshirt_kids' => ['lifestyle' => [], 'detail' => []],
+        ],
+    ],
+
     // Übergeordnete Produktkategorie im Shop
     'parent_category_name' => 'Schulen',
 

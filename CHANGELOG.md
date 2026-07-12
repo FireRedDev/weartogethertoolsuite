@@ -16,6 +16,7 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 - Konfigurator: Blueprint-/Provider-Suche direkt in der App (🔍-Button, live gegen den Printify-Katalog) — kein SSH/Terminal mehr nötig; Tooltip an den Spaltenköpfen erklärt alle drei Wege (Suche, Terminal, printify.com)
 - Konfigurator: „+ Produkt hinzufügen" erlaubt frei benannte Zusatzprodukte außerhalb des Vorlagenkatalogs (Name/Preis/Größen/Farben/Printify-IDs)
 - On-Demand: Bestellfenster und Klassenliste entfallen (Versand direkt an die Privatadresse) — im Konfigurator ausgeblendet, Pods-Eintrag bekommt automatisch ein durchgehend offenes Fenster (01.01.2000–01.01.2099)
+- Produktfotos (Mockups, optional, Standard aus): Dynamic-Mockups-Integration — pro Produkt 1–2 Model-Fotos (Frau/Mann, wechselnd je Schule, stabil pro Schule) + Detailansichten in den Schulfarben, Logo-Platzierung wählbar (Brust links/rechts/mitte, Mitte voll/halb, unten), automatisch als Produktbild + Galerie gesetzt; `php artisan mockups:check` zum Kuratieren der Vorlagen; Render-Fehler brechen die Anlage nie ab, keine doppelten Credits bei Wiederholung
 - Fehlertransparenz überall: erklärte Fehlermeldungen mit kopierbaren technischen Details statt 500er-Seiten; Schutz vor Redirect-Verlust bei Schreibzugriffen (www vs. ohne www)
 
 ### Modul 3: Bestellfenster schließen

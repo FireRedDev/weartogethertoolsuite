@@ -20,6 +20,7 @@ class ShopProvisioner
         private readonly WooCommerceWriteClient $woo,
         private readonly WordPressClient $wordpress,
         private readonly PrintifyProvisioner $printify,
+        private readonly MockupGenerator $mockups,
     ) {}
 
     /** @return list<string> Menschlich lesbare Schritte (Dry-Run). */
@@ -46,6 +47,11 @@ class ShopProvisioner
             $steps[] = "Versandklasse '".config('schoolshop.shipping_class_ondemand')."' wird jedem Produkt zugewiesen";
         } else {
             $steps[] = 'Sammelbestellfenster: Produkte ohne Versandklasse (kostenloser Versand)';
+        }
+
+        if ($onboarding->mockups_enabled && $onboarding->delivery_type !== 'ondemand') {
+            $placementLabel = config("schoolshop.mockups.placements.{$onboarding->mockup_placement}.label", $onboarding->mockup_placement);
+            $steps[] = "Mockups erzeugen (Model-Fotos + Detailansichten, Logo-Platzierung: {$placementLabel}) und als Produktbild/Galerie setzen";
         }
 
         $steps[] = $onboarding->pods_post_id
@@ -127,6 +133,13 @@ class ShopProvisioner
                     $productIds[$product['key']] = (int) $created['id'];
                     $onboarding->woo_product_ids = $productIds;
                     $onboarding->save();
+                }
+
+                // 4b. Optional: Mockups erzeugen und als Produktbilder setzen.
+                // Fehler hier brechen die Anlage NICHT ab — die Produkte stehen
+                // bereits, Bilder lassen sich per erneutem Klick nachholen.
+                if ($onboarding->mockups_enabled) {
+                    $this->applyMockups($onboarding, $log);
                 }
             }
 
@@ -264,6 +277,76 @@ class ShopProvisioner
         }
 
         return $created;
+    }
+
+    /**
+     * Optionaler Mockup-Schritt (Sammelbestellfenster): rendert Model-Fotos +
+     * Detailansichten mit dem Schullogo (Dynamic Mockups) und setzt sie als
+     * Produktbild + Galerie. Bewusst nicht über $run(): Fehler werden im
+     * Protokoll vermerkt, brechen die Anlage aber nicht ab (Bilder sind
+     * kosmetisch und per erneutem Klick nachholbar). Bereits gerenderte
+     * Produkte werden übersprungen (keine doppelten Credits).
+     *
+     * @param  list<array{step: string, ok: bool, detail: string}>  $log
+     */
+    private function applyMockups(SchoolOnboarding $onboarding, array &$log): void
+    {
+        $logoUrl = ($onboarding->logo_files ?? [])[0] ?? null;
+        if (! $logoUrl) {
+            $log[] = ['step' => 'Mockups', 'ok' => false, 'detail' => 'Kein Logo hinterlegt — Mockups übersprungen. Logo-Datei im Antrag ergänzen und erneut anlegen.'];
+
+            return;
+        }
+        if (! $this->mockups->isConfigured()) {
+            $log[] = ['step' => 'Mockups', 'ok' => false, 'detail' => 'DYNAMIC_MOCKUPS_API_KEY fehlt in der .env — Mockups übersprungen.'];
+
+            return;
+        }
+
+        $done = $onboarding->mockup_images ?? [];
+        $productIds = $onboarding->woo_product_ids ?? [];
+        foreach ($onboarding->enabledProducts() as $product) {
+            $key = $product['key'];
+            $productId = $productIds[$key] ?? null;
+            if ($productId === null) {
+                continue;
+            }
+            if (isset($done[$key])) {
+                $log[] = ['step' => "Mockups {$key}", 'ok' => true, 'detail' => 'bereits erzeugt — übersprungen'];
+
+                continue;
+            }
+
+            try {
+                $images = $this->mockups->generateForProduct($onboarding, $product, $logoUrl);
+            } catch (\Throwable $e) {
+                $log[] = ['step' => "Mockups {$key}", 'ok' => false, 'detail' => 'Rendern fehlgeschlagen (Produkt selbst wurde angelegt): '.$e->getMessage()];
+
+                continue;
+            }
+            if ($images === []) {
+                $log[] = ['step' => "Mockups {$key}", 'ok' => true, 'detail' => "keine Vorlagen für '{$key}' konfiguriert (config/schoolshop.php → mockups.templates) — übersprungen"];
+
+                continue;
+            }
+
+            try {
+                // WooCommerce lädt die Bild-URLs selbst in die Mediathek
+                // (erstes Bild = Produktbild, Rest = Produktgalerie).
+                $this->woo->updateProduct((int) $productId, [
+                    'images' => array_map(fn ($img) => ['src' => $img['url'], 'name' => $img['label'], 'alt' => $img['label']], $images),
+                ]);
+            } catch (\Throwable $e) {
+                $log[] = ['step' => "Mockups {$key}", 'ok' => false, 'detail' => 'Bilder gerendert, aber Zuweisung am Produkt fehlgeschlagen: '.$e->getMessage()];
+
+                continue;
+            }
+
+            $done[$key] = array_column($images, 'url');
+            $onboarding->mockup_images = $done;
+            $onboarding->save();
+            $log[] = ['step' => "Mockups {$key}", 'ok' => true, 'detail' => count($images).' Bild(er) gesetzt (Produktbild + Galerie)'];
+        }
     }
 
     /**

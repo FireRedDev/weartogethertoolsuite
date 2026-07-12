@@ -39,6 +39,8 @@ class SchoolOnboarding extends Model
             'woo_product_ids' => 'array',
             'printify_product_ids' => 'array',
             'provision_log' => 'array',
+            'mockups_enabled' => 'boolean',
+            'mockup_images' => 'array',
             'window_start' => 'date',
             'window_end' => 'date',
         ];
