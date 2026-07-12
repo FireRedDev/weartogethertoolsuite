@@ -1,0 +1,25 @@
+name: Tests
+
+on:
+  push:
+    branches: [master, 'claude/**']
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP einrichten
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: zip, gd, mbstring, xml, sqlite3, intl
+          coverage: none
+
+      - name: Composer-Abhängigkeiten installieren
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Tests (inkl. Golden-File-Abnahme)
+        run: php artisan test

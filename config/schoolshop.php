@@ -9,14 +9,15 @@
 
 $pifTitle = "Individualisierungstext \n(falls \"Ja\" ausgewählt)";
 
+// Produktbeschreibung mit echten Zeilenumbrüchen (WooCommerce/wpautop macht
+// daraus Absätze) — keine literalen "\n"-Zeichen wie im alten Excel-Master.
 $beschreibung = fn (string $pdfSlug, array $eigenschaften): string => implode("\n", [
     '<strong><a href="https://wear-together.at/wp-content/uploads/2023/02/Produkte-mit-Tabelle-202223_'.$pdfSlug.'.pdf">Link zu den Größeninformationen/Abmessungen</a></strong>',
-    '\n',
+    '',
     'Pro verkauftem Produkt wird ein Baum gepflanzt.',
-    '\n \n',
-    ...array_map(fn ($e) => '– '.$e.' \n', $eigenschaften),
-    '\n',
-    '\n',
+    '',
+    ...array_map(fn ($e) => '– '.$e, $eigenschaften),
+    '',
     'Aufpreis für die Individualisierung: 7,99€',
 ]);
 

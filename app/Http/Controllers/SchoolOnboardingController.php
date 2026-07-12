@@ -124,6 +124,20 @@ class SchoolOnboardingController extends Controller
         }
     }
 
+    /** On-Demand-Nachbearbeitung: Versandklasse/Kategorie auf Printify-Produkten. */
+    public function ondemandSync(SchoolOnboarding $onboarding, ShopProvisioner $provisioner): RedirectResponse
+    {
+        try {
+            $log = $provisioner->ondemandSync($onboarding);
+
+            return redirect()->route('schools.show', $onboarding)->with('provisionLog', $log);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()->route('schools.show', $onboarding)->with('provisionError', $this->describeError($e));
+        }
+    }
+
     public function destroy(SchoolOnboarding $onboarding): RedirectResponse
     {
         // Löscht nur den Antrag im Tool — bereits im Shop angelegte

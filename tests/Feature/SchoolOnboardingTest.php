@@ -152,7 +152,9 @@ class SchoolOnboardingTest extends TestCase
         $this->assertSame('angelegt', $onboarding->status);
         $this->assertTrue(collect($log)->every(fn ($l) => $l['ok']));
 
-        // Produkt-Anlage: PIF-Metas, Kategorie, Attribute inkl. Klassen aus der Klassenliste
+        // Produkt-Anlage: PIF-Metas, Kategorie, Attribute inkl. Klassen aus der Klassenliste.
+        // Wie der Excel-Master: ALLE Attribute variation=true (Variationen = "Any"
+        // außer Individualisierung), Standard-Größe M, Beschreibung ohne \n-Literale.
         Http::assertSent(function ($request) {
             if (! str_contains($request->url(), '/wc/v3/products?') || $request->method() !== 'POST') {
                 return false;
@@ -160,12 +162,17 @@ class SchoolOnboardingTest extends TestCase
             $body = $request->data();
             $metaKeys = array_column($body['meta_data'] ?? [], 'key');
             $klasse = collect($body['attributes'] ?? [])->firstWhere('id', 3);
+            $allVariation = collect($body['attributes'] ?? [])->every(fn ($a) => $a['variation'] === true);
+            $defaultSize = collect($body['default_attributes'] ?? [])->firstWhere('id', 1);
 
             return $body['type'] === 'variable'
                 && $body['categories'] === [['id' => 77]]
                 && in_array('_alg_wc_pif_enabled_local_1', $metaKeys, true)
                 && in_array('1a', $klasse['options'] ?? [], true)
-                && in_array('LehrerIn', array_map('trim', $klasse['options'] ?? []), true);
+                && in_array('LehrerIn', array_map('trim', $klasse['options'] ?? []), true)
+                && $allVariation
+                && ($defaultSize['option'] ?? null) === 'M'
+                && ! str_contains($body['description'] ?? '', '\\n');
         });
 
         // Zwei Variationen: Nein 39.99, Ja 47.98
@@ -299,6 +306,110 @@ class SchoolOnboardingTest extends TestCase
 
         $this->delete("/schulen/{$onboarding->id}")->assertRedirect(route('schools.index'));
         $this->assertSame(0, SchoolOnboarding::count());
+    }
+
+    public function test_ondemand_provisioning_creates_printify_products_instead_of_woo_products(): void
+    {
+        Http::fake([
+            'shop.example/wp-json/wc/v3/products/categories?*search=Schulen*' => Http::response([['id' => 15, 'name' => 'Schulen', 'parent' => 0]]),
+            'shop.example/wp-json/wc/v3/products/categories?*' => Http::response(['id' => 77, 'name' => 'AHS Testschule', 'parent' => 15], 201),
+            'shop.example/wp-json/wc/v3/products/shipping_classes*' => Http::response([['id' => 9, 'slug' => 'on-demand']]),
+            'shop.example/wp-json/wp/v2/schule*' => Http::response([
+                'id' => 900, 'bestellfensterstart' => '2026-04-16 00:00:00', 'bestellfensterende' => 'x',
+                'produkte_shortcode' => 'x', 'bestellfenster_offen' => 'NEIN', 'on-demand' => '1',
+                'woocommerce_produkt_kategorie' => 77,
+            ], 201),
+            'shop.example/wp-json/wp/v2/media*' => Http::response(['id' => 555], 201),
+            'shop.example/uploads/*' => Http::response('img', 200, ['Content-Type' => 'image/png']),
+            'api.printify.com/v1/uploads/images.json' => Http::response(['id' => 'img-1'], 200),
+            'api.printify.com/v1/catalog/blueprints/6/print_providers/27/variants.json' => Http::response([
+                'variants' => [['id' => 101, 'cost' => 1500], ['id' => 102, 'cost' => 1600]],
+            ]),
+            'api.printify.com/v1/catalog/blueprints/6/print_providers/27/shipping.json' => Http::response([
+                'profiles' => [['countries' => ['AT'], 'first_item' => ['cost' => 450]]],
+            ]),
+            'api.printify.com/v1/shops/99/products.json' => Http::response(['id' => 'pfy-1'], 200),
+            'api.printify.com/v1/shops/99/products/pfy-1/publish.json' => Http::response(['ok' => true], 200),
+        ]);
+
+        $payload = $this->webhookPayload();
+        $payload['input_radio_7'] = 'On-Demand online';
+        $payload['multi_select_1'] = ['Hoodie'];
+        $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
+
+        $onboarding = SchoolOnboarding::sole();
+        // Blueprint/Provider im Konfigurator zuweisen; Preis über der Marge
+        $onboarding->products = collect($onboarding->products)->map(fn ($p) => [
+            ...$p,
+            'enabled' => ($p['key'] ?? '') === 'schulpullover',
+            'base_price' => 39.99,
+            'printify_blueprint_id' => 6,
+            'printify_provider_id' => 27,
+        ])->all();
+        $onboarding->save();
+
+        $log = app(ShopProvisioner::class)->apply($onboarding->fresh());
+
+        $onboarding->refresh();
+        $this->assertSame(['schulpullover' => 'pfy-1'], $onboarding->printify_product_ids);
+        $this->assertNull($onboarding->woo_product_ids); // KEINE Woo-Produkte selbst angelegt
+        $this->assertTrue(collect($log)->contains(fn ($l) => str_contains($l['step'], 'Margen-Prüfung')));
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/shops/99/products.json')
+            && ($r->data()['blueprint_id'] ?? null) === 6
+            && collect($r->data()['variants'] ?? [])->every(fn ($v) => $v['price'] === 3999));
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/publish.json'));
+        // Kein direkter Woo-Produkt-POST im On-Demand-Weg
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/wc/v3/products?') && $r->method() === 'POST');
+    }
+
+    public function test_ondemand_provisioning_requires_blueprint_assignment(): void
+    {
+        Http::fake([
+            'shop.example/wp-json/wc/v3/products/categories?*search=Schulen*' => Http::response([['id' => 15, 'name' => 'Schulen', 'parent' => 0]]),
+            'shop.example/wp-json/wc/v3/products/categories?*' => Http::response(['id' => 77, 'name' => 'X', 'parent' => 15], 201),
+            'shop.example/wp-json/wc/v3/products/shipping_classes*' => Http::response([['id' => 9, 'slug' => 'on-demand']]),
+        ]);
+
+        $payload = $this->webhookPayload();
+        $payload['input_radio_7'] = 'On-Demand online';
+        $payload['multi_select_1'] = ['Hoodie'];
+        $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
+        $onboarding = SchoolOnboarding::sole();
+
+        $this->post("/schulen/{$onboarding->id}/anlegen")->assertRedirect();
+        $verify = collect(session('provisionLog'))->firstWhere('ok', false);
+        $this->assertStringContainsString('printify:check', $verify['detail']);
+    }
+
+    public function test_ondemand_sync_sets_shipping_class_and_category(): void
+    {
+        Http::fake([
+            'shop.example/wp-json/wc/v3/products?search*' => Http::response([
+                ['id' => 601, 'name' => 'AHS Testschule Schulpullover', 'shipping_class' => '', 'categories' => [['id' => 5]]],
+                ['id' => 602, 'name' => 'AHS Testschule Schulshirt', 'shipping_class' => 'on-demand', 'categories' => [['id' => 77]]],
+            ]),
+            'shop.example/wp-json/wc/v3/products/601*' => Http::response(['id' => 601], 200),
+            'shop.example/wp-json/wp/v2/schule/900' => Http::response(['id' => 900], 200),
+        ]);
+
+        $payload = $this->webhookPayload();
+        $payload['input_radio_7'] = 'On-Demand online';
+        $payload['multi_select_1'] = ['Hoodie'];
+        $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
+        $onboarding = SchoolOnboarding::sole();
+        $onboarding->forceFill(['woo_category_id' => 77, 'pods_post_id' => 900, 'printify_product_ids' => ['schulpullover' => 'pfy-1']])->save();
+
+        $this->post("/schulen/{$onboarding->id}/ondemand-sync")->assertRedirect();
+
+        // Produkt 601 bekommt Versandklasse + Kategorie, 602 war schon korrekt
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/wc/v3/products/601')
+            && ($r->data()['shipping_class'] ?? null) === 'on-demand'
+            && collect($r->data()['categories'] ?? [])->contains(fn ($c) => $c['id'] === 77));
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/wc/v3/products/602'));
+        // CPT-Flag wird gesetzt
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/wp/v2/schule/900')
+            && ($r->data()['versandklasse_on_demand_fur_jedes_produkt_gesetzt'] ?? null) === '1');
     }
 
     public function test_printify_price_rule_enforces_minimum_margin(): void

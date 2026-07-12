@@ -225,8 +225,24 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
    fortgesetzt werden (bereits Angelegtes wird übersprungen).
 4. **Sammelbestellfenster:** Bestellemail an die Partnerdruckerei nach Vorlage
    (inkl. Lieferanten-Artikelnummern), zum Kopieren oder per mailto.
-   **On-Demand:** Printify-Anlage mit Margen-Prüfung — der Verkaufspreis muss
-   mindestens (Produktionskosten + Versand) × 1,10 betragen.
+   **On-Demand:** Die Produkte werden in Printify angelegt und in den Shop
+   published (statt direkt in WooCommerce). Ablauf: Im Konfigurator pro Produkt
+   Blueprint-ID und Print-Provider-ID eintragen (nachschlagen mit
+   `php artisan printify:check --blueprints=JH001`) → „Im Shop anlegen" prüft
+   automatisch die Marge (Verkaufspreis ≥ (Produktionskosten + Versand) × 1,10,
+   sonst Abbruch mit Rechnung) und published → einige Minuten warten, bis
+   Printify die Shop-Produkte erstellt hat → „On-Demand-Nachbearbeitung"
+   klicken: setzt Versandklasse `on-demand` und die Schul-Kategorie auf allen
+   Produkten der Schule und meldet das im Pods-Eintrag als erledigt.
+
+**Hinweis „Im Checkout anzeigen" (German Market):** Größe, Farbe, Klasse und
+Individualisierung werden als Variationsattribute angelegt — die Auswahl der
+Kund:innen erscheint dadurch automatisch im Warenkorb/Checkout und in der
+Bestellung. Die zusätzliche German-Market-Checkbox pro Eigenschaft ist über
+die WooCommerce-API nicht setzbar (internes Meta); falls sie gebraucht wird:
+entweder pro Produkt manuell setzen oder global unter WooCommerce →
+German Market → Allgemein → Produkte die Option für Produkteigenschaften im
+Checkout aktivieren.
 
 **Benötigte Zugänge (.env):**
 

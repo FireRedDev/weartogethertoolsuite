@@ -84,6 +84,9 @@ class ProductConfigurator
             'indiv_surcharge' => ! empty($preset['no_individualisierung']) ? 0.0 : (float) config('schoolshop.indiv_surcharge'),
             'sizes' => $preset['sizes'],
             'colors' => $colors,
+            // Nur für On-Demand relevant (IDs via: php artisan printify:check)
+            'printify_blueprint_id' => null,
+            'printify_provider_id' => null,
         ];
     }
 
@@ -111,6 +114,12 @@ class ProductConfigurator
             foreach (['sizes', 'colors'] as $listField) {
                 if (isset($fields[$listField])) {
                     $current[$i][$listField] = array_values(array_filter(array_map('trim', explode(',', (string) $fields[$listField]))));
+                }
+            }
+            foreach (['printify_blueprint_id', 'printify_provider_id'] as $idField) {
+                if (array_key_exists($idField, $fields)) {
+                    $value = trim((string) $fields[$idField]);
+                    $current[$i][$idField] = ctype_digit($value) && $value !== '' ? (int) $value : null;
                 }
             }
         }

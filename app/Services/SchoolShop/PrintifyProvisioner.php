@@ -76,6 +76,7 @@ class PrintifyProvisioner
         int $blueprintId,
         int $providerId,
         string $logoUrl,
+        ?string $backLogoUrl = null,
     ): array {
         $priceCheck = $this->checkPrice((float) $product['base_price'], $blueprintId, $providerId);
         if (! $priceCheck['ok']) {
@@ -96,22 +97,39 @@ class PrintifyProvisioner
             $variantIds[] = (int) $variant['id'];
         }
 
+        // Frontprint links auf der Brust (wie die Bestellemail-Vorlage);
+        // optionaler Backprint mittig.
+        $placeholders = [[
+            'position' => 'front',
+            'images' => [[
+                'id' => $image['id'],
+                'x' => 0.5, 'y' => 0.35, 'scale' => 0.35, 'angle' => 0,
+            ]],
+        ]];
+        if ($backLogoUrl !== null) {
+            $backImage = $this->printify->uploadImageFromUrl(
+                basename(parse_url($backLogoUrl, PHP_URL_PATH) ?: 'backprint.png'),
+                $backLogoUrl,
+            );
+            $placeholders[] = [
+                'position' => 'back',
+                'images' => [[
+                    'id' => $backImage['id'],
+                    'x' => 0.5, 'y' => 0.4, 'scale' => 0.7, 'angle' => 0,
+                ]],
+            ];
+        }
+
         $preset = config("schoolshop.catalog.{$product['key']}");
         $created = $this->printify->createProduct([
             'title' => $onboarding->school_name.' '.$preset['name_suffix'],
-            'description' => strip_tags(str_replace('\\n', "\n", $preset['description'])),
+            'description' => strip_tags($preset['description']),
             'blueprint_id' => $blueprintId,
             'print_provider_id' => $providerId,
             'variants' => $variantPayload,
             'print_areas' => [[
                 'variant_ids' => $variantIds,
-                'placeholders' => [[
-                    'position' => 'front',
-                    'images' => [[
-                        'id' => $image['id'],
-                        'x' => 0.5, 'y' => 0.35, 'scale' => 0.35, 'angle' => 0,
-                    ]],
-                ]],
+                'placeholders' => $placeholders,
             ]],
         ]);
 

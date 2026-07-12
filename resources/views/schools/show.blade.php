@@ -105,16 +105,23 @@
             <label for="class_list" style="margin-top:1rem;">Klassenliste <span class="hint">(kommagetrennt — wird zum Attribut „Klasse")</span></label>
             <textarea id="class_list" name="class_list" rows="2">{{ old('class_list', $onboarding->class_list) }}</textarea>
 
+            @php($isOndemand = $onboarding->delivery_type === 'ondemand')
             <h2 style="margin-top:1rem;">Produkte & Preise</h2>
+            @if ($isOndemand)
+                <p class="hint">On-Demand: Blueprint-ID und Print-Provider-ID pro Produkt eintragen — nachschlagen am Server mit <code>php artisan printify:check --blueprints=JH001</code> (Textildruck Europa = euer üblicher Provider). Der Verkaufspreis wird beim Anlegen automatisch gegen Produktionskosten + Versand + {{ (int) round(config('schoolshop.printify.min_margin') * 100) }}% Marge geprüft.</p>
+            @endif
             <div class="tablewrap">
                 <table class="data">
                     <thead>
-                        <tr><th></th><th>Produkt</th><th>Preis (€)</th><th>Aufpreis Indiv. (€)</th><th>Größen</th><th>Farben</th></tr>
+                        <tr>
+                            <th></th><th>Produkt</th><th>Preis (€)</th><th>Aufpreis Indiv. (€)</th><th>Größen</th><th>Farben</th>
+                            @if ($isOndemand)<th>Printify Blueprint-ID</th><th>Provider-ID</th>@endif
+                        </tr>
                     </thead>
                     <tbody>
                         @foreach ($onboarding->products ?? [] as $product)
                             @if (! empty($product['unmapped']))
-                                <tr><td colspan="6"><span class="alert warn" style="display:block;">⚠ {{ $product['label'] }} — bitte manuell im Shop anlegen.</span></td></tr>
+                                <tr><td colspan="{{ $isOndemand ? 8 : 6 }}"><span class="alert warn" style="display:block;">⚠ {{ $product['label'] }} — bitte manuell im Shop anlegen.</span></td></tr>
                                 @continue
                             @endif
                             <tr>
@@ -124,6 +131,10 @@
                                 <td><input type="text" name="products[{{ $product['key'] }}][indiv_surcharge]" value="{{ number_format($product['indiv_surcharge'], 2, ',', '') }}" style="width:90px;margin:0;"></td>
                                 <td><input type="text" name="products[{{ $product['key'] }}][sizes]" value="{{ implode(', ', $product['sizes']) }}" style="width:200px;margin:0;"></td>
                                 <td><input type="text" name="products[{{ $product['key'] }}][colors]" value="{{ implode(', ', $product['colors']) }}" style="width:220px;margin:0;"></td>
+                                @if ($isOndemand)
+                                    <td><input type="text" name="products[{{ $product['key'] }}][printify_blueprint_id]" value="{{ $product['printify_blueprint_id'] ?? '' }}" style="width:110px;margin:0;" placeholder="z. B. 6"></td>
+                                    <td><input type="text" name="products[{{ $product['key'] }}][printify_provider_id]" value="{{ $product['printify_provider_id'] ?? '' }}" style="width:100px;margin:0;" placeholder="z. B. 27"></td>
+                                @endif
                             </tr>
                         @endforeach
                     </tbody>
@@ -151,6 +162,12 @@
                 @csrf
                 <button class="btn" type="submit">Im Shop anlegen</button>
             </form>
+            @if ($onboarding->delivery_type === 'ondemand' && $onboarding->printify_product_ids)
+                <form method="post" action="{{ route('schools.ondemand-sync', $onboarding) }}">
+                    @csrf
+                    <button class="btn secondary" type="submit">On-Demand-Nachbearbeitung (Versandklasse + Kategorie)</button>
+                </form>
+            @endif
         </div>
 
         @if (session('plan'))

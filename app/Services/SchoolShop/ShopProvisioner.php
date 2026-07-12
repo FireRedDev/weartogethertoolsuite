@@ -19,6 +19,7 @@ class ShopProvisioner
     public function __construct(
         private readonly WooCommerceWriteClient $woo,
         private readonly WordPressClient $wordpress,
+        private readonly PrintifyProvisioner $printify,
     ) {}
 
     /** @return list<string> Menschlich lesbare Schritte (Dry-Run). */
@@ -106,23 +107,27 @@ class ShopProvisioner
                 $shippingClassSlug = $slug;
             }
 
-            // 3. Globale Attribute auflösen
-            $attributeIds = $run('Globale Produkt-Attribute laden', fn () => $this->woo->globalAttributes());
+            // 4. Produkte: Sammelbestellfenster legt sie direkt in WooCommerce
+            // an; On-Demand legt sie in Printify an (Printify published sie
+            // selbst in den Shop, danach "On-Demand-Nachbearbeitung" klicken).
+            if ($onboarding->delivery_type === 'ondemand') {
+                $this->applyPrintify($onboarding, $run, $log);
+            } else {
+                $attributeIds = $run('Globale Produkt-Attribute laden', fn () => $this->woo->globalAttributes());
+                $productIds = $onboarding->woo_product_ids ?? [];
+                $klassen = $this->klassenListe($onboarding);
+                foreach ($onboarding->enabledProducts() as $product) {
+                    if (isset($productIds[$product['key']])) {
+                        $log[] = ['step' => "Produkt {$product['key']} bereits vorhanden", 'ok' => true, 'detail' => 'ID '.$productIds[$product['key']]];
 
-            // 4. Produkte
-            $productIds = $onboarding->woo_product_ids ?? [];
-            $klassen = $this->klassenListe($onboarding);
-            foreach ($onboarding->enabledProducts() as $product) {
-                if (isset($productIds[$product['key']])) {
-                    $log[] = ['step' => "Produkt {$product['key']} bereits vorhanden", 'ok' => true, 'detail' => 'ID '.$productIds[$product['key']]];
-
-                    continue;
+                        continue;
+                    }
+                    $created = $run("Produkt '".$onboarding->school_name.' '.config("schoolshop.catalog.{$product['key']}.name_suffix")."' anlegen (inkl. Variationen)",
+                        fn () => $this->createProduct($onboarding, $product, $attributeIds, $klassen, $shippingClassSlug));
+                    $productIds[$product['key']] = (int) $created['id'];
+                    $onboarding->woo_product_ids = $productIds;
+                    $onboarding->save();
                 }
-                $created = $run("Produkt '".$onboarding->school_name.' '.config("schoolshop.catalog.{$product['key']}.name_suffix")."' anlegen (inkl. Variationen)",
-                    fn () => $this->createProduct($onboarding, $product, $attributeIds, $klassen, $shippingClassSlug));
-                $productIds[$product['key']] = (int) $created['id'];
-                $onboarding->woo_product_ids = $productIds;
-                $onboarding->save();
             }
 
             // 5. Pods-CPT "schule" anlegen (nur falls noch nicht vorhanden)
@@ -179,12 +184,17 @@ class ShopProvisioner
         $name = $onboarding->school_name.' '.$preset['name_suffix'];
         $hasIndiv = ($product['indiv_surcharge'] ?? 0) > 0;
 
+        // Wie der Excel-Master: ALLE Attribute sind Variationsattribute — die
+        // Variationen belegen nur "Individualisierung" konkret, der Rest bleibt
+        // "Any". So wählen Kund:innen Größe/Farbe/Klasse im Dropdown, und die
+        // Auswahl erscheint im Warenkorb/Checkout und in der Bestellung
+        // (Grundlage für die Auftragsdokumente in Modul 1).
         $attributes = [];
         $attributeSpecs = [
-            ['label' => 'Größe', 'options' => $product['sizes'], 'variation' => false],
-            ['label' => 'Farbe', 'options' => $product['colors'], 'variation' => false],
-            ['label' => 'Klasse', 'options' => $klassen, 'variation' => false],
-            ['label' => 'Individualisierung', 'options' => $hasIndiv ? ['Ja', 'Nein'] : ['Nein'], 'variation' => true],
+            ['label' => 'Größe', 'options' => $product['sizes']],
+            ['label' => 'Farbe', 'options' => $product['colors']],
+            ['label' => 'Klasse', 'options' => $klassen],
+            ['label' => 'Individualisierung', 'options' => $hasIndiv ? ['Ja', 'Nein'] : ['Nein']],
         ];
         foreach ($attributeSpecs as $position => $spec) {
             if ($spec['options'] === []) {
@@ -194,7 +204,7 @@ class ShopProvisioner
             $attribute = [
                 'position' => $position,
                 'visible' => true,
-                'variation' => $spec['variation'],
+                'variation' => true,
                 'options' => array_values($spec['options']),
             ];
             if ($globalId !== null) {
@@ -206,6 +216,16 @@ class ShopProvisioner
             $attributes[] = $attribute;
         }
 
+        // Vorauswahl wie im Excel-Master (Standard-Größe M)
+        $defaultAttributes = [];
+        $defaultSize = $preset['default_size'] ?? null;
+        if ($defaultSize && in_array($defaultSize, $product['sizes'], true)) {
+            $defaultAttributes[] = array_merge(
+                isset($attributeIds['größe']) ? ['id' => $attributeIds['größe']] : ['name' => 'Größe'],
+                ['option' => $defaultSize],
+            );
+        }
+
         $payload = [
             'name' => $name,
             'type' => 'variable',
@@ -214,6 +234,7 @@ class ShopProvisioner
             'description' => $preset['description'],
             'short_description' => $preset['description'],
             'attributes' => $attributes,
+            'default_attributes' => $defaultAttributes,
             'meta_data' => collect(config('schoolshop.pif_meta'))
                 ->map(fn ($value, $key) => ['key' => $key, 'value' => $value])
                 ->values()
@@ -245,6 +266,116 @@ class ShopProvisioner
         return $created;
     }
 
+    /**
+     * On-Demand: Produkte in Printify anlegen und publishen (inkl. Margen-
+     * Prüfung). Blueprint/Provider kommen aus dem Konfigurator, das Logo aus
+     * den Formular-Uploads.
+     *
+     * @param  list<array{step: string, ok: bool, detail: string}>  $log
+     */
+    private function applyPrintify(SchoolOnboarding $onboarding, callable $run, array &$log): void
+    {
+        $frontLogo = ($onboarding->logo_files ?? [])[0] ?? null;
+        $backLogo = ($onboarding->logo_files ?? [])[1] ?? null;
+        $wantsBackprint = in_array('Backprint', $onboarding->print_areas ?? [], true);
+        if (! $frontLogo) {
+            throw new ProvisionAbortedException([...$log, [
+                'step' => 'Printify-Produkte anlegen', 'ok' => false,
+                'detail' => 'Kein Logo vorhanden. Bitte im Antrag eine Logo-Datei hinterlegen (kommt normalerweise aus dem Formular-Upload).',
+            ]], new \RuntimeException('Logo fehlt'));
+        }
+
+        $printifyIds = $onboarding->printify_product_ids ?? [];
+        foreach ($onboarding->enabledProducts() as $product) {
+            $key = $product['key'];
+            if (isset($printifyIds[$key])) {
+                $log[] = ['step' => "Printify-Produkt {$key} bereits vorhanden", 'ok' => true, 'detail' => 'ID '.$printifyIds[$key]];
+
+                continue;
+            }
+            $blueprintId = (int) ($product['printify_blueprint_id'] ?? 0);
+            $providerId = (int) ($product['printify_provider_id'] ?? 0);
+            if ($blueprintId === 0 || $providerId === 0) {
+                throw new ProvisionAbortedException([...$log, [
+                    'step' => "Printify-Produkt '".config("schoolshop.catalog.{$key}.label")."'", 'ok' => false,
+                    'detail' => 'Blueprint-ID/Print-Provider-ID fehlen im Konfigurator. IDs nachschlagen mit: php artisan printify:check --blueprints=SUCHBEGRIFF (z. B. JH001), dann im Konfigurator eintragen und speichern.',
+                ]], new \RuntimeException('Printify-Zuordnung fehlt'));
+            }
+
+            $result = $run(
+                "Printify-Produkt '".$onboarding->school_name.' '.config("schoolshop.catalog.{$key}.name_suffix")."' anlegen + publishen (inkl. Margen-Prüfung)",
+                fn () => $this->printify->createAndPublish(
+                    $onboarding,
+                    $product,
+                    $blueprintId,
+                    $providerId,
+                    $frontLogo,
+                    $wantsBackprint ? $backLogo : null,
+                ),
+            );
+            $log[] = ['step' => "Margen-Prüfung {$key}", 'ok' => true, 'detail' => $result['price_check']['message']];
+            $printifyIds[$key] = $result['printify_product_id'];
+            $onboarding->printify_product_ids = $printifyIds;
+            $onboarding->save();
+        }
+
+        $log[] = [
+            'step' => 'Hinweis On-Demand', 'ok' => true,
+            'detail' => 'Printify legt die Shop-Produkte jetzt selbst an (dauert einige Minuten). Danach bitte "On-Demand-Nachbearbeitung" klicken, um Versandklasse und Kategorie zu setzen.',
+        ];
+    }
+
+    /**
+     * Nachbearbeitung nach dem Printify-Sync: setzt Versandklasse "on-demand"
+     * und die Schul-Kategorie auf den von Printify angelegten Shop-Produkten.
+     *
+     * @return list<array{step: string, ok: bool, detail: string}>
+     */
+    public function ondemandSync(SchoolOnboarding $onboarding): array
+    {
+        $log = [];
+        $slug = config('schoolshop.shipping_class_ondemand');
+        $products = $this->woo->findProductsByName($onboarding->school_name);
+        if ($products === []) {
+            $log[] = [
+                'step' => 'Shop-Produkte suchen', 'ok' => false,
+                'detail' => "Keine Produkte mit '{$onboarding->school_name}' im Namen gefunden. Printify braucht nach dem Publish einige Minuten — bitte später erneut versuchen.",
+            ];
+
+            return $log;
+        }
+
+        $updated = 0;
+        foreach ($products as $product) {
+            $needsShipping = ($product['shipping_class'] ?? '') !== $slug;
+            $categoryIds = array_column($product['categories'] ?? [], 'id');
+            $needsCategory = $onboarding->woo_category_id && ! in_array($onboarding->woo_category_id, $categoryIds, true);
+            if (! $needsShipping && ! $needsCategory) {
+                continue;
+            }
+            $payload = ['shipping_class' => $slug];
+            if ($onboarding->woo_category_id) {
+                $payload['categories'] = array_map(fn ($id) => ['id' => $id], array_unique([...$categoryIds, $onboarding->woo_category_id]));
+            }
+            $this->woo->updateProduct((int) $product['id'], $payload);
+            $log[] = ['step' => "Produkt '".($product['name'] ?? $product['id'])."'", 'ok' => true, 'detail' => "Versandklasse '{$slug}' + Kategorie gesetzt"];
+            $updated++;
+        }
+        if ($updated === 0) {
+            $log[] = ['step' => 'Nachbearbeitung', 'ok' => true, 'detail' => 'Alle gefundenen Produkte waren bereits korrekt konfiguriert.'];
+        }
+
+        if ($onboarding->pods_post_id) {
+            $this->wordpress->updateSchule($onboarding->pods_post_id, ['versandklasse_on_demand_fur_jedes_produkt_gesetzt' => '1']);
+            $log[] = ['step' => 'Schule-Eintrag aktualisiert', 'ok' => true, 'detail' => 'versandklasse_on_demand_fur_jedes_produkt_gesetzt = 1'];
+        }
+
+        $onboarding->provision_log = array_merge($onboarding->provision_log ?? [], $log);
+        $onboarding->save();
+
+        return $log;
+    }
+
     /** @return list<string> */
     private function klassenListe(SchoolOnboarding $onboarding): array
     {
@@ -272,7 +403,9 @@ class ShopProvisioner
             'bestellfenster_offen' => config('schoolshop.pods.bestellfenster_offen_default'),
             'lieferstatus' => '',
             'on-demand' => $ondemand ? '1' : '0',
-            'versandklasse_on_demand_fur_jedes_produkt_gesetzt' => $ondemand ? '1' : '0',
+            // Wird erst nach der On-Demand-Nachbearbeitung (Versandklassen
+            // auf den von Printify angelegten Produkten) auf 1 gesetzt.
+            'versandklasse_on_demand_fur_jedes_produkt_gesetzt' => '0',
             'crm_eintrag' => '',
             'woocommerce_produkt_kategorie' => $onboarding->woo_category_id,
         ];
