@@ -226,14 +226,25 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
 4. **Sammelbestellfenster:** Bestellemail an die Partnerdruckerei nach Vorlage
    (inkl. Lieferanten-Artikelnummern), zum Kopieren oder per mailto.
    **On-Demand:** Die Produkte werden in Printify angelegt und in den Shop
-   published (statt direkt in WooCommerce). Ablauf: Im Konfigurator pro Produkt
-   Blueprint-ID und Print-Provider-ID eintragen (nachschlagen mit
-   `php artisan printify:check --blueprints=JH001`) → „Im Shop anlegen" prüft
-   automatisch die Marge (Verkaufspreis ≥ (Produktionskosten + Versand) × 1,10,
-   sonst Abbruch mit Rechnung) und published → einige Minuten warten, bis
-   Printify die Shop-Produkte erstellt hat → „On-Demand-Nachbearbeitung"
-   klicken: setzt Versandklasse `on-demand` und die Schul-Kategorie auf allen
-   Produkten der Schule und meldet das im Pods-Eintrag als erledigt.
+   published (statt direkt in WooCommerce). Blueprint-ID und Print-Provider-ID
+   sind für den ganzen Katalog bereits in `config/schoolshop.php` hinterlegt
+   (recherchiert über `php artisan printify:check --blueprints=… /
+   --providers=…`) und werden im Konfigurator automatisch vorbefüllt — bei
+   Bedarf pro Schule änderbar (z. B. anderer Provider, neues Produkt). Ablauf:
+   „Im Shop anlegen" prüft automatisch die Marge (Verkaufspreis ≥
+   (Produktionskosten + Versand) × 1,10, sonst Abbruch mit Rechnung) und
+   published → einige Minuten warten, bis Printify die Shop-Produkte erstellt
+   hat → „On-Demand-Nachbearbeitung" klicken: setzt Versandklasse `on-demand`
+   und die Schul-Kategorie auf allen Produkten der Schule und meldet das im
+   Pods-Eintrag als erledigt.
+
+   Provider-Wahl je Produkt (Stand heute; bei neuen Blueprints ggf. anders):
+   Hoodie, Zoodie, Sweater, Kids-Hoodie, Schulshirt(-Kids) laufen über
+   **Textildruck Europa** (EU-Versand). Für Schuljacke, Schulpolo, Sportshirt
+   und Match-Polo bietet Printify aktuell **keinen EU-Provider** an — dort ist
+   ein US-Provider hinterlegt (längere Lieferzeit/höhere Versandkosten in die
+   Marge einkalkulieren, oder im Konfigurator auf einen anderen Provider
+   umstellen, falls verfügbar).
 
 **Hinweis „Im Checkout anzeigen" (German Market):** Größe, Farbe, Klasse und
 Individualisierung werden als Variationsattribute angelegt — die Auswahl der

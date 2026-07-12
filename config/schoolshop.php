@@ -165,6 +165,8 @@ return [
                 'Zertifiziert durch Ökotex Standard 100', 'Passform Unisex', 'Größen XS-XXXL',
                 '100% Baumwolle', 'Sehr angenehmer Rundhalsausschnitt',
             ]),
+            'printify_blueprint_id' => 6,
+            'printify_provider_id' => 26,
         ],
         'schulpolo' => [
             'label' => 'Schulpolo',
@@ -177,6 +179,9 @@ return [
                 'Zertifiziert durch Ökotex Standard 100', 'Passform Unisex', 'Größen XS-XXXL',
                 '100% Baumwolle', 'Gleichfarbiger Kragen', 'Gleichfarbige Knöpfe',
             ]),
+            // Kein EU-Provider verfügbar für dieses Blueprint — Printful (US)
+            'printify_blueprint_id' => 1750,
+            'printify_provider_id' => 410,
         ],
         'sportshirt' => [
             'label' => 'Sportshirt',
@@ -188,6 +193,9 @@ return [
             'description' => $beschreibung('07_Sportshirt', [
                 'Passform Unisex', 'Größen XS-XXL', '100% Polyester (atmungsaktiv)',
             ]),
+            // Kein EU-Provider verfügbar für dieses Blueprint — SwiftPOD (US)
+            'printify_blueprint_id' => 1656,
+            'printify_provider_id' => 39,
         ],
         'matchpolo' => [
             'label' => 'Match-Polo',
@@ -199,6 +207,9 @@ return [
             'description' => $beschreibung('08_MatchPolo', [
                 'Passform Unisex', 'Größen XS-XXL', '100% Polyester (atmungsaktiv)',
             ]),
+            // Kein EU-Provider verfügbar für dieses Blueprint — Fulfill Engine (US)
+            'printify_blueprint_id' => 1129,
+            'printify_provider_id' => 217,
         ],
         'schultasche' => [
             'label' => 'Schultasche (Umhängetasche)',
@@ -233,6 +244,8 @@ return [
             'description' => $beschreibung('05_Tshirt', [
                 'Kindergrößen', '100% Baumwolle',
             ]),
+            'printify_blueprint_id' => 157,
+            'printify_provider_id' => 26,
         ],
     ],
 

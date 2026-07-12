@@ -10,7 +10,8 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 - Shop-Anlage per Klick (idempotent, mit Dry-Run-Vorschau und Schritt-Protokoll): Kategorie „Schulen > {Name}", variable Produkte — alle Attribute als Variationsattribute wie im Excel-Master (Variationen „Any" außer Individualisierung Ja/Nein), Standard-Größe M, PIF-Individualisierungsfeld, Pods-CPT „schule" inkl. Feld-Verifikation und Logo als Beitragsbild
 - Sammelbestellfenster: Bestellemail nach Druckerei-Vorlage (Copy + mailto)
 - On-Demand: Printify-Integration — Produkte anlegen + publishen mit Margen-Prüfung (Verkaufspreis ≥ (Kosten + Versand) × 1,10), Backprint-Unterstützung, Nachbearbeitung setzt Versandklasse „on-demand" + Kategorie auf den von Printify erstellten Shop-Produkten
-- `php artisan printify:check` für Verbindungstest, Shop-ID und Blueprint-Suche
+- `php artisan printify:check` für Verbindungstest, Shop-ID, Blueprint-Suche (`--blueprints`) und Print-Provider-Suche (`--providers`)
+- Printify-Katalog vorbefüllt: Blueprint-ID/Provider-ID für alle Produkte in `config/schoolshop.php` hinterlegt (Textildruck Europa wo verfügbar, sonst bester US-Provider), Konfigurator übernimmt sie automatisch als Default
 - Fehlertransparenz überall: erklärte Fehlermeldungen mit kopierbaren technischen Details statt 500er-Seiten; Schutz vor Redirect-Verlust bei Schreibzugriffen (www vs. ohne www)
 
 ### Modul 1: Auftragsdokumente
