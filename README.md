@@ -311,6 +311,14 @@ Angeboten werden nur Schulen, für die bereits ein Shop angelegt wurde. Jeder
 Schritt wird protokolliert; Fehler werden verständlich erklärt. Nutzt dieselben
 Zugänge wie Modul 2 (`WC_RW_*`, `WP_APP_*`).
 
+## Versionsnummer
+
+Die Navigationsleiste zeigt oben links „v{Nummer}" (Datei `VERSION` im
+Projekt-Root, eine einzelne Zeile mit einer Ganzzahl). So lässt sich nach
+einem Push auf einen Blick prüfen, ob das automatische Deployment schon
+gelaufen ist — einfach die Zahl auf der Live-Seite mit dem letzten Commit
+vergleichen. Die Zahl wird bei jedem Push erhöht.
+
 ## Datenschutz
 
 Die Exporte enthalten potenziell personenbezogene Daten. Deshalb:

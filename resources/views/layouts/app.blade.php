@@ -148,7 +148,10 @@
 </head>
 <body>
 <header class="site">
-    <a href="{{ route('home') }}" class="brand" style="color:#fff;text-decoration:none;">Wear Together <span class="dot">●</span> Order Suite</a>
+    <div style="display:flex;align-items:baseline;gap:0.5rem;">
+        <a href="{{ route('home') }}" class="brand" style="color:#fff;text-decoration:none;">Wear Together <span class="dot">●</span> Order Suite</a>
+        <span title="Versionsnummer — zeigt, ob der letzte Push bereits deployt wurde" style="color:#64748b;font-size:0.75rem;font-weight:600;">v{{ trim(@file_get_contents(base_path('VERSION')) ?: '?') }}</span>
+    </div>
     <nav style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
         @php($isTool = request()->routeIs('tool.*', 'shop.*', 'job.*'))
         @php($isSchools = request()->routeIs('schools.*'))
