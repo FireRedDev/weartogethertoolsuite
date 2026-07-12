@@ -59,4 +59,10 @@ class SchoolOnboarding extends Model
     {
         return array_values(array_filter($this->products ?? [], fn ($p) => ! empty($p['enabled'])));
     }
+
+    /** Wurde für diese Schule bereits ein Shop angelegt (Kategorie oder CPT)? */
+    public function isProvisioned(): bool
+    {
+        return $this->woo_category_id !== null || $this->pods_post_id !== null;
+    }
 }

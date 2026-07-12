@@ -26,6 +26,15 @@
                 Printify, inklusive Margen-Prüfung und Blueprint/Provider-Suche.</p>
             <span class="btn" style="margin-top:0.5rem;">Zum Schul-Onboarding</span>
         </a>
+
+        <a href="{{ route('close-window.index') }}" class="card home-link-card">
+            <h2>🔒 Bestellfenster schließen</h2>
+            <p class="lead">Wenn die Bestellfrist einer Schule abgelaufen ist: Mit einem Klick alle Produkte dieser
+                Schule im Shop auf privat setzen (nicht mehr sichtbar/bestellbar) und im Schule-Eintrag
+                „Bestellfenster offen" auf NEIN stellen. Typischerweise direkt nachdem die Auftragsdokumente
+                exportiert wurden.</p>
+            <span class="btn" style="margin-top:0.5rem;">Zum Bestellfenster-Schließen</span>
+        </a>
     </div>
 
     <style>

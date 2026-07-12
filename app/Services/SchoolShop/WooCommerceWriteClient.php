@@ -125,6 +125,33 @@ class WooCommerceWriteClient
     }
 
     /**
+     * Alle Produkte einer Kategorie (paginiert). Für „Bestellfenster schließen"
+     * zuverlässiger als die Namenssuche, da die Schul-Kategorie eindeutig ist.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function findProductsByCategory(int $categoryId): array
+    {
+        $all = [];
+        $page = 1;
+        do {
+            $products = $this->request('get', 'products', [
+                'category' => (string) $categoryId,
+                'per_page' => '100',
+                'page' => (string) $page,
+                'status' => 'any',
+            ])->json();
+            $products = is_array($products) ? $products : [];
+            foreach ($products as $product) {
+                $all[] = $product;
+            }
+            $page++;
+        } while (count($products) === 100);
+
+        return $all;
+    }
+
+    /**
      * Prüft, dass eine erfolgreiche Antwort tatsächlich das erwartete Objekt
      * mit "id" enthält — sonst mit der vollständigen Roh-Antwort abbrechen,
      * statt später mit einer kryptischen "Undefined array key" zu scheitern.

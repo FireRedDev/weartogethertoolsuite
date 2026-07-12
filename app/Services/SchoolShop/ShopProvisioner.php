@@ -377,6 +377,67 @@ class ShopProvisioner
         return $log;
     }
 
+    /**
+     * Modul 3 "Bestellfenster schließen": setzt alle Produkte der Schule auf
+     * privat (aus Shop/Suche entfernt, für Kund:innen nicht mehr bestellbar)
+     * und stellt im CPT "schule" das Feld "Bestellfenster offen" auf NEIN.
+     *
+     * Produkte werden bevorzugt über die Schul-Kategorie gefunden (eindeutig);
+     * fehlt sie, wird auf die Namenssuche zurückgegriffen.
+     *
+     * @return list<array{step: string, ok: bool, detail: string}>
+     */
+    public function closeOrderWindow(SchoolOnboarding $onboarding): array
+    {
+        $log = [];
+
+        $products = $onboarding->woo_category_id
+            ? $this->woo->findProductsByCategory((int) $onboarding->woo_category_id)
+            : $this->woo->findProductsByName($onboarding->school_name);
+
+        if ($products === []) {
+            $log[] = [
+                'step' => 'Shop-Produkte suchen', 'ok' => false,
+                'detail' => $onboarding->woo_category_id
+                    ? "Keine Produkte in der Schul-Kategorie (ID {$onboarding->woo_category_id}) gefunden."
+                    : "Keine Produkte mit '{$onboarding->school_name}' im Namen gefunden. Wurde der Shop für diese Schule schon angelegt?",
+            ];
+        }
+
+        $closed = 0;
+        foreach ($products as $product) {
+            if (($product['status'] ?? '') === 'private') {
+                $log[] = ['step' => "Produkt '".($product['name'] ?? $product['id'])."'", 'ok' => true, 'detail' => 'war bereits privat — übersprungen'];
+
+                continue;
+            }
+            // status=private entfernt das Produkt komplett aus Shop & Suche für
+            // Kund:innen; catalog_visibility=hidden zusätzlich als Absicherung.
+            $this->woo->updateProduct((int) $product['id'], ['status' => 'private', 'catalog_visibility' => 'hidden']);
+            $log[] = ['step' => "Produkt '".($product['name'] ?? $product['id'])."'", 'ok' => true, 'detail' => 'auf privat gesetzt'];
+            $closed++;
+        }
+        if ($products !== [] && $closed === 0) {
+            $log[] = ['step' => 'Produkte', 'ok' => true, 'detail' => 'Alle gefundenen Produkte waren bereits privat.'];
+        }
+
+        if ($onboarding->pods_post_id) {
+            $this->wordpress->updateSchule((int) $onboarding->pods_post_id, ['bestellfenster_offen' => 'NEIN']);
+            $log[] = ['step' => 'Schule-Eintrag aktualisiert', 'ok' => true, 'detail' => 'Bestellfenster offen = NEIN'];
+        } else {
+            $log[] = ['step' => 'Schule-Eintrag', 'ok' => false, 'detail' => 'Kein CPT-Eintrag (pods_post_id) hinterlegt — „Bestellfenster offen" konnte nicht gesetzt werden.'];
+        }
+
+        // Status im Tool nachziehen, wenn alles glattlief.
+        if (collect($log)->every(fn ($l) => $l['ok'])) {
+            $onboarding->status = 'abgeschlossen';
+        }
+        $onboarding->provision_log = array_merge($onboarding->provision_log ?? [], $log);
+        $onboarding->save();
+
+        return $log;
+    }
+
     /** @return list<string> */
     private function klassenListe(SchoolOnboarding $onboarding): array
     {

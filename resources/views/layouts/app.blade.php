@@ -149,14 +149,17 @@
 <body>
 <header class="site">
     <a href="{{ route('home') }}" class="brand" style="color:#fff;text-decoration:none;">Wear Together <span class="dot">●</span> Order Suite</a>
-    <nav style="display:flex;gap:0.6rem;align-items:center;">
+    <nav style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
         @php($isTool = request()->routeIs('tool.*', 'shop.*', 'job.*'))
         @php($isSchools = request()->routeIs('schools.*'))
+        @php($isClose = request()->routeIs('close-window.*'))
         <a href="{{ route('home') }}" style="color:{{ request()->routeIs('home') ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Startseite</a>
         <span style="color:#475569;">|</span>
         <a href="{{ route('tool.index') }}" style="color:{{ $isTool ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Auftragsdokumente</a>
         <span style="color:#475569;">|</span>
         <a href="{{ route('schools.index') }}" style="color:{{ $isSchools ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Schul-Onboarding</a>
+        <span style="color:#475569;">|</span>
+        <a href="{{ route('close-window.index') }}" style="color:{{ $isClose ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Bestellfenster schließen</a>
         @if (config('ordersuite.password') !== '' && session('tool_authenticated'))
             <form method="post" action="{{ route('logout') }}" style="margin-left:0.75rem;">
                 @csrf

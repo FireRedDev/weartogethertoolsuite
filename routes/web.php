@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CloseOrderWindowController;
 use App\Http\Controllers\FluentFormsWebhookController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\OrderToolController;
@@ -41,4 +42,8 @@ Route::middleware(ToolAuth::class)->group(function () {
     Route::post('/schulen/{onboarding}/anlegen', [SchoolOnboardingController::class, 'provision'])->name('schools.provision');
     Route::post('/schulen/{onboarding}/ondemand-sync', [SchoolOnboardingController::class, 'ondemandSync'])->name('schools.ondemand-sync');
     Route::delete('/schulen/{onboarding}', [SchoolOnboardingController::class, 'destroy'])->name('schools.destroy');
+
+    // Modul 3: Bestellfenster schließen
+    Route::get('/bestellfenster-schliessen', [CloseOrderWindowController::class, 'index'])->name('close-window.index');
+    Route::post('/bestellfenster-schliessen/{onboarding}', [CloseOrderWindowController::class, 'close'])->name('close-window.close');
 });

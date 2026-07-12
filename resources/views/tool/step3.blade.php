@@ -53,6 +53,13 @@
             <a class="btn secondary" href="{{ route('tool.index') }}" style="margin-left:0.5rem;">Neuen Auftrag starten</a>
         </div>
         <p class="hint" style="margin-top:0.75rem;">Die Dateien werden nach {{ config('ordersuite.retention_hours') }} Stunden automatisch gelöscht.</p>
+
+        <div class="alert warn" style="margin-top:1rem;">
+            🔒 <strong>Nicht vergessen:</strong> Nach dem Export sollte das Bestellfenster dieser Schule geschlossen
+            werden — dabei werden alle Produkte der Schule im Shop auf privat gesetzt und „Bestellfenster offen" auf
+            NEIN gestellt.
+            <a href="{{ route('close-window.index') }}" style="font-weight:600;">→ Zum Bestellfenster-Schließen</a>
+        </div>
     </div>
 
     <div class="card">

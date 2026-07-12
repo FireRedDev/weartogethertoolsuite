@@ -283,6 +283,23 @@ Checkout aktivieren.
 
 Produktkatalog, Preise-Startwerte und Formular-Mapping: `config/schoolshop.php`.
 
+## Modul 3: Bestellfenster schließen
+
+Wenn die Bestellfrist einer Schule abgelaufen ist (bzw. direkt nachdem die
+Auftragsdokumente in Modul 1 exportiert wurden): Im Bereich „Bestellfenster
+schließen" die Schule auswählen und schließen. Das erledigt in einem Schritt:
+
+1. **Produkte auf privat setzen** — alle Produkte der Schul-Kategorie werden
+   in WooCommerce auf `status=private` (zusätzlich `catalog_visibility=hidden`)
+   gestellt, sind also für Kund:innen nicht mehr sichtbar oder bestellbar.
+   Bereits private Produkte werden übersprungen (idempotent).
+2. **CPT-Feld aktualisieren** — im Schule-Eintrag („schule") wird
+   „Bestellfenster offen" auf `NEIN` gesetzt.
+
+Angeboten werden nur Schulen, für die bereits ein Shop angelegt wurde. Jeder
+Schritt wird protokolliert; Fehler werden verständlich erklärt. Nutzt dieselben
+Zugänge wie Modul 2 (`WC_RW_*`, `WP_APP_*`).
+
 ## Datenschutz
 
 Die Exporte enthalten personenbezogene Daten (teils Minderjähriger). Deshalb:

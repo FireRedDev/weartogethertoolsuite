@@ -18,15 +18,20 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 - On-Demand: Bestellfenster und Klassenliste entfallen (Versand direkt an die Privatadresse) — im Konfigurator ausgeblendet, Pods-Eintrag bekommt automatisch ein durchgehend offenes Fenster (01.01.2000–01.01.2099)
 - Fehlertransparenz überall: erklärte Fehlermeldungen mit kopierbaren technischen Details statt 500er-Seiten; Schutz vor Redirect-Verlust bei Schreibzugriffen (www vs. ohne www)
 
+### Modul 3: Bestellfenster schließen
+- Schule auswählen → alle Produkte der Schule im Shop auf privat setzen (nicht mehr sichtbar/bestellbar, `status=private` + `catalog_visibility=hidden`) und im CPT „schule" „Bestellfenster offen" auf NEIN — idempotent (bereits private Produkte werden übersprungen), mit Schritt-Protokoll und erklärten Fehlern
+- Produkte werden über die eindeutige Schul-Kategorie gefunden (Fallback: Namenssuche)
+
 ### Modul 1: Auftragsdokumente
 - Weg 1: Bestell-Import direkt über die WooCommerce REST API (Schule = Produktkategorie, Statusfilter, Zeitraum) — repliziert den Plugin-Export exakt (live gegen St.-Johannis-Schule validiert, 0 Zell-Diffs)
 - Weg 2: Datei-Upload wie bisher
 - 3 Excel-Reports + Verteil-PDF zellgenau identisch zum Legacy-Python-Tool (Golden-File-Tests)
 - Prüfbericht (unbekannte Größen, fehlende Individualisierungstexte u. a.), ZIP-Download, DSGVO-Auto-Löschung
 - Modul jetzt unter `/auftragsdokumente` (vorher `/`)
+- Nach dem Export: Erinnerung + Link, das Bestellfenster der Schule zu schließen (Modul 3)
 
 ### Neu: Startseite
-- `/` zeigt jetzt eine Startseite mit Links + Beschreibung zu beiden Modulen (Auftragsdokumente, Schul-Onboarding)
+- `/` zeigt jetzt eine Startseite mit Links + Beschreibung zu allen drei Modulen (Auftragsdokumente, Schul-Onboarding, Bestellfenster schließen)
 
 ### Infrastruktur
 - Laravel 13 auf RunCloud (Git Atomic Deployment), SQLite, Login per Team-Passwort
