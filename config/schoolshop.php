@@ -29,7 +29,9 @@ return [
     'wordpress' => [
         'user' => env('WP_APP_USER', ''),
         'password' => env('WP_APP_PASSWORD', ''),
-        'schule_post_type_rest_base' => 'schule',
+        // REST-Base des Pods "schule" (Pods-Admin -> Pod bearbeiten -> REST-API).
+        // Nur ändern, falls Pods dort einen anderen Pfad anzeigt.
+        'schule_post_type_rest_base' => env('WP_SCHULE_REST_BASE', 'schule'),
     ],
 
     // WooCommerce Schreibzugriff (separater Read/Write-Schlüssel!)
