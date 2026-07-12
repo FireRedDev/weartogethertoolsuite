@@ -106,22 +106,26 @@
             <textarea id="class_list" name="class_list" rows="2">{{ old('class_list', $onboarding->class_list) }}</textarea>
 
             @php($isOndemand = $onboarding->delivery_type === 'ondemand')
+            @php($hasNonEuProvider = collect($printifyShippingInfo ?? [])->contains(fn ($i) => $i['country'] !== null && ! $i['is_eu']))
             <h2 style="margin-top:1rem;">Produkte & Preise</h2>
             @if ($isOndemand)
                 <p class="hint">On-Demand: Blueprint-ID und Print-Provider-ID pro Produkt eintragen — nachschlagen am Server mit <code>php artisan printify:check --blueprints=JH001</code> (Textildruck Europa = euer üblicher Provider). Der Verkaufspreis wird beim Anlegen automatisch gegen Produktionskosten + Versand + {{ (int) round(config('schoolshop.printify.min_margin') * 100) }}% Marge geprüft.</p>
+                @if ($hasNonEuProvider)
+                    <div class="alert warn">⚠ Mindestens ein Produkt hat aktuell keinen EU-Provider hinterlegt — außerhalb der EU sind Versandkosten und Lieferzeit nach Österreich in der Regel höher (siehe Region/Versand-Spalte unten). Die Marge wird trotzdem korrekt gegen die tatsächlichen Versandkosten geprüft.</div>
+                @endif
             @endif
             <div class="tablewrap">
                 <table class="data">
                     <thead>
                         <tr>
                             <th></th><th>Produkt</th><th>Preis (€)</th><th>Aufpreis Indiv. (€)</th><th>Größen</th><th>Farben</th>
-                            @if ($isOndemand)<th>Printify Blueprint-ID</th><th>Provider-ID</th>@endif
+                            @if ($isOndemand)<th>Printify Blueprint-ID</th><th>Provider-ID</th><th>Region / Versand</th>@endif
                         </tr>
                     </thead>
                     <tbody>
                         @foreach ($onboarding->products ?? [] as $product)
                             @if (! empty($product['unmapped']))
-                                <tr><td colspan="{{ $isOndemand ? 8 : 6 }}"><span class="alert warn" style="display:block;">⚠ {{ $product['label'] }} — bitte manuell im Shop anlegen.</span></td></tr>
+                                <tr><td colspan="{{ $isOndemand ? 9 : 6 }}"><span class="alert warn" style="display:block;">⚠ {{ $product['label'] }} — bitte manuell im Shop anlegen.</span></td></tr>
                                 @continue
                             @endif
                             <tr>
@@ -134,6 +138,22 @@
                                 @if ($isOndemand)
                                     <td><input type="text" name="products[{{ $product['key'] }}][printify_blueprint_id]" value="{{ $product['printify_blueprint_id'] ?? '' }}" style="width:110px;margin:0;" placeholder="z. B. 6"></td>
                                     <td><input type="text" name="products[{{ $product['key'] }}][printify_provider_id]" value="{{ $product['printify_provider_id'] ?? '' }}" style="width:100px;margin:0;" placeholder="z. B. 27"></td>
+                                    <td style="white-space:nowrap;">
+                                        @php($info = $printifyShippingInfo[$product['key']] ?? null)
+                                        @if ($info === null)
+                                            <span class="hint">—</span>
+                                        @else
+                                            <span title="{{ $info['provider_title'] }}">
+                                                {{ $info['country'] ? ($info['is_eu'] ? '🇪🇺 '.$info['country'] : '🌍 '.$info['country']) : '?' }}
+                                            </span>
+                                            @if ($info['shipping_eur'] !== null)
+                                                · {{ number_format($info['shipping_eur'], 2, ',', '') }} €
+                                            @endif
+                                            @if ($info['country'] !== null && ! $info['is_eu'])
+                                                <br><span class="hint" style="color:var(--error);">außerhalb EU</span>
+                                            @endif
+                                        @endif
+                                    </td>
                                 @endif
                             </tr>
                         @endforeach

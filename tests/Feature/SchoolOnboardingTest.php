@@ -373,10 +373,18 @@ class SchoolOnboardingTest extends TestCase
 
         $payload = $this->webhookPayload();
         $payload['input_radio_7'] = 'On-Demand online';
-        // Umhängetasche (schultasche) hat keinen Supplier-Code und daher keine Printify-Katalog-Defaults.
-        $payload['multi_select_1'] = ['Umhängetasche'];
+        $payload['multi_select_1'] = ['Hoodie'];
         $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
         $onboarding = SchoolOnboarding::sole();
+
+        // Alle Katalogprodukte haben inzwischen Printify-Defaults — Blueprint
+        // hier bewusst über den Konfigurator wieder leeren, um den Fehlerfall zu testen.
+        $this->put("/schulen/{$onboarding->id}", [
+            'school_name' => $onboarding->school_name,
+            'delivery_type' => 'ondemand',
+            'status' => $onboarding->status,
+            'products' => ['schulpullover' => ['enabled' => '1', 'printify_blueprint_id' => '', 'printify_provider_id' => '']],
+        ])->assertRedirect();
 
         $this->post("/schulen/{$onboarding->id}/anlegen")->assertRedirect();
         $verify = collect(session('provisionLog'))->firstWhere('ok', false);
@@ -434,5 +442,53 @@ class SchoolOnboardingTest extends TestCase
 
         $ok = $provisioner->checkPrice(24.75, 6, 27);
         $this->assertTrue($ok['ok']);
+    }
+
+    public function test_show_page_displays_printify_provider_region_and_shipping_cost(): void
+    {
+        Http::fake([
+            'api.printify.com/v1/catalog/print_providers/26.json' => Http::response([
+                'id' => 26, 'title' => 'Textildruck Europa', 'location' => ['country' => 'DE'],
+            ]),
+            'api.printify.com/v1/catalog/blueprints/92/print_providers/26/shipping.json' => Http::response([
+                'profiles' => [['countries' => ['AT'], 'first_item' => ['cost' => 390]]],
+            ]),
+        ]);
+
+        $payload = $this->webhookPayload();
+        $payload['input_radio_7'] = 'On-Demand online';
+        $payload['multi_select_1'] = ['Hoodie'];
+        $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
+        $onboarding = SchoolOnboarding::sole();
+
+        $response = $this->get("/schulen/{$onboarding->id}");
+
+        $response->assertOk();
+        $response->assertSee('DE');
+        $response->assertSee('3,90');
+        $response->assertDontSee('außerhalb EU');
+    }
+
+    public function test_show_page_flags_non_eu_printify_provider(): void
+    {
+        Http::fake([
+            'api.printify.com/v1/catalog/print_providers/26.json' => Http::response([
+                'id' => 26, 'title' => 'Some US Provider', 'location' => ['country' => 'US'],
+            ]),
+            'api.printify.com/v1/catalog/blueprints/92/print_providers/26/shipping.json' => Http::response([
+                'profiles' => [['countries' => ['AT'], 'first_item' => ['cost' => 890]]],
+            ]),
+        ]);
+
+        $payload = $this->webhookPayload();
+        $payload['input_radio_7'] = 'On-Demand online';
+        $payload['multi_select_1'] = ['Hoodie'];
+        $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
+        $onboarding = SchoolOnboarding::sole();
+
+        $response = $this->get("/schulen/{$onboarding->id}");
+
+        $response->assertOk();
+        $response->assertSee('außerhalb EU');
     }
 }

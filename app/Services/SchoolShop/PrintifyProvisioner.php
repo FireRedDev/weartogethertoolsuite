@@ -3,6 +3,7 @@
 namespace App\Services\SchoolShop;
 
 use App\Models\SchoolOnboarding;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * On-Demand-Weg: legt Printify-Produkte an (Blueprint + Print Provider je
@@ -12,7 +13,41 @@ use App\Models\SchoolOnboarding;
  */
 class PrintifyProvisioner
 {
+    /** ISO-3166-1-alpha-2-Codes der EU (für die Versand-Region-Anzeige im Konfigurator). */
+    private const EU_COUNTRIES = [
+        'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR',
+        'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK',
+        'SI', 'ES', 'SE',
+    ];
+
     public function __construct(private readonly PrintifyClient $printify) {}
+
+    /**
+     * Provider-Standort + Versandkosten (erster Artikel) für die Anzeige im
+     * Konfigurator — 24h gecacht, damit die Seite nicht bei jedem Aufruf auf
+     * Printify wartet.
+     *
+     * @return array{provider_title: string, country: ?string, is_eu: bool, shipping_eur: ?float}
+     */
+    public function shippingInfo(int $blueprintId, int $providerId): array
+    {
+        return Cache::remember(
+            "printify.shipping_info.{$blueprintId}.{$providerId}",
+            now()->addDay(),
+            function () use ($blueprintId, $providerId) {
+                $details = $this->printify->providerDetails($providerId);
+                $country = $details['location']['country'] ?? null;
+                $shippingCents = $this->printify->firstItemShippingCents($blueprintId, $providerId);
+
+                return [
+                    'provider_title' => $details['title'] ?? '?',
+                    'country' => $country,
+                    'is_eu' => $country !== null && in_array($country, self::EU_COUNTRIES, true),
+                    'shipping_eur' => $shippingCents !== null ? $shippingCents / 100 : null,
+                ];
+            },
+        );
+    }
 
     /**
      * Mindest-Verkaufspreis in Cent für einen Blueprint/Provider

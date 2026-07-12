@@ -39,6 +39,14 @@ class PrintifyClient
         return is_array($providers) ? $providers : [];
     }
 
+    /** Stammdaten eines Print-Providers, u. a. Standort (location.country). */
+    public function providerDetails(int $providerId): array
+    {
+        $data = $this->request('get', "/catalog/print_providers/{$providerId}.json")->json();
+
+        return is_array($data) ? $data : [];
+    }
+
     /** @return list<array<string, mixed>> */
     public function variants(int $blueprintId, int $providerId): array
     {

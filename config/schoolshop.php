@@ -220,6 +220,9 @@ return [
             'supplier_code' => '',
             'description' => $beschreibung('09_Tasche', ['Umhängetasche', 'Einheitsgröße']),
             'no_individualisierung' => true, // Master hat nur die Nein-Variante
+            // NDU Tote Bag black Print
+            'printify_blueprint_id' => 10,
+            'printify_provider_id' => 61,
         ],
         'schulpullover_kids' => [
             'label' => 'Schulpullover Kids',

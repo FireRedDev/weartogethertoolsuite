@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\WooCommerceApiException;
 use App\Models\SchoolOnboarding;
 use App\Services\SchoolShop\OrderEmailGenerator;
+use App\Services\SchoolShop\PrintifyProvisioner;
 use App\Services\SchoolShop\ProductConfigurator;
 use App\Services\SchoolShop\ProvisionAbortedException;
 use App\Services\SchoolShop\ShopProvisioner;
@@ -49,7 +50,7 @@ class SchoolOnboardingController extends Controller
         return redirect()->route('schools.show', $onboarding);
     }
 
-    public function show(SchoolOnboarding $onboarding): View
+    public function show(SchoolOnboarding $onboarding, PrintifyProvisioner $printifyProvisioner): View
     {
         return view('schools.show', [
             'onboarding' => $onboarding,
@@ -57,7 +58,36 @@ class SchoolOnboardingController extends Controller
                 ? app(OrderEmailGenerator::class)->body($onboarding)
                 : null,
             'emailSubject' => app(OrderEmailGenerator::class)->subject($onboarding),
+            'printifyShippingInfo' => $onboarding->delivery_type === 'ondemand'
+                ? $this->printifyShippingInfo($onboarding, $printifyProvisioner)
+                : [],
         ]);
+    }
+
+    /**
+     * Provider-Region + Versandkosten je Produkt für die Konfigurator-Anzeige
+     * (Blueprint/Provider muss gesetzt sein; Printify-Fehler blocken die
+     * Seite nicht, das Feld bleibt dann einfach leer).
+     *
+     * @return array<string, array{provider_title: string, country: ?string, is_eu: bool, shipping_eur: ?float}>
+     */
+    private function printifyShippingInfo(SchoolOnboarding $onboarding, PrintifyProvisioner $printifyProvisioner): array
+    {
+        $info = [];
+        foreach ($onboarding->products ?? [] as $product) {
+            $blueprintId = $product['printify_blueprint_id'] ?? null;
+            $providerId = $product['printify_provider_id'] ?? null;
+            if ($blueprintId === null || $providerId === null) {
+                continue;
+            }
+            try {
+                $info[$product['key']] = $printifyProvisioner->shippingInfo((int) $blueprintId, (int) $providerId);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return $info;
     }
 
     public function update(Request $request, SchoolOnboarding $onboarding): RedirectResponse
