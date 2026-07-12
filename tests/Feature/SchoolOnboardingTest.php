@@ -373,7 +373,8 @@ class SchoolOnboardingTest extends TestCase
 
         $payload = $this->webhookPayload();
         $payload['input_radio_7'] = 'On-Demand online';
-        $payload['multi_select_1'] = ['Hoodie'];
+        // T-Shirt (schulshirt) hat noch keine Printify-Katalog-Defaults hinterlegt.
+        $payload['multi_select_1'] = ['T-Shirt'];
         $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
         $onboarding = SchoolOnboarding::sole();
 

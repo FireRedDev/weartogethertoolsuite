@@ -108,6 +108,8 @@ return [
                 '80% Baumwolle, 20% Polyester', 'Mit Kapuze', 'Ösen aus Metall',
                 'Gleichfarbige, runde Kordel', 'Knoten an Kordelenden', 'Känguru Tasche vorne',
             ]),
+            'printify_blueprint_id' => 92,
+            'printify_provider_id' => 26,
         ],
         'schulzoodie' => [
             'label' => 'Schulzoodie (Zip-Hoodie)',
@@ -120,6 +122,8 @@ return [
                 'Zertifiziert durch WRAP', 'Passform Unisex', 'Größen S-XXXL',
                 '80% Baumwolle, 20% Polyester', 'Mit Kapuze und Reißverschluss',
             ]),
+            'printify_blueprint_id' => 91,
+            'printify_provider_id' => 26,
         ],
         'schuljacke' => [
             'label' => 'Schuljacke (College-Jacket)',
@@ -132,6 +136,9 @@ return [
                 'Zertifiziert durch WRAP', 'Passform Unisex', 'Größen XS-XXL',
                 '80% Baumwolle, 20% Polyester', 'Druckknöpfe',
             ]),
+            // Einziger verfügbarer Print-Provider für dieses Blueprint (kein Textildruck Europa)
+            'printify_blueprint_id' => 1690,
+            'printify_provider_id' => 61,
         ],
         'schulsweater' => [
             'label' => 'Schulsweater',
@@ -144,6 +151,8 @@ return [
                 'Zertifiziert durch WRAP', 'Passform Unisex', 'Größen XS-XXL',
                 '80% Baumwolle, 20% Polyester', 'Sehr angenehmer Rundhalsausschnitt',
             ]),
+            'printify_blueprint_id' => 95,
+            'printify_provider_id' => 26,
         ],
         'schulshirt' => [
             'label' => 'Schulshirt (T-Shirt)',
@@ -211,6 +220,8 @@ return [
             'description' => $beschreibung('01_Hoody', [
                 'Kindergrößen', '80% Baumwolle, 20% Polyester', 'Mit Kapuze',
             ]),
+            'printify_blueprint_id' => 67,
+            'printify_provider_id' => 26,
         ],
         'schulshirt_kids' => [
             'label' => 'Schulshirt Kids',
