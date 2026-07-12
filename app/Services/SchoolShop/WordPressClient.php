@@ -36,6 +36,61 @@ class WordPressClient
         ))->json();
     }
 
+    /** Setzt die Pods-Felder eines bestehenden Eintrags (idempotent). */
+    public function updateSchule(int $postId, array $fields): array
+    {
+        $restBase = config('schoolshop.wordpress.schule_post_type_rest_base');
+
+        return $this->request('post', "{$restBase}/{$postId}", array_merge(
+            ['meta' => $fields],
+            $fields,
+        ))->json();
+    }
+
+    /** Liest einen Eintrag zurück (zur Verifikation der gesetzten Felder). */
+    public function getSchule(int $postId): array
+    {
+        $restBase = config('schoolshop.wordpress.schule_post_type_rest_base');
+        $data = $this->request('get', "{$restBase}/{$postId}", [])->json();
+
+        return is_array($data) ? $data : [];
+    }
+
+    /** Setzt das Beitragsbild (Featured Image) eines Eintrags. */
+    public function setFeaturedImage(int $postId, int $mediaId): void
+    {
+        $restBase = config('schoolshop.wordpress.schule_post_type_rest_base');
+        $this->request('post', "{$restBase}/{$postId}", ['featured_media' => $mediaId]);
+    }
+
+    /**
+     * Lädt ein Bild per URL in die WordPress-Mediathek und gibt die
+     * Media-ID zurück.
+     */
+    public function uploadMediaFromUrl(string $url): int
+    {
+        $binary = Http::timeout(60)->get($url);
+        if (! $binary->successful()) {
+            throw WooCommerceApiException::unreachable("Logo-Download {$url}: HTTP {$binary->status()}");
+        }
+        $filename = basename(parse_url($url, PHP_URL_PATH) ?: 'logo.png') ?: 'logo.png';
+        $storeUrl = rtrim(config('ordersuite.woocommerce.store_url'), '/');
+
+        $response = Http::withBasicAuth(config('schoolshop.wordpress.user'), config('schoolshop.wordpress.password'))
+            ->timeout(60)
+            ->withHeaders(['Content-Disposition' => 'attachment; filename="'.$filename.'"'])
+            ->withBody($binary->body(), $binary->header('Content-Type') ?: 'image/png')
+            ->post("{$storeUrl}/wp-json/wp/v2/media");
+
+        if (! $response->successful() || ! isset($response->json()['id'])) {
+            throw WooCommerceApiException::unexpectedResponse(
+                "Media-Upload {$filename}: HTTP {$response->status()}. ".mb_substr($response->body(), 0, 300),
+            );
+        }
+
+        return (int) $response->json()['id'];
+    }
+
     private function request(string $method, string $endpoint, array $body = []): Response
     {
         if (! $this->isConfigured()) {

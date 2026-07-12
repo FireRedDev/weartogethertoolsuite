@@ -125,20 +125,31 @@ class ShopProvisioner
                 $onboarding->save();
             }
 
-            // 5. Pods-CPT "schule"
+            // 5. Pods-CPT "schule" anlegen (nur falls noch nicht vorhanden)
+            $fields = $this->schuleFields($onboarding);
             if (! $onboarding->pods_post_id) {
-                $pods = $run('Schule-Eintrag (CPT) anlegen', fn () => $this->wordpress->createSchule($onboarding->school_name, [
-                    'bestellfensterstart' => $onboarding->window_start?->format('Y-m-d 00:00:00') ?? '',
-                    'bestellfensterende' => $onboarding->window_end?->format('Y-m-d 23:59:59') ?? '',
-                    'produkte_shortcode' => mb_strtolower($onboarding->school_name),
-                    'bestellfenster_offen' => config('schoolshop.pods.bestellfenster_offen_default'),
-                    'lieferstatus' => '',
-                    'on-demand' => $onboarding->delivery_type === 'ondemand' ? '1' : '0',
-                    'versandklasse_on_demand_fur_jedes_produkt_gesetzt' => $onboarding->delivery_type === 'ondemand' ? '1' : '0',
-                    'crm_eintrag' => '',
-                    'woocommerce_produkt_kategorie' => $onboarding->woo_category_id,
-                ]));
+                $pods = $run('Schule-Eintrag (CPT) anlegen', fn () => $this->wordpress->createSchule($onboarding->school_name, $fields));
                 $onboarding->pods_post_id = (int) ($pods['id'] ?? 0) ?: null;
+                $onboarding->save();
+            }
+
+            // 5b. Felder immer (idempotent) setzen und zurücklesen — so lässt
+            // sich ein bereits angelegter Eintrag nach dem Aktivieren der
+            // Pods-Feld-Schreibrechte per erneutem Klick nachbefüllen.
+            if ($onboarding->pods_post_id) {
+                $run('Schule-Felder setzen', fn () => $this->wordpress->updateSchule($onboarding->pods_post_id, $fields));
+                $this->verifySchuleFields($onboarding->pods_post_id, $fields, $log);
+            }
+
+            // 5c. Logo als Beitragsbild (falls vorhanden)
+            $logoUrl = ($onboarding->logo_files ?? [])[0] ?? null;
+            if ($logoUrl && $onboarding->pods_post_id) {
+                $run('Logo als Beitragsbild setzen', function () use ($onboarding, $logoUrl) {
+                    $mediaId = $this->wordpress->uploadMediaFromUrl($logoUrl);
+                    $this->wordpress->setFeaturedImage($onboarding->pods_post_id, $mediaId);
+
+                    return "Media-ID {$mediaId}";
+                });
             }
 
             $onboarding->status = 'angelegt';
@@ -243,5 +254,77 @@ class ShopProvisioner
         }
 
         return array_values(array_unique(array_merge(config('schoolshop.default_klassen_extra'), $klassen)));
+    }
+
+    /**
+     * Pods-Feldwerte des CPT "schule" aus dem Onboarding.
+     *
+     * @return array<string, mixed>
+     */
+    private function schuleFields(SchoolOnboarding $onboarding): array
+    {
+        $ondemand = $onboarding->delivery_type === 'ondemand';
+
+        return [
+            'bestellfensterstart' => $onboarding->window_start?->format('Y-m-d 00:00:00') ?? '',
+            'bestellfensterende' => $onboarding->window_end?->format('Y-m-d 23:59:59') ?? '',
+            'produkte_shortcode' => mb_strtolower($onboarding->school_name),
+            'bestellfenster_offen' => config('schoolshop.pods.bestellfenster_offen_default'),
+            'lieferstatus' => '',
+            'on-demand' => $ondemand ? '1' : '0',
+            'versandklasse_on_demand_fur_jedes_produkt_gesetzt' => $ondemand ? '1' : '0',
+            'crm_eintrag' => '',
+            'woocommerce_produkt_kategorie' => $onboarding->woo_category_id,
+        ];
+    }
+
+    /**
+     * Liest den CPT zurück und prüft, welche Schlüsselfelder tatsächlich
+     * gesetzt wurden. Leere Felder deuten fast immer darauf hin, dass in
+     * Pods die REST-Schreibrechte des jeweiligen Feldes fehlen.
+     *
+     * @param  array<string, mixed>  $fields
+     * @param  list<array{step: string, ok: bool, detail: string}>  $log
+     */
+    private function verifySchuleFields(int $postId, array $fields, array &$log): void
+    {
+        try {
+            $post = $this->wordpress->getSchule($postId);
+        } catch (\Throwable $e) {
+            $log[] = ['step' => 'Schule-Felder prüfen', 'ok' => true, 'detail' => 'Rücklesen nicht möglich ('.$e->getMessage().') — bitte im WordPress-Backend kontrollieren.'];
+
+            return;
+        }
+
+        // Nur die inhaltlich wichtigen Felder prüfen (leere sind bei uns Absicht).
+        $keyFields = ['bestellfensterstart', 'bestellfensterende', 'produkte_shortcode', 'bestellfenster_offen', 'on-demand', 'woocommerce_produkt_kategorie'];
+        $meta = is_array($post['meta'] ?? null) ? $post['meta'] : [];
+        $missing = [];
+        foreach ($keyFields as $key) {
+            if (($fields[$key] ?? '') === '' || $fields[$key] === null) {
+                continue; // wir wollten hier gar nichts setzen
+            }
+            $topLevel = $post[$key] ?? null;
+            $metaValue = $meta[$key] ?? null;
+            $isSet = ! in_array($topLevel, [null, '', [], '0'], true) || ! in_array($metaValue, [null, '', [], '0'], true);
+            // on-demand darf legitim "0" sein
+            if (! $isSet && $key === 'on-demand') {
+                $isSet = ($topLevel !== null) || ($metaValue !== null);
+            }
+            if (! $isSet) {
+                $missing[] = $key;
+            }
+        }
+
+        if ($missing === []) {
+            $log[] = ['step' => 'Schule-Felder prüfen', 'ok' => true, 'detail' => 'Alle Felder gesetzt.'];
+        } else {
+            $log[] = [
+                'step' => 'Schule-Felder prüfen',
+                'ok' => false,
+                'detail' => 'Diese Felder wurden von WordPress NICHT gespeichert: '.implode(', ', $missing)
+                    .'. Ursache ist fast immer fehlende REST-Schreibberechtigung in Pods. Bitte im Pods-Admin beim Pod "schule" für diese Felder (Feld bearbeiten → Erweitert → REST-API) sowohl Lesen als auch Schreiben aktivieren und danach erneut auf "Im Shop anlegen" klicken.',
+            ];
+        }
     }
 }

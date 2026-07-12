@@ -120,7 +120,20 @@ class SchoolOnboardingTest extends TestCase
             ]),
             'shop.example/wp-json/wc/v3/products/*/variations*' => Http::response(['id' => 501], 201),
             'shop.example/wp-json/wc/v3/products?*' => Http::response(['id' => 401, 'name' => 'AHS Testschule Schulpullover'], 201),
-            'shop.example/wp-json/wp/v2/schule*' => Http::response(['id' => 900], 201),
+            // CPT: Create/Update/Get liefern den Eintrag mit gesetzten Feldern zurück
+            // (damit die Rücklese-Verifikation die Felder als gesetzt erkennt)
+            'shop.example/wp-json/wp/v2/schule*' => Http::response([
+                'id' => 900,
+                'bestellfensterstart' => '2026-04-16 00:00:00',
+                'bestellfensterende' => '2026-05-11 23:59:59',
+                'produkte_shortcode' => 'ahs testschule',
+                'bestellfenster_offen' => 'NEIN',
+                'on-demand' => '0',
+                'woocommerce_produkt_kategorie' => 77,
+                'featured_media' => 0,
+            ], 201),
+            'shop.example/wp-json/wp/v2/media*' => Http::response(['id' => 555, 'source_url' => 'https://shop.example/logo.png'], 201),
+            'shop.example/uploads/*' => Http::response('binary-image-data', 200, ['Content-Type' => 'image/png']),
         ]);
 
         $this->postJson('/webhooks/fluentforms/test-secret', $this->webhookPayload())->assertOk();
@@ -165,6 +178,45 @@ class SchoolOnboardingTest extends TestCase
         Http::assertSent(fn ($r) => str_contains($r->url(), '/wp/v2/schule')
             && ($r->data()['woocommerce_produkt_kategorie'] ?? null) === 77
             && str_starts_with((string) ($r->data()['bestellfensterstart'] ?? ''), '2026-04-16'));
+
+        // Felder werden auch per Update-Aufruf auf den bestehenden Eintrag gesetzt
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/wp/v2/schule/900') && $r->method() === 'POST');
+        // Logo wird als Beitragsbild gesetzt
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/wp/v2/media') && $r->method() === 'POST');
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/wp/v2/schule/900') && ($r->data()['featured_media'] ?? null) === 555);
+    }
+
+    public function test_cpt_created_but_fields_not_saved_produces_actionable_warning(): void
+    {
+        // CPT wird angelegt, aber die Pods-Felder bleiben leer (fehlende
+        // REST-Schreibrechte pro Feld) — das Rücklesen muss das erkennen und
+        // eine konkrete Handlungsanweisung ausgeben, statt still zu schlucken.
+        Http::fake([
+            'shop.example/wp-json/wc/v3/products/categories?*search=Schulen*' => Http::response([['id' => 15, 'name' => 'Schulen', 'parent' => 0]]),
+            'shop.example/wp-json/wc/v3/products/categories?*' => Http::response(['id' => 77, 'name' => 'AHS Testschule', 'parent' => 15], 201),
+            'shop.example/wp-json/wc/v3/products/attributes/*/terms*' => Http::response([]),
+            'shop.example/wp-json/wc/v3/products/attributes?*' => Http::response([['id' => 3, 'name' => 'Klasse'], ['id' => 4, 'name' => 'Individualisierung']]),
+            'shop.example/wp-json/wc/v3/products/*/variations*' => Http::response(['id' => 501], 201),
+            'shop.example/wp-json/wc/v3/products?*' => Http::response(['id' => 401], 201),
+            // Antwort OHNE die Felder → Verifikation muss anschlagen
+            'shop.example/wp-json/wp/v2/schule*' => Http::response(['id' => 900], 201),
+            'shop.example/wp-json/wp/v2/media*' => Http::response(['id' => 555], 201),
+            'shop.example/uploads/*' => Http::response('img', 200, ['Content-Type' => 'image/png']),
+        ]);
+
+        $this->postJson('/webhooks/fluentforms/test-secret', $this->webhookPayload())->assertOk();
+        $onboarding = SchoolOnboarding::sole();
+        $onboarding->products = collect($onboarding->products)->map(fn ($p) => [...$p, 'enabled' => ($p['key'] ?? '') === 'schulpullover'])->all();
+        $onboarding->save();
+
+        $log = app(ShopProvisioner::class)->apply($onboarding->fresh());
+
+        $verify = collect($log)->firstWhere('step', 'Schule-Felder prüfen');
+        $this->assertNotNull($verify);
+        $this->assertFalse($verify['ok']);
+        $this->assertStringContainsString('NICHT gespeichert', $verify['detail']);
+        $this->assertStringContainsString('bestellfensterstart', $verify['detail']);
+        $this->assertStringContainsString('Pods', $verify['detail']);
     }
 
     public function test_provisioning_aborts_when_ondemand_shipping_class_missing(): void
