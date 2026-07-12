@@ -95,6 +95,23 @@ class SchoolOnboardingTest extends TestCase
         $this->getJson('/webhooks/fluentforms/falsch')->assertNotFound()->assertJson(['ok' => false]);
     }
 
+    public function test_every_webhook_hit_is_logged_even_wrong_secret(): void
+    {
+        // Erfolgreicher POST, abgelehnter POST und Browser-Test müssen ALLE protokolliert werden.
+        $this->postJson('/webhooks/fluentforms/test-secret', $this->webhookPayload())->assertOk();
+        $this->postJson('/webhooks/fluentforms/falsch', $this->webhookPayload())->assertNotFound();
+        $this->getJson('/webhooks/fluentforms/test-secret')->assertOk();
+
+        $logs = \App\Models\WebhookLog::orderByDesc('id')->get();
+        $this->assertCount(3, $logs);
+        $this->assertTrue($logs->contains(fn ($l) => $l->method === 'POST' && $l->secret_ok && str_contains($l->outcome, 'angelegt')));
+        $this->assertTrue($logs->contains(fn ($l) => $l->method === 'POST' && ! $l->secret_ok));
+        $this->assertTrue($logs->contains(fn ($l) => $l->method === 'GET'));
+
+        // In der UI sichtbar
+        $this->get('/schulen')->assertOk()->assertSee('Webhook-Diagnose');
+    }
+
     public function test_webhook_reports_missing_server_secret(): void
     {
         config(['schoolshop.webhook_secret' => '']);

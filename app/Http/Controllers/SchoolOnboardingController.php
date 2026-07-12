@@ -21,6 +21,7 @@ class SchoolOnboardingController extends Controller
     {
         return view('schools.index', [
             'onboardings' => SchoolOnboarding::orderByDesc('created_at')->get(),
+            'webhookLogs' => \App\Models\WebhookLog::orderByDesc('id')->limit(20)->get(),
         ]);
     }
 
