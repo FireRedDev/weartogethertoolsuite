@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Http;
 
 class PrintifyCheck extends Command
 {
-    protected $signature = 'printify:check {--blueprints= : Katalog nach Blueprint suchen (z.B. "JH001")}';
+    protected $signature = 'printify:check {--blueprints= : Katalog nach Blueprint suchen (z.B. "JH001")} {--providers= : Print-Provider zu einer Blueprint-ID auflisten (z.B. "92")}';
 
     protected $description = 'Prüft die Printify-Verbindung, zeigt Shops (inkl. Shop-ID für die .env) und sucht optional Blueprints.';
 
@@ -53,6 +53,24 @@ class PrintifyCheck extends Command
                 $this->line(sprintf('  Blueprint %d: %s %s (%s)', $blueprint['id'], $blueprint['brand'] ?? '', $blueprint['model'] ?? '', $blueprint['title'] ?? ''));
             }
             if ($blueprints === []) {
+                $this->line('  Keine Treffer.');
+            }
+        }
+
+        $providersFor = (string) $this->option('providers');
+        if ($providersFor !== '') {
+            try {
+                $providers = $printify->printProviders((int) $providersFor);
+            } catch (WooCommerceApiException $e) {
+                $this->error($e->userMessage().' — '.$e->getMessage());
+
+                return self::FAILURE;
+            }
+            $this->info("Print-Provider zu Blueprint {$providersFor}:");
+            foreach ($providers as $provider) {
+                $this->line(sprintf('  Provider %d: %s', $provider['id'], $provider['title'] ?? '?'));
+            }
+            if ($providers === []) {
                 $this->line('  Keine Treffer.');
             }
         }

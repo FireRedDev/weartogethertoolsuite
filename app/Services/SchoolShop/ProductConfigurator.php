@@ -85,8 +85,8 @@ class ProductConfigurator
             'sizes' => $preset['sizes'],
             'colors' => $colors,
             // Nur für On-Demand relevant (IDs via: php artisan printify:check)
-            'printify_blueprint_id' => null,
-            'printify_provider_id' => null,
+            'printify_blueprint_id' => $preset['printify_blueprint_id'] ?? null,
+            'printify_provider_id' => $preset['printify_provider_id'] ?? null,
         ];
     }
 
