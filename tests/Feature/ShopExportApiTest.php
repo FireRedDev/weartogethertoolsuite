@@ -35,7 +35,8 @@ class ShopExportApiTest extends TestCase
                 ['id' => 9, 'name' => 'St.-Johannis-Schule Bremen', 'count' => 8],
             ], 200, ['X-WP-TotalPages' => '1']),
             'shop.example/wp-json/wc/v3/products*' => Http::response([
-                ['id' => 101], ['id' => 102],
+                ['id' => 101, 'name' => 'AHS Korneuburg STICK-Hoodie + Backprint'],
+                ['id' => 102, 'name' => 'St.-Johannis-Schule Bremen Schulhoodie'],
             ], 200, ['X-WP-TotalPages' => '1']),
             'shop.example/wp-json/wc/v3/orders*' => Http::response([
                 // Neueste Bestellung zuerst (Order-ID absteigend, wie die API mit order=desc liefert)
@@ -49,8 +50,10 @@ class ShopExportApiTest extends TestCase
                     'line_items' => [
                         [
                             'product_id' => 101,
+                            // Positionsname mit Variantenzusatz und OHNE parent_name —
+                            // der Katalogname des Produkts muss gewinnen (real im
+                            // Live-Shop beobachtet, 27 von 44 Positionen betroffen)
                             'name' => 'AHS Korneuburg STICK-Hoodie + Backprint - Blau, M',
-                            'parent_name' => 'AHS Korneuburg STICK-Hoodie + Backprint',
                             'quantity' => 2,
                             'meta_data' => [
                                 ['key' => 'pa_size', 'display_key' => 'Größe', 'value' => 'm', 'display_value' => 'M'],

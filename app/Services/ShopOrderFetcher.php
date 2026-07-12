@@ -36,16 +36,15 @@ class ShopOrderFetcher
      */
     public function fetch(?int $categoryId, array $statuses, ?string $dateFrom = null, ?string $dateTo = null): array
     {
-        $categoryProductIds = null;
+        $categoryProducts = null; // Produkt-ID => Hauptproduktname
         if ($categoryId !== null) {
-            $productIds = $this->client->productIdsInCategory($categoryId);
-            $categoryProductIds = array_flip($productIds);
+            $categoryProducts = $this->client->productsInCategory($categoryId);
             // Serverseitig pro Produkt filtern statt den kompletten
             // Bestellbestand zu laden (bei >10.000 Bestellungen sonst
             // Gateway-Timeout). Bestellungen mit mehreren Produkten der
             // Kategorie werden über die Order-ID dedupliziert.
             $byId = [];
-            foreach ($productIds as $productId) {
+            foreach (array_keys($categoryProducts) as $productId) {
                 foreach ($this->client->ordersForProduct($productId, $statuses, $dateFrom, $dateTo) as $order) {
                     $byId[(int) $order['id']] = $order;
                 }
@@ -61,10 +60,10 @@ class ShopOrderFetcher
         foreach ($orders as $order) {
             $orderRows = 0;
             foreach ($order['line_items'] ?? [] as $item) {
-                if ($categoryProductIds !== null && ! isset($categoryProductIds[(int) ($item['product_id'] ?? 0)])) {
+                if ($categoryProducts !== null && ! isset($categoryProducts[(int) ($item['product_id'] ?? 0)])) {
                     continue;
                 }
-                $rows[] = $this->buildRow($order, $item);
+                $rows[] = $this->buildRow($order, $item, $categoryProducts);
                 $orderRows++;
             }
             if ($orderRows > 0) {
@@ -78,9 +77,10 @@ class ShopOrderFetcher
     /**
      * @param  array<string, mixed>  $order
      * @param  array<string, mixed>  $item
+     * @param  array<int, string>|null  $categoryProducts
      * @return array<string, mixed>
      */
-    private function buildRow(array $order, array $item): array
+    private function buildRow(array $order, array $item, ?array $categoryProducts = null): array
     {
         $config = config('ordersuite.woocommerce');
         $visibleMetas = $this->visibleMetas($item);
@@ -126,7 +126,7 @@ class ShopOrderFetcher
         }
 
         return [
-            'Item Name(löschen)' => $this->productName($item),
+            'Item Name(löschen)' => $this->productName($item, $categoryProducts),
             'Karton' => 'x', // statisches Feld wie im Plugin konfiguriert
             'Vorname' => self::emptyToNull($order['billing']['first_name'] ?? null),
             'Nachnahme (Rechnungsadresse)' => self::emptyToNull($order['billing']['last_name'] ?? null),
@@ -172,9 +172,19 @@ class ShopOrderFetcher
         return $metas;
     }
 
-    /** Hauptproduktname wie "[P] Product Name (main)" im Plugin. */
-    private function productName(array $item): ?string
+    /**
+     * Hauptproduktname wie "[P] Product Name (main)" im Plugin: verbindlich
+     * ist der Katalogname des Produkts; die Positionsnamen der API enthalten
+     * bei Variationen teils den Variantenzusatz ("… - Fire Red, S").
+     *
+     * @param  array<int, string>|null  $categoryProducts
+     */
+    private function productName(array $item, ?array $categoryProducts): ?string
     {
+        $productId = (int) ($item['product_id'] ?? 0);
+        if ($categoryProducts !== null && ($categoryProducts[$productId] ?? '') !== '') {
+            return $categoryProducts[$productId];
+        }
         $parent = $item['parent_name'] ?? null;
         if (is_string($parent) && $parent !== '') {
             return $parent;

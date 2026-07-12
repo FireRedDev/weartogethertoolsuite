@@ -41,18 +41,24 @@ class WooCommerceClient
     }
 
     /**
-     * IDs aller Produkte einer Kategorie (zum Filtern der Bestellpositionen).
+     * Produkte einer Kategorie: ID => Hauptproduktname. Dient dem Filtern der
+     * Bestellpositionen UND als verbindliche Quelle für "Product Name (main)"
+     * wie im Plugin-Export (Positionsnamen aus der API enthalten teils den
+     * Variantenzusatz, z. B. "Schulhoodie - Fire Red, S").
      *
-     * @return list<int>
+     * @return array<int, string>
      */
-    public function productIdsInCategory(int $categoryId): array
+    public function productsInCategory(int $categoryId): array
     {
-        $ids = [];
-        foreach ($this->fetchAllPages('products', ['category' => (string) $categoryId, 'status' => 'any', '_fields' => 'id']) as $product) {
-            $ids[] = (int) $product['id'];
+        $products = [];
+        foreach ($this->fetchAllPages('products', ['category' => (string) $categoryId, 'status' => 'any', '_fields' => 'id,name']) as $product) {
+            $name = isset($product['name']) && is_string($product['name'])
+                ? html_entity_decode($product['name'], ENT_QUOTES | ENT_HTML5)
+                : '';
+            $products[(int) $product['id']] = $name;
         }
 
-        return $ids;
+        return $products;
     }
 
     /**
