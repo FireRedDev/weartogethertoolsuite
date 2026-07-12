@@ -302,7 +302,7 @@ Zugänge wie Modul 2 (`WC_RW_*`, `WP_APP_*`).
 
 ## Datenschutz
 
-Die Exporte enthalten personenbezogene Daten (teils Minderjähriger). Deshalb:
+Die Exporte enthalten potenziell personenbezogene Daten. Deshalb:
 `TOOL_PASSWORD` in Produktion **immer** setzen, HTTPS erzwingen, Aufbewahrung
 kurz halten (`ORDER_RETENTION_HOURS`). Uploads und generierte Reports werden
 vom stündlichen `orders:cleanup`-Lauf automatisch gelöscht.
