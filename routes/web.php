@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AdminStatusController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CloseOrderWindowController;
 use App\Http\Controllers\FluentFormsWebhookController;
@@ -48,4 +49,7 @@ Route::middleware(ToolAuth::class)->group(function () {
     // Modul 3: Bestellfenster schließen
     Route::get('/bestellfenster-schliessen', [CloseOrderWindowController::class, 'index'])->name('close-window.index');
     Route::post('/bestellfenster-schliessen/{onboarding}', [CloseOrderWindowController::class, 'close'])->name('close-window.close');
+
+    // Admin-Informationen: Live-Status aller Schnittstellen
+    Route::get('/admin-informationen', [AdminStatusController::class, 'index'])->name('admin.status');
 });

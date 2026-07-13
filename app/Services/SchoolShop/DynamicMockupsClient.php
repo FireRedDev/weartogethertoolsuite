@@ -19,6 +19,12 @@ class DynamicMockupsClient
         return (string) config('schoolshop.mockups.api_key') !== '';
     }
 
+    /** Verbindungstest für den Admin-Status. */
+    public function testConnection(): void
+    {
+        $this->request('get', '/mockups');
+    }
+
     /** @return list<array<string, mixed>> Mockup-Vorlagen (My Templates / Bibliothek). */
     public function listMockups(): array
     {

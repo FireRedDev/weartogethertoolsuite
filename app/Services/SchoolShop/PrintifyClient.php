@@ -19,6 +19,12 @@ class PrintifyClient
         return config('schoolshop.printify.api_token') !== '' && config('schoolshop.printify.shop_id') !== '';
     }
 
+    /** Verbindungstest für den Admin-Status. */
+    public function testConnection(): void
+    {
+        $this->request('get', '/shops.json');
+    }
+
     /** @return list<array<string, mixed>> */
     public function searchBlueprints(string $query): array
     {

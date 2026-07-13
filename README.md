@@ -337,6 +337,33 @@ Angeboten werden nur Schulen, für die bereits ein Shop angelegt wurde. Jeder
 Schritt wird protokolliert; Fehler werden verständlich erklärt. Nutzt dieselben
 Zugänge wie Modul 2 (`WC_RW_*`, `WP_APP_*`).
 
+## Admin-Informationen
+
+Eigener Navigationspunkt „Admin-Informationen" — bei jedem Aufruf werden alle
+API-Anbindungen live geprüft und angezeigt: WooCommerce (Lesen/Schreiben),
+WordPress (CPT „schule"), Printify, Dynamic Mockups sowie der FluentForms-
+Webhook (dieser empfängt nur — hier wird stattdessen der letzte protokollierte
+Treffer aus `webhook_logs` angezeigt, kein aktiver Verbindungstest möglich).
+Nicht eingerichtete, optionale Schnittstellen (Printify, Dynamic Mockups)
+werden neutral als „nicht eingerichtet" markiert, nicht als Fehler.
+
+**Ausfall-Benachrichtigung:** Wechselt eine konfigurierte Schnittstelle von OK
+auf fehlgeschlagen, verschickt die Toolsuite **einmalig pro Ausfall-Episode**
+(nicht bei jedem erneuten Seitenaufruf; nach Wiederherstellung meldet ein
+erneuter Ausfall wieder einmal) eine Benachrichtigung — **ausschließlich über
+die WordPress-REST-API**, niemals direkt per E-Mail aus der Toolsuite. Dafür
+ruft die App einen eigenen REST-Endpunkt auf der WordPress-Seite auf, der dort
+`wp_mail()` auslöst. Voraussetzung: das mitgelieferte mu-Plugin
+`wordpress-mu-plugin/weartogether-notify.php` nach
+`wp-content/mu-plugins/` auf dem WordPress-Server kopieren (mu-Plugins sind
+automatisch aktiv, keine Aktivierung nötig). Es nutzt dasselbe
+WordPress-Anwendungspasswort wie der CPT „schule" (`WP_APP_USER`/
+`WP_APP_PASSWORD`) — dieses Konto braucht Administrator-Rechte
+(`manage_options`). Ist das mu-Plugin nicht installiert, funktioniert alles
+andere trotzdem — die Admin-Informationen-Seite zeigt dann bei „Benachrichtigung"
+einen Hinweis, dass die Zustellung fehlgeschlagen ist, statt die Seite zu
+blockieren.
+
 ## Versionsnummer
 
 Die Navigationsleiste zeigt oben links „v{Nummer}" (Datei `VERSION` im

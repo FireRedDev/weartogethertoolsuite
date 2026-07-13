@@ -156,6 +156,7 @@
         @php($isTool = request()->routeIs('tool.*', 'shop.*', 'job.*'))
         @php($isSchools = request()->routeIs('schools.*'))
         @php($isClose = request()->routeIs('close-window.*'))
+        @php($isAdmin = request()->routeIs('admin.*'))
         <a href="{{ route('home') }}" style="color:{{ request()->routeIs('home') ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Startseite</a>
         <span style="color:#475569;">|</span>
         <a href="{{ route('tool.index') }}" style="color:{{ $isTool ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Auftragsdokumente</a>
@@ -163,6 +164,8 @@
         <a href="{{ route('schools.index') }}" style="color:{{ $isSchools ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Schul-Onboarding</a>
         <span style="color:#475569;">|</span>
         <a href="{{ route('close-window.index') }}" style="color:{{ $isClose ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Bestellfenster schließen</a>
+        <span style="color:#475569;">|</span>
+        <a href="{{ route('admin.status') }}" style="color:{{ $isAdmin ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Admin-Informationen</a>
         @if (config('ordersuite.password') !== '' && session('tool_authenticated'))
             <form method="post" action="{{ route('logout') }}" style="margin-left:0.75rem;">
                 @csrf

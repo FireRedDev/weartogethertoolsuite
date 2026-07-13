@@ -22,6 +22,16 @@ class WordPressClient
     }
 
     /**
+     * Verbindungstest für den Admin-Status: prüft Anwendungspasswort UND dass
+     * der CPT „schule" per REST erreichbar ist (die eigentliche Abhängigkeit).
+     */
+    public function testConnection(): void
+    {
+        $restBase = config('schoolshop.wordpress.schule_post_type_rest_base');
+        $this->request('get', $restBase, ['per_page' => 1, '_fields' => 'id']);
+    }
+
+    /**
      * Legt den CPT-Eintrag "schule" an (Pods). Meta-Felder werden sowohl
      * top-level (Pods-REST-Stil) als auch unter "meta" übergeben, damit es
      * mit und ohne Pods-REST-Schreibunterstützung funktioniert.

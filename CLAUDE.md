@@ -10,6 +10,8 @@ Drei Module, verlinkt von der Startseite (`/` → `HomeController`):
 2. **Schul-Onboarding** (`/schulen`, `schools.*`) — FluentForms-Webhook → Konfigurator → Shop-Anlage (WooCommerce + Pods-CPT „schule" + optional Printify).
 3. **Bestellfenster schließen** (`/bestellfenster-schliessen`, `close-window.*`) — Produkte einer Schule auf privat setzen + CPT „Bestellfenster offen" = NEIN.
 
+Dazu ein Diagnose-Bereich **Admin-Informationen** (`/admin-informationen`, `admin.*`) — Live-Status aller API-Anbindungen, siehe unten.
+
 ## Befehle
 ```bash
 php artisan test                 # gesamte Suite (muss vor jedem Push grün sein)
@@ -29,7 +31,8 @@ php artisan printify:check --providers=92
   - `DynamicMockupsClient` / `MockupGenerator` — optionale Produktfotos (Model + Detail) via Dynamic Mockups; Vorlagen-UUIDs in `config/schoolshop.php` → `mockups.templates` (kuratieren: `php artisan mockups:check`). Render-Fehler brechen `apply()` nie ab; `mockup_images` am Onboarding verhindert doppelte Credits.
   - `OrderEmailGenerator` — Bestellemail (Sammelbestellfenster).
 - **Katalog & Defaults:** `config/schoolshop.php` (12+ Produkte inkl. vorbefüllter Printify Blueprint/Provider-IDs, Preise, Pods-Defaults, Feld-Mapping).
-- **Views:** `resources/views/schools/{index,show,create}.blade.php`, `close-window/index.blade.php`, `home.blade.php`, Layout `layouts/app.blade.php`.
+- **Views:** `resources/views/schools/{index,show,create}.blade.php`, `close-window/index.blade.php`, `admin/status.blade.php`, `home.blade.php`, Layout `layouts/app.blade.php`.
+- **`app/Services/IntegrationStatusChecker`** — prüft live alle API-Clients (`testConnection()`-Methode je Client) + `WordPressAdminNotifier` (E-Mail-Alarm **nur** über einen WordPress-REST-Endpunkt, siehe Gotchas). Model `IntegrationStatus` speichert den letzten Stand pro Schnittstelle (verhindert Mehrfach-Benachrichtigung).
 
 ## Wichtige Gotchas (teuer erkauft — bitte beachten)
 - **www vs. ohne www:** `WC_STORE_URL` muss EXAKT die Endadresse sein. Bei 301-Redirect macht der HTTP-Client aus POST ein GET → Schreibzugriffe verschwinden still. Beide Write-Clients nutzen `allow_redirects=false` und brechen bei 3xx mit Klartext ab. Nicht „vereinfachen".
@@ -40,6 +43,8 @@ php artisan printify:check --providers=92
 - **On-Demand-Besonderheiten:** kein Bestellfenster/keine Klassenliste (Versand an Privatadresse) → im Konfigurator ausgeblendet, serverseitig erzwungen; Pods bekommt festes Fenster `2000-01-01`–`2099-01-01` (Konstanten in `SchoolOnboarding`).
 - **Printify Marge:** Verkaufspreis ≥ (max. Variantenkosten + Versand) × (1 + `min_margin`, default 0,10). Vier Produkte (Jacke/Polo/Sportshirt/Match-Polo) haben nur Nicht-EU-Provider → längere Lieferzeit/Versand einkalkulieren.
 - **Webhook ist verlustsicher + protokolliert:** Jeder Treffer wird in `webhook_logs` gespeichert (sichtbar unter Schul-Onboarding), bevor irgendeine Logik läuft. Schlägt das Mapping fehl, wird der Rohdatensatz trotzdem als Antrag gesichert. GET auf die Webhook-URL = Browser-Test (200/404/503).
+- **Toolsuite verschickt NIE selbst E-Mails.** Kein Mailer/SMTP in Laravel konfiguriert (bewusst so lassen). Ausfall-Alarme laufen über `WordPressAdminNotifier` → POST an einen custom WP-REST-Endpunkt (`wordpress-mu-plugin/weartogether-notify.php`, muss auf dem WP-Server als mu-Plugin liegen), der dort `wp_mail()` aufruft. Fehlt das mu-Plugin, schlägt der Call einfach fehl (404) — kein Absturz, nur kein Alarm.
+- **`Http::fake()` in Tests überschreibt eine bereits registrierte URL NICHT** (erste Registrierung gewinnt) — für Tests, die denselben Endpunkt über mehrere Aufrufe hinweg unterschiedlich antworten lassen müssen (z. B. Status-Wechsel OK→Fehler→OK), `Http::fake(['url' => Http::sequence()->push(...)->push(...)])` verwenden, nicht `Http::fake()` mehrfach mit derselben URL aufrufen.
 
 ## Deployment & Versionsnummer
 - RunCloud Git Atomic Deployment vom Branch; Deploy-Script macht `composer install --no-dev`, `config:cache`, `route:cache`, `view:cache`, `migrate --force`. `.env` und `storage` sind persistente Symlinks.

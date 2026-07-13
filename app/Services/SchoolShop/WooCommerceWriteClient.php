@@ -21,6 +21,12 @@ class WooCommerceWriteClient
             && config('schoolshop.woocommerce_write.consumer_secret') !== '';
     }
 
+    /** Verbindungstest für den Admin-Status: minimaler, seitenfreier GET-Aufruf. */
+    public function testConnection(): void
+    {
+        $this->request('get', 'products/shipping_classes', ['per_page' => '1']);
+    }
+
     /** Kategorie anlegen oder vorhandene zurückgeben. */
     public function ensureCategory(string $name, ?int $parentId = null): array
     {

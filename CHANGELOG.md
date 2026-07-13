@@ -34,6 +34,10 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 ### Neu: Startseite
 - `/` zeigt jetzt eine Startseite mit Links + Beschreibung zu allen drei Modulen (Auftragsdokumente, Schul-Onboarding, Bestellfenster schließen)
 
+### Neu: Admin-Informationen
+- Neuer Navigationspunkt „Admin-Informationen": prüft bei jedem Aufruf live den Status aller API-Anbindungen (WooCommerce Lesen/Schreiben, WordPress/Pods, Printify, Dynamic Mockups) sowie den FluentForms-Webhook (letzter protokollierter Treffer, kein aktiver Test möglich, da eingehend)
+- Fällt eine konfigurierte Schnittstelle aus, wird einmalig pro Ausfall-Episode eine Benachrichtigung ausgelöst — ausschließlich über die WordPress-REST-API (`wp_mail()` auf der WordPress-Seite via neuem mu-Plugin `wordpress-mu-plugin/weartogether-notify.php`); die Toolsuite selbst hat keinen Mailer und verschickt nie direkt E-Mails
+
 ### Infrastruktur
 - Laravel 13 auf RunCloud (Git Atomic Deployment), SQLite, Login per Team-Passwort
 - GitHub-Actions-CI (php artisan test bei Push/PR)
