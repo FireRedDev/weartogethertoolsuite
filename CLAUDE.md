@@ -19,6 +19,7 @@ php artisan test --filter=XyzTest
 php artisan serve                # lokal; Background-Runs über die Task-Mechanik, nicht `&`
 php artisan printify:check --blueprints=JH001   # Printify: Shops/Blueprints/Provider nachschlagen
 php artisan printify:check --providers=92
+php artisan printify:check --description=92,91  # Blueprint-Katalogbeschreibung (für printify_description in config/schoolshop.php)
 ```
 
 ## Architektur (Modul 2/3 — hier passieren die meisten Anpassungen)

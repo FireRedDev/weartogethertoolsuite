@@ -25,6 +25,14 @@ class PrintifyClient
         $this->request('get', '/shops.json');
     }
 
+    /** Stammdaten eines Blueprints, u. a. die Katalog-Beschreibung (meist Englisch). */
+    public function blueprintDetails(int $blueprintId): array
+    {
+        $data = $this->request('get', "/catalog/blueprints/{$blueprintId}.json")->json();
+
+        return is_array($data) ? $data : [];
+    }
+
     /** @return list<array<string, mixed>> */
     public function searchBlueprints(string $query): array
     {

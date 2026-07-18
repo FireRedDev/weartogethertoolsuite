@@ -266,6 +266,16 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
    Marge einkalkulieren, oder im Konfigurator auf einen anderen Provider
    umstellen, falls verfügbar).
 
+   **Produktbeschreibung bei Printify-Produkten:** Verwendet standardmäßig
+   dieselbe Beschreibung wie die Sammelbestellfenster-Produkte
+   (`config/schoolshop.php` → `catalog.<key>.description`). Passt diese nicht
+   exakt zum tatsächlich gewählten Blueprint, lässt sich pro Produkt eine
+   eigene `printify_description` hinterlegen (deutsche Übersetzung der
+   offiziellen Printify-Katalogbeschreibung des Blueprints) — abrufbar mit
+   `php artisan printify:check --description=92,91,…` (kommagetrennte
+   Blueprint-IDs, zeigt die Original-Beschreibung aus dem Printify-Katalog,
+   meist Englisch).
+
    On-Demand-Produkte werden laufend einzeln an die Privatadresse der
    Kund:innen verschickt — es gibt kein Bestellfenster und keine Klassenliste
    (die für die Sammelbestellung sonst als Lieferziel dient). Beide Felder

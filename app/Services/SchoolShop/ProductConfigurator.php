@@ -113,6 +113,10 @@ class ProductConfigurator
             'label' => $label,
             'name_suffix' => $product['name_suffix'] ?? $catalog['name_suffix'] ?? $label,
             'description' => $product['description'] ?? $catalog['description'] ?? '',
+            // Für On-Demand-Produkte (Printify): eigene, zum tatsächlich gewählten
+            // Blueprint passende Beschreibung (aus dem Printify-Katalog übernommen,
+            // ins Deutsche übersetzt) — fällt auf 'description' zurück, falls nicht gepflegt.
+            'printify_description' => $product['printify_description'] ?? $catalog['printify_description'] ?? null,
             'supplier_code' => $product['supplier_code'] ?? $catalog['supplier_code'] ?? '',
             'no_individualisierung' => $product['no_individualisierung'] ?? ! empty($catalog['no_individualisierung']),
             'default_size' => $catalog['default_size'] ?? null,

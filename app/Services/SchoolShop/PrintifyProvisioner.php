@@ -156,9 +156,10 @@ class PrintifyProvisioner
         }
 
         $preset = ProductConfigurator::preset($product);
+        $description = $preset['printify_description'] ?? $preset['description'];
         $created = $this->printify->createProduct([
             'title' => $onboarding->school_name.' '.$preset['name_suffix'],
-            'description' => strip_tags($preset['description']),
+            'description' => strip_tags($description),
             'blueprint_id' => $blueprintId,
             'print_provider_id' => $providerId,
             'variants' => $variantPayload,

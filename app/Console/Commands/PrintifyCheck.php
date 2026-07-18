@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Http;
 
 class PrintifyCheck extends Command
 {
-    protected $signature = 'printify:check {--blueprints= : Katalog nach Blueprint suchen (z.B. "JH001")} {--providers= : Print-Provider zu einer Blueprint-ID auflisten (z.B. "92")}';
+    protected $signature = 'printify:check {--blueprints= : Katalog nach Blueprint suchen (z.B. "JH001")} {--providers= : Print-Provider zu einer Blueprint-ID auflisten (z.B. "92")} {--description= : Katalog-Beschreibung einer oder mehrerer Blueprint-IDs anzeigen, kommagetrennt (z.B. "92,91,1690")}';
 
     protected $description = 'Prüft die Printify-Verbindung, zeigt Shops (inkl. Shop-ID für die .env) und sucht optional Blueprints.';
 
@@ -73,6 +73,21 @@ class PrintifyCheck extends Command
             if ($providers === []) {
                 $this->line('  Keine Treffer.');
             }
+        }
+
+        $descriptionIds = array_filter(array_map('trim', explode(',', (string) $this->option('description'))));
+        foreach ($descriptionIds as $blueprintId) {
+            try {
+                $blueprint = $printify->blueprintDetails((int) $blueprintId);
+            } catch (WooCommerceApiException $e) {
+                $this->error("Blueprint {$blueprintId}: ".$e->userMessage().' — '.$e->getMessage());
+
+                continue;
+            }
+            $this->info(sprintf('Blueprint %d: %s %s (%s)', $blueprintId, $blueprint['brand'] ?? '', $blueprint['model'] ?? '', $blueprint['title'] ?? ''));
+            $description = trim(strip_tags((string) ($blueprint['description'] ?? '')));
+            $this->line($description !== '' ? "  {$description}" : '  (keine Beschreibung im Printify-Katalog hinterlegt)');
+            $this->line('');
         }
 
         return self::SUCCESS;
