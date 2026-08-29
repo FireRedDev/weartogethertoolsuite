@@ -301,6 +301,67 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
    wird stattdessen ein durchgehend offenes Fenster (01.01.2000–01.01.2099)
    hinterlegt.
 
+### Status eines Antrags
+
+Der Status beschreibt, was im Shop tatsächlich passiert ist — er ist kein frei
+setzbares Etikett:
+
+| Status | Bedeutung | Wie man hinkommt |
+|---|---|---|
+| **Neu** | Antrag eingegangen, noch nicht bearbeitet. Nichts im Shop. | automatisch beim Formular-Eingang |
+| **In Bearbeitung** | Konfigurator wird befüllt. Im Shop existiert noch nichts. | erstes Speichern im Konfigurator |
+| **Im Shop angelegt** | Kategorie, Produkte und Schule-Eintrag stehen — es kann bestellt werden. | nur über **Im Shop anlegen** |
+| **Abgeschlossen** | Bestellfenster zu, Produkte auf privat. | nur über **Bestellfenster schließen** |
+
+Die letzten beiden lassen sich **nicht von Hand** im Auswahlfeld setzen: sonst
+stünde im Tool „angelegt", ohne dass es im Shop etwas gäbe. Möglich sind dagegen:
+
+* *Neu* → *In Bearbeitung*
+* *In Bearbeitung* → *Abgeschlossen*, solange **nichts** angelegt ist (Absage, Dublette)
+* *Im Shop angelegt* → *In Bearbeitung* (nachbessern; die Shop-Inhalte bleiben,
+  ein erneutes Anlegen überspringt Vorhandenes)
+* *Abgeschlossen* → *Im Shop angelegt* nur über **Bestellfenster wieder öffnen**
+
+### Automatische Nachfrist für Sammelbestellfenster
+
+Läuft ein Sammelbestellfenster ab, verlängert das Tool es **einmalig** um eine
+einstellbare Zahl von Tagen (Standard 7) — und zwar erst, wenn es tatsächlich
+abgelaufen ist. Nachzügler können dann noch bestellen; endgültig geschlossen
+wird weiterhin bewusst über Modul 3. Im Konfigurator lässt sich das je Schule
+abwählen und die Dauer ändern. Das neue Ende wird auch in den Schule-Eintrag
+geschrieben.
+
+Ausgeführt wird das beim Aufruf der Startseite (höchstens stündlich) und
+zusätzlich per Cron — letzteres empfohlen, damit es auch dann greift, wenn
+tagelang niemand das Tool öffnet:
+
+```
+0 6 * * *  cd /pfad/zur/app && php artisan windows:extend >> /dev/null 2>&1
+```
+
+Ein von Hand geändertes Enddatum gibt die Verlängerung wieder frei.
+
+### Was das Tool sonst noch abnimmt
+
+* **Startseite = Aufgabenliste.** Was heute ansteht: Fenster, die ablaufen oder
+  abgelaufen aber noch offen sind, unbearbeitete Anträge, fehlende
+  Präsentationsblätter, geschlossene Fenster ohne Auftragsdokumente.
+* **Bestellzahlen live** je Schule (Bestellungen und Teile im Bestellzeitraum),
+  abgeglichen mit der im Formular erwarteten Anzahl.
+* **Auftragsdokumente per Klick** aus dem Antrag heraus — Kategorie und Zeitraum
+  vorbefüllt; der Export wird am Antrag vermerkt.
+* **E-Mail an die Schule** als Vorlage: Link, Zeitraum, Produktliste; das
+  Präsentationsblatt kommt als Anhang dazu.
+* **Folgejahr per Klick** — Produkte, Preise, Farben und Logos werden
+  übernommen, Bestellfenster und Klassenliste beginnen neu.
+* **Bestellseite prüfen** — ruft die Adresse ab, auf die der QR-Code zeigt, und
+  meldet 404 oder eine Seite ohne Produkte, bevor das Blatt aushängt.
+* **Logo-Qualitätsprüfung** beim Upload: Warnung bei zu geringer Auflösung oder
+  nicht freigestelltem Hintergrund. Beides sieht man erst auf dem Textil.
+* **Datensicherung** — Datenbank und Uploads als ZIP, im Admin-Bereich
+  herunterladbar oder per Cron:
+  `30 3 * * * cd /pfad/zur/app && php artisan backup:create`
+
 **Hinweis „Im Checkout anzeigen" (German Market):** Größe, Farbe, Klasse und
 Individualisierung werden als Variationsattribute angelegt — die Auswahl der
 Kund:innen erscheint dadurch automatisch im Warenkorb/Checkout und in der

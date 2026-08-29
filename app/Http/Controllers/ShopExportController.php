@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\WooCommerceApiException;
+use App\Models\SchoolOnboarding;
 use App\Services\OrderJobFactory;
 use App\Services\ShopOrderFetcher;
 use App\Services\WooCommerceClient;
@@ -21,10 +22,23 @@ class ShopExportController extends Controller
         private readonly OrderJobFactory $jobFactory,
     ) {}
 
-    public function form(): View
+    public function form(Request $request): View
     {
         $categories = [];
         $apiError = null;
+
+        // Vorbelegung, wenn aus einem Schul-Antrag heraus aufgerufen: Kategorie
+        // und Bestellzeitraum stehen dort schon — das spart den Schritt und die
+        // häufigste Fehlerquelle (falsch gewählter Zeitraum).
+        $onboarding = $request->filled('onboarding')
+            ? SchoolOnboarding::find((int) $request->query('onboarding'))
+            : null;
+        $prefill = [
+            'onboarding' => $onboarding,
+            'category' => $onboarding?->woo_category_id,
+            'date_from' => $onboarding?->window_start?->toDateString(),
+            'date_to' => $onboarding?->window_end?->copy()->addDay()->toDateString(),
+        ];
 
         if (! $this->client->isConfigured()) {
             $apiError = WooCommerceApiException::notConfigured();
@@ -47,6 +61,7 @@ class ShopExportController extends Controller
         return view('tool.shop-export', [
             'categories' => $categories,
             'apiError' => $apiError,
+            'prefill' => $prefill,
             'statuses' => config('ordersuite.woocommerce.statuses'),
             'defaultStatuses' => config('ordersuite.woocommerce.default_statuses'),
         ]);
@@ -61,6 +76,7 @@ class ShopExportController extends Controller
                 'statuses.*' => ['string', 'in:'.implode(',', array_keys(config('ordersuite.woocommerce.statuses')))],
                 'date_from' => ['nullable', 'date'],
                 'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+                'onboarding_id' => ['nullable', 'integer'],
             ],
             [
                 'category.required' => 'Bitte eine Schule/Organisation auswählen.',
@@ -107,6 +123,12 @@ class ShopExportController extends Controller
             return back()->withInput()->withErrors([
                 'category' => 'Für diese Auswahl wurden keine Bestellpositionen gefunden. Bitte Schule, Status und Zeitraum prüfen.',
             ]);
+        }
+
+        // Am Antrag vermerken, dass die Dokumente erzeugt wurden — die
+        // Startseite erinnert sonst weiter daran.
+        if (! empty($validated['onboarding_id'])) {
+            SchoolOnboarding::whereKey($validated['onboarding_id'])->update(['documents_exported_at' => now()]);
         }
 
         try {

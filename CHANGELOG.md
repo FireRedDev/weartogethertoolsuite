@@ -30,6 +30,21 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 - Die vollständige Webhook-Diagnose steht jetzt auf der Admin-Seite (nicht mehr nur unter Schul-Onboarding, wo sie niemand gesucht hat) — als gemeinsame Vorlage an beiden Stellen eingebunden, inklusive der Webhook-URL zum Selbsttest im Browser
 - Neuer Block „Version & Umgebung": Versionsnummer, Shop-Adresse, ob Webhook-Secret und Zugangsschutz gesetzt sind, PHP-Version und ob der Konfigurations-Cache aktiv ist
 
+### Startseite, Status und Bestellfenster-Automatik
+- **Startseite ist jetzt eine Aufgabenübersicht**: abgelaufene, aber im Shop noch offene Bestellfenster, Fenster mit Ablauf in den nächsten 7 Tagen, neue Anträge, noch nicht angelegte Schulen, fehlende Präsentationsblätter und geschlossene Fenster ohne Auftragsdokumente. Die Modulerklärungen und ein neuer Abschnitt „Der Ablauf einer Schule" bleiben darunter erhalten
+- **Status haben eine feste Bedeutung und erlaubte Übergänge**: jeder Status wird im Antrag erklärt; „Im Shop angelegt" und „Abgeschlossen" lassen sich nicht mehr von Hand setzen, sondern entstehen nur durch die jeweilige Aktion — sonst behauptet der Status etwas, das im Shop fehlt. Ein Antrag ohne Shop-Anlage kann weiterhin abgehakt werden (Absage/Dublette), ein angelegter zurück in Bearbeitung
+- **Automatische Nachfrist**: abgelaufene Sammelbestellfenster werden einmalig um X Tage verlängert (Standard 7), erst nach Ablauf. Im Konfigurator abwählbar, Dauer einstellbar; das neue Ende wird auch in den Schule-Eintrag geschrieben. Läuft per `php artisan windows:extend` (Cron) und zusätzlich gedrosselt beim Aufruf der Startseite. Ein von Hand geändertes Enddatum gibt die Verlängerung wieder frei
+- **Bestellfenster wieder öffnen** (Umkehrung von Modul 3): Produkte wieder öffentlich, „Bestellfenster offen" auf JA, neues Enddatum
+
+### Hilfen rund um den Antrag
+- **Live-Bestellzahlen je Schule** (Bestellungen und Teile aus der WooCommerce-API im Bestellzeitraum, 15 Minuten gecacht), inklusive Abgleich mit der erwarteten Anzahl
+- **Auftragsdokumente per Klick aus dem Antrag** — Kategorie und Zeitraum sind vorbefüllt; der Export wird am Antrag vermerkt, damit die Startseite nicht weiter daran erinnert
+- **E-Mail an die Schule** als Vorlage (Link zur Bestellseite, Zeitraum, Produktliste) — Gegenstück zur Bestellemail an die Druckerei
+- **Folgejahr per Klick**: Antrag mit Produkten, Preisen, Farben und Logos duplizieren; Bestellfenster, Klassenliste, Shop-IDs und Mockups beginnen neu
+- **Logo-Qualitätsprüfung** beim Upload: warnt bei unter 1000 px Kantenlänge und bei nicht freigestelltem Hintergrund (blockiert nicht)
+- **Bestellseite prüfen**: ruft die Adresse ab, auf die der QR-Code zeigt, und meldet 404, Fehler oder fehlende Produkte
+- **Datensicherung**: Datenbank und Uploads als ZIP — im Admin-Bereich herunterladbar oder per `php artisan backup:create` (Cron, die letzten fünf bleiben liegen). Die `.env` ist bewusst nicht enthalten
+
 ### Präsentationsblatt (neu)
 - Je Bestellfenster erzeugt das Tool das A4-Präsentationsblatt automatisch — deckungsgleich mit der bisherigen InDesign-Vorlage (größte Abweichung 2,6 pt bei der Überschrift, alles übrige unter 0,4 pt)
 - Eingabe sind nur die beiden Mockups; Schulname, Produktzeilen, Farben, Bestellzeitraum, QR-Code und Adresse kommen aus dem Onboarding-Datensatz

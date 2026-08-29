@@ -30,6 +30,9 @@ class LogoManager
     /** Erlaubte Dateiendungen (Printify/Dynamic Mockups brauchen ein Pixelformat). */
     public const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp'];
 
+    /** Ab dieser Kantenlänge (px) reicht die Auflösung für den Textildruck. */
+    private const MIN_EDGE = 1000;
+
     public function __construct(private readonly WordPressClient $wordpress) {}
 
     /**
@@ -72,6 +75,59 @@ class LogoManager
         $onboarding->forceFill(["logo_{$slot}_url" => $media['source_url']])->save();
 
         return null;
+    }
+
+    /**
+     * Hinweise zur Druckqualität. Blockieren nichts — beides sieht man im Tool
+     * nicht, auf dem Textil aber sofort: ein zu kleines Logo wird beim Druck
+     * unscharf, ein nicht freigestellter Hintergrund druckt als weißer Kasten.
+     *
+     * @return list<string>
+     */
+    public function qualityWarnings(UploadedFile $file): array
+    {
+        $image = @imagecreatefromstring((string) file_get_contents($file->getRealPath()));
+        if ($image === false) {
+            return [];
+        }
+
+        $warnings = [];
+        $width = imagesx($image);
+        $height = imagesy($image);
+
+        if (max($width, $height) < self::MIN_EDGE) {
+            $warnings[] = sprintf(
+                'Das Logo ist mit %d × %d Pixeln klein — für den Druck sollte die längere Kante mindestens %d Pixel haben, sonst wird es unscharf.',
+                $width, $height, self::MIN_EDGE,
+            );
+        }
+
+        if (! $this->hasTransparentCorners($image)) {
+            $warnings[] = 'Das Logo hat keinen freigestellten Hintergrund (die Ecken sind deckend). '
+                .'Auf dunklen Textilien druckt es dann als sichtbarer Kasten — besser ein PNG mit transparentem Hintergrund verwenden.';
+        }
+
+        imagedestroy($image);
+
+        return $warnings;
+    }
+
+    /** Sind die vier Ecken durchsichtig? Zuverlässiger Anhaltspunkt für „freigestellt". */
+    private function hasTransparentCorners($image): bool
+    {
+        $width = imagesx($image);
+        $height = imagesy($image);
+        $corners = [[0, 0], [$width - 1, 0], [0, $height - 1], [$width - 1, $height - 1]];
+
+        foreach ($corners as [$x, $y]) {
+            // Bit 24–31 des Farbwerts sind der Alphakanal (0 = deckend, 127 = ganz durchsichtig)
+            $alpha = (imagecolorat($image, $x, $y) >> 24) & 0x7F;
+            if ($alpha < 64) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** Entfernt das im Tool hochgeladene Logo — danach gilt wieder der Formular-Upload. */

@@ -67,6 +67,58 @@
         @endif
     </div>
 
+    {{-- Umkehrung: ein bereits geschlossenes Fenster wieder aufmachen --}}
+    <div class="card">
+        <h2>Bestellfenster wieder öffnen</h2>
+        <p class="lead">Wenn eine Schule nachträglich verlängern möchte: Produkte wieder öffentlich schalten,
+            „Bestellfenster offen" auf {{ config('schoolshop.pods.bestellfenster_offen_open') }} stellen und ein neues Enddatum setzen.</p>
+
+        @if (session('reopenedSchool'))
+            <div class="alert ok">✓ Bestellfenster für <strong>{{ session('reopenedSchool') }}</strong> wieder geöffnet.</div>
+        @endif
+
+        @if ($closedSchools->isEmpty())
+            <div class="alert ok">Aktuell ist kein Bestellfenster geschlossen.</div>
+        @else
+            <form method="post" id="reopen-form" onsubmit="return confirmReopen();">
+                @csrf
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;max-width:760px;">
+                    <div>
+                        <label for="reopen_select">Schule</label>
+                        <select id="reopen_select" name="reopen_select" required
+                                style="width:100%;padding:0.6rem 0.75rem;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;">
+                            <option value="" disabled selected>— bitte auswählen —</option>
+                            @foreach ($closedSchools as $school)
+                                <option value="{{ route('close-window.reopen', $school) }}" data-name="{{ $school->school_name }}">
+                                    {{ $school->school_name }} (Ende war {{ $school->window_end?->format('d.m.Y') ?? '—' }})
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label for="new_end">Neues Ende des Bestellfensters</label>
+                        <input type="date" id="new_end" name="new_end" required value="{{ now()->addWeek()->format('Y-m-d') }}">
+                    </div>
+                </div>
+                <button class="btn" type="submit" style="margin-top:0.75rem;">Wieder öffnen</button>
+            </form>
+        @endif
+    </div>
+
+    <script>
+        function confirmReopen() {
+            const select = document.getElementById('reopen_select');
+            const option = select.options[select.selectedIndex];
+            if (! select.value) return false;
+            const ok = confirm('Bestellfenster für „' + option.dataset.name + '" wieder öffnen?\n\n'
+                + 'Alle Produkte dieser Schule werden wieder öffentlich und sind sofort bestellbar.');
+            if (ok) {
+                document.getElementById('reopen-form').action = select.value;
+            }
+            return ok;
+        }
+    </script>
+
     <script>
         function confirmClose() {
             const select = document.getElementById('school_select');

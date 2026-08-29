@@ -3,6 +3,7 @@
 namespace App\Services\SchoolShop;
 
 use App\Models\SchoolOnboarding;
+use Illuminate\Support\Carbon;
 
 /**
  * Legt für ein Onboarding alles im Shop an: Produktkategorie, variable
@@ -178,7 +179,7 @@ class ShopProvisioner
                 });
             }
 
-            $onboarding->status = 'angelegt';
+            $onboarding->status = OnboardingStatus::ANGELEGT;
         } catch (ProvisionAbortedException $e) {
             throw $e;
         } catch (\Throwable $e) {
@@ -518,7 +519,68 @@ class ShopProvisioner
 
         // Status im Tool nachziehen, wenn alles glattlief.
         if (collect($log)->every(fn ($l) => $l['ok'])) {
-            $onboarding->status = 'abgeschlossen';
+            $onboarding->status = OnboardingStatus::ABGESCHLOSSEN;
+        }
+        $onboarding->provision_log = array_merge($onboarding->provision_log ?? [], $log);
+        $onboarding->save();
+
+        return $log;
+    }
+
+    /**
+     * Umkehrung von „Bestellfenster schließen": Produkte wieder öffentlich,
+     * „Bestellfenster offen" auf JA und ein neues Enddatum. Nötig, wenn eine
+     * Schule nachträglich verlängern will — sonst müsste man in WooCommerce
+     * jedes Produkt einzeln umstellen.
+     *
+     * @return list<array{step: string, ok: bool, detail: string}>
+     */
+    public function reopenOrderWindow(SchoolOnboarding $onboarding, \DateTimeInterface $newEnd): array
+    {
+        $log = [];
+
+        $products = $onboarding->woo_category_id
+            ? $this->woo->findProductsByCategory((int) $onboarding->woo_category_id)
+            : $this->woo->findProductsByName($onboarding->school_name);
+
+        if ($products === []) {
+            $log[] = ['step' => 'Shop-Produkte suchen', 'ok' => false,
+                'detail' => 'Keine Produkte der Schule gefunden — nichts wieder zu öffnen.'];
+        }
+
+        $opened = 0;
+        foreach ($products as $product) {
+            if (($product['status'] ?? '') === 'publish' && ($product['catalog_visibility'] ?? 'visible') === 'visible') {
+                $log[] = ['step' => "Produkt '".($product['name'] ?? $product['id'])."'", 'ok' => true, 'detail' => 'war bereits öffentlich — übersprungen'];
+
+                continue;
+            }
+            $this->woo->updateProduct((int) $product['id'], ['status' => 'publish', 'catalog_visibility' => 'visible']);
+            $log[] = ['step' => "Produkt '".($product['name'] ?? $product['id'])."'", 'ok' => true, 'detail' => 'wieder öffentlich'];
+            $opened++;
+        }
+        if ($products !== [] && $opened === 0) {
+            $log[] = ['step' => 'Produkte', 'ok' => true, 'detail' => 'Alle gefundenen Produkte waren bereits öffentlich.'];
+        }
+
+        $end = Carbon::instance(\DateTime::createFromInterface($newEnd));
+        if ($onboarding->pods_post_id) {
+            $this->wordpress->updateSchule((int) $onboarding->pods_post_id, [
+                'bestellfenster_offen' => config('schoolshop.pods.bestellfenster_offen_open'),
+                'bestellfensterende' => $end->format('Y-m-d 23:59:59'),
+            ]);
+            $log[] = ['step' => 'Schule-Eintrag aktualisiert', 'ok' => true,
+                'detail' => 'Bestellfenster offen = '.config('schoolshop.pods.bestellfenster_offen_open').', Ende '.$end->format('d.m.Y')];
+        } else {
+            $log[] = ['step' => 'Schule-Eintrag', 'ok' => false,
+                'detail' => 'Kein CPT-Eintrag (pods_post_id) hinterlegt — „Bestellfenster offen" konnte nicht gesetzt werden.'];
+        }
+
+        $onboarding->window_end = $end;
+        // Nachfrist wieder frei: das ist ein neues Fenster.
+        OrderWindowExtender::resetFor($onboarding);
+        if (collect($log)->every(fn ($l) => $l['ok'])) {
+            $onboarding->status = OnboardingStatus::ANGELEGT;
         }
         $onboarding->provision_log = array_merge($onboarding->provision_log ?? [], $log);
         $onboarding->save();

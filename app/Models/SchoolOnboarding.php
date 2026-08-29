@@ -2,15 +2,20 @@
 
 namespace App\Models;
 
+use App\Services\SchoolShop\OnboardingStatus;
 use Illuminate\Database\Eloquent\Model;
 
 class SchoolOnboarding extends Model
 {
+    /**
+     * Nur die Bezeichnungen — Bedeutung und erlaubte Wechsel stehen in
+     * App\Services\SchoolShop\OnboardingStatus.
+     */
     public const STATUSES = [
-        'neu' => 'Neu',
-        'in_bearbeitung' => 'In Bearbeitung',
-        'angelegt' => 'Im Shop angelegt',
-        'abgeschlossen' => 'Abgeschlossen',
+        OnboardingStatus::NEU => 'Neu',
+        OnboardingStatus::IN_BEARBEITUNG => 'In Bearbeitung',
+        OnboardingStatus::ANGELEGT => 'Im Shop angelegt',
+        OnboardingStatus::ABGESCHLOSSEN => 'Abgeschlossen',
     ];
 
     public const DELIVERY_TYPES = [
@@ -56,6 +61,10 @@ class SchoolOnboarding extends Model
             'sheet_detail_focus_x' => 'float',
             'sheet_detail_focus_y' => 'float',
             'sheet_detail_zoom' => 'float',
+            'auto_extend' => 'boolean',
+            'auto_extended_at' => 'datetime',
+            'auto_extend_from' => 'date',
+            'documents_exported_at' => 'datetime',
             'window_start' => 'date',
             'window_end' => 'date',
         ];
@@ -64,6 +73,29 @@ class SchoolOnboarding extends Model
     public function statusLabel(): string
     {
         return self::STATUSES[$this->status] ?? $this->status;
+    }
+
+    public function statusDescription(): string
+    {
+        return OnboardingStatus::description((string) $this->status);
+    }
+
+    /** Läuft das Bestellfenster gerade (Sammelbestellung, angelegt, Enddatum in der Zukunft)? */
+    public function windowIsRunning(): bool
+    {
+        return $this->status === OnboardingStatus::ANGELEGT
+            && $this->delivery_type === 'collective'
+            && $this->window_end !== null
+            && $this->window_end->endOfDay()->isFuture();
+    }
+
+    /** Fenster abgelaufen, im Shop aber noch offen — dort wird weiter bestellt. */
+    public function windowExpiredButOpen(): bool
+    {
+        return $this->status === OnboardingStatus::ANGELEGT
+            && $this->delivery_type === 'collective'
+            && $this->window_end !== null
+            && $this->window_end->endOfDay()->isPast();
     }
 
     public function deliveryTypeLabel(): string

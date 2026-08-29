@@ -20,6 +20,9 @@ php artisan serve                # lokal; Background-Runs über die Task-Mechani
 php artisan printify:check --blueprints=JH001   # Printify: Shops/Blueprints/Provider nachschlagen
 php artisan printify:check --providers=92
 php artisan printify:check --description=92,91  # Blueprint-Katalogbeschreibung (für printify_description in config/schoolshop.php)
+php artisan windows:extend --dry-run            # fällige Fenster-Nachfristen anzeigen (Cron: täglich ohne --dry-run)
+php artisan backup:create                       # Datenbank + Uploads sichern (Cron: nächtlich)
+php artisan sheet:background export.png         # Grafiker-Export -> Hintergrund des Präsentationsblatts
 ```
 
 ## Architektur (Modul 2/3 — hier passieren die meisten Anpassungen)
@@ -34,6 +37,11 @@ php artisan printify:check --description=92,91  # Blueprint-Katalogbeschreibung 
   - `OrderEmailGenerator` — Bestellemail (Sammelbestellfenster).
 - **Katalog & Defaults:** `config/schoolshop.php` (12+ Produkte inkl. vorbefüllter Printify Blueprint/Provider-IDs, Preise, Pods-Defaults, Feld-Mapping).
 - **Views:** `resources/views/schools/{index,show,create}.blade.php`, `close-window/index.blade.php`, `admin/status.blade.php`, `home.blade.php`, Layout `layouts/app.blade.php`.
+- **`app/Services/SchoolShop/OnboardingStatus`** — Bedeutung und erlaubte Wechsel der Antrags-Status. `angelegt`/`abgeschlossen` sind **nur** über die jeweilige Aktion erreichbar (Shop-Anlage bzw. Modul 3), nie über das Auswahlfeld; `manualOptions()` liefert, was gerade zulässig ist, der Controller validiert dagegen.
+- **`app/Services/SchoolShop/OrderWindowExtender`** — verlängert abgelaufene Sammelbestellfenster **einmalig** (`auto_extended_at`) um `auto_extend_days`. Läuft über `php artisan windows:extend` (Cron) **und** gedrosselt beim Aufruf der Startseite, damit es auch ohne Cron greift. `resetFor()` gibt die Verlängerung frei, sobald jemand das Enddatum von Hand ändert oder das Fenster wieder geöffnet wird.
+- **`app/Services/SchoolShop/Dashboard`** — die Aufgabenliste der Startseite. Bewusst **ohne** API-Aufrufe: die Startseite muss auch laden, wenn WooCommerce/WordPress klemmen.
+- **`app/Services/SchoolShop/SchoolOrderStats`** — Bestellzahlen je Schule über `ShopOrderFetcher::summary()`, 15 min gecacht; Fehler liefern `null` statt zu werfen.
+- **`app/Services/BackupCreator`** — Datenbank + Uploads als ZIP (ohne `.env`, ohne `render/`-Zwischenstände).
 - **`app/Services/PresentationSheet/`** — A4-Präsentationsblatt je Bestellfenster (ersetzt den InDesign-Handsatz):
   - `PresentationSheetRenderer` — baut aus dem Onboarding eine flache Liste fertig positionierter Elemente (`data()`), daraus HTML bzw. PDF (dompdf). Die Blade-Vorlage `presentation-sheet/sheet.blade.php` enthält bewusst keinerlei Rechnerei.
   - `SheetImages` — GD: Fotos „cover" auf die Fensterrechtecke zuschneiden (X/Y/Zoom je Bild), Detailkreis rund maskieren, QR-Code erzeugen.
@@ -55,6 +63,8 @@ php artisan printify:check --description=92,91  # Blueprint-Katalogbeschreibung 
 - **Checkbox-Marker im Konfigurator:** Ein nicht angehaktes Kästchen wird nicht mitgeschickt. Die Druck-Häkchen (`print_front`/`print_back`) werden deshalb nur übernommen, wenn das versteckte Feld `print_slots_submitted` dabei ist — sonst würde jedes Speichern ohne den Logo-Bereich beide Drucke abschalten. Die Felder des Logo-Bereichs hängen per `form="configurator-form"` am Konfigurator-Formular (HTML erlaubt keine verschachtelten Formulare, die Upload-Formulare müssen eigenständig sein).
 - **Webhook ist verlustsicher + protokolliert:** Jeder Treffer wird in `webhook_logs` gespeichert (sichtbar unter Schul-Onboarding), bevor irgendeine Logik läuft. Schlägt das Mapping fehl, wird der Rohdatensatz trotzdem als Antrag gesichert. GET auf die Webhook-URL = Browser-Test (200/404/503).
 - **Toolsuite verschickt NIE selbst E-Mails.** Kein Mailer/SMTP in Laravel konfiguriert (bewusst so lassen). Ausfall-Alarme laufen über `WordPressAdminNotifier` → POST an einen custom WP-REST-Endpunkt (`wordpress-mu-plugin/weartogether-notify.php`, muss auf dem WP-Server als mu-Plugin liegen), der dort `wp_mail()` aufruft. Fehlt das mu-Plugin, schlägt der Call einfach fehl (404) — kein Absturz, nur kein Alarm.
+- **Status sind keine Etiketten:** `angelegt`/`abgeschlossen` dürfen nur durch die tatsächliche Aktion entstehen (`ShopProvisioner::apply()` bzw. `closeOrderWindow()`). Neue Statuswerte immer in `OnboardingStatus` beschreiben UND in `manualOptions()`/`actionOnly()` einsortieren, sonst lässt sich im Konfigurator etwas behaupten, das im Shop fehlt.
+- **Startseite darf nie an einer API hängen:** `Dashboard` liest ausschließlich die eigene Datenbank. Die Fensterverlängerung dort läuft über `runDueOpportunistically()` — gedrosselt, in try/catch, Fehler nur ins Log.
 - **Präsentationsblatt — drei Ebenen:** Fotos zuerst, darüber der Hintergrund (`resources/presentation-sheet/background.png`, PNG mit transparenten Fenstern), darüber Texte/Icons/QR. Der Hintergrund übernimmt das Freistellen der schrägen Rahmen und des Kreises — deshalb **kein** Polygon-Masking im Code. Die Detailaufnahme muss trotzdem rund maskiert werden, sonst überdeckt ihr Quadrat das darunterliegende Mockup (beide liegen unter dem Hintergrund).
 - **Blade: `@php(...)` und `@php … @endphp` nie in derselben Datei mischen.** Blades Regex für den Blockform-`@php` greift vom ersten inline `@php(` bis zum nächsten `@endphp` und verschluckt alles dazwischen — die Vorlage kompiliert dann still falsch. Gilt auch für ein `@php(` in einem Blade-Kommentar.
 - **dompdf setzt Text tiefer als angefragt** (`factor × Schriftgröße − offset`, gemessen in `presentation_sheet.text_top_correction`). Die `top`-Werte in der Config sind Buchstaben-Oberkanten wie in InDesign; `PresentationSheetTest` rechnet zurück und prüft gegen die Vorlagenkoordinaten.

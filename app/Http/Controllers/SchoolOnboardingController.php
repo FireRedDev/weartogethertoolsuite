@@ -6,15 +6,21 @@ use App\Exceptions\WooCommerceApiException;
 use App\Models\SchoolOnboarding;
 use App\Services\PresentationSheet\PresentationSheetRenderer;
 use App\Services\SchoolShop\LogoManager;
+use App\Services\SchoolShop\OnboardingStatus;
 use App\Services\SchoolShop\OrderEmailGenerator;
+use App\Services\SchoolShop\OrderWindowExtender;
 use App\Services\SchoolShop\PrintifyClient;
 use App\Services\SchoolShop\PrintifyProvisioner;
 use App\Services\SchoolShop\ProductConfigurator;
 use App\Services\SchoolShop\ProvisionAbortedException;
+use App\Services\SchoolShop\SchoolInfoMailGenerator;
+use App\Services\SchoolShop\SchoolOrderStats;
+use App\Services\SchoolShop\ShopPageChecker;
 use App\Services\SchoolShop\ShopProvisioner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -60,6 +66,8 @@ class SchoolOnboardingController extends Controller
         SchoolOnboarding $onboarding,
         PrintifyProvisioner $printifyProvisioner,
         PresentationSheetRenderer $sheet,
+        SchoolOrderStats $orderStats,
+        SchoolInfoMailGenerator $schoolMail,
     ): View {
         // Produktzeilen des Präsentationsblatts: gespeicherte Fassung, sonst der
         // Vorschlag aus dem Konfigurator — immer auf die Zeilenzahl aufgefüllt,
@@ -84,6 +92,13 @@ class SchoolOnboardingController extends Controller
             'printifyEconomics' => $onboarding->delivery_type === 'ondemand'
                 ? $this->printifyEconomics($onboarding, $printifyProvisioner)
                 : [],
+            // Bestellzahlen nur bei angelegten Sammelbestellungen — sonst gibt es
+            // keine Kategorie, gegen die sich zählen ließe.
+            'orderStats' => $onboarding->delivery_type === 'collective' ? $orderStats->for($onboarding) : null,
+            'schoolMailSubject' => $schoolMail->subject($onboarding),
+            'schoolMailBody' => $schoolMail->body($onboarding),
+            'statusOptions' => OnboardingStatus::manualOptions($onboarding),
+            'statusActions' => OnboardingStatus::actionOnly($onboarding),
             'sheetMissing' => $sheet->missingRequirements($onboarding),
             'sheetRows' => $sheetRows,
             'sheetIcons' => $sheet->availableIcons(),
@@ -131,12 +146,17 @@ class SchoolOnboardingController extends Controller
         $validated = $request->validate([
             'school_name' => ['required', 'string', 'max:150'],
             'delivery_type' => ['required', 'in:collective,ondemand,list'],
-            'status' => ['required', 'in:'.implode(',', array_keys(SchoolOnboarding::STATUSES))],
+            // Nur Wechsel, die von hier aus überhaupt sinnvoll sind. „Angelegt"
+            // und „Abgeschlossen" entstehen ausschließlich durch die jeweilige
+            // Aktion, damit der Status nie etwas behauptet, was im Shop fehlt.
+            'status' => ['required', Rule::in(array_keys(OnboardingStatus::manualOptions($onboarding)))],
             'class_list' => ['nullable', 'string', 'max:2000'],
             'window_start' => ['nullable', 'date'],
             'window_end' => ['nullable', 'date', 'after_or_equal:window_start'],
             'notes' => ['nullable', 'string', 'max:5000'],
             'products' => ['nullable', 'array'],
+            'auto_extend' => ['nullable', 'boolean'],
+            'auto_extend_days' => ['nullable', 'integer', 'min:1', 'max:60'],
             'mockups_enabled' => ['nullable', 'boolean'],
             'print_slots_submitted' => ['nullable', 'boolean'],
             'print_front' => ['nullable', 'boolean'],
@@ -151,6 +171,7 @@ class SchoolOnboardingController extends Controller
         // Bestellfenster und keine Klassenliste (Lieferung an die Privatadresse
         // der Kund:innen) — beide Felder sind im Konfigurator daher ausgeblendet.
         $isOndemand = $validated['delivery_type'] === 'ondemand';
+        $previousEnd = $onboarding->window_end?->toDateString();
 
         $onboarding->fill([
             'school_name' => $validated['school_name'],
@@ -160,6 +181,8 @@ class SchoolOnboardingController extends Controller
             'window_start' => $isOndemand ? SchoolOnboarding::ONDEMAND_WINDOW_START : ($validated['window_start'] ?? null),
             'window_end' => $isOndemand ? SchoolOnboarding::ONDEMAND_WINDOW_END : ($validated['window_end'] ?? null),
             'notes' => $validated['notes'] ?? null,
+            'auto_extend' => $isOndemand ? false : $request->boolean('auto_extend'),
+            'auto_extend_days' => $validated['auto_extend_days'] ?? $onboarding->auto_extend_days,
             'mockups_enabled' => $request->boolean('mockups_enabled'),
             'logo_front_position' => $validated['logo_front_position'] ?? $onboarding->logoPositionKey('front'),
             'logo_front_size' => $validated['logo_front_size'] ?? $onboarding->logoSizeKey('front'),
@@ -178,8 +201,16 @@ class SchoolOnboardingController extends Controller
                 'print_back' => $request->boolean('print_back'),
             ]);
         }
-        if ($onboarding->status === 'neu') {
-            $onboarding->status = 'in_bearbeitung';
+        // Wird das Enddatum von Hand geändert, ist die automatische Verlängerung
+        // für dieses Fenster wieder frei — sonst bliebe sie nach einmaligem
+        // Verlängern für immer verbraucht.
+        if ($previousEnd !== $onboarding->window_end?->toDateString()) {
+            OrderWindowExtender::resetFor($onboarding);
+        }
+
+        // Wer speichert, bearbeitet — ein Antrag bleibt danach nicht „neu".
+        if ($onboarding->status === OnboardingStatus::NEU) {
+            $onboarding->status = OnboardingStatus::IN_BEARBEITUNG;
         }
         $onboarding->products = ProductConfigurator::applyInput($onboarding->products ?? [], $validated['products'] ?? []);
         $onboarding->save();
@@ -205,12 +236,15 @@ class SchoolOnboardingController extends Controller
             ],
         );
 
+        $quality = $logos->qualityWarnings($request->file('logo'));
         $warning = $logos->store($onboarding, $slot, $request->file('logo'));
+
+        $messages = array_values(array_filter([$warning, ...$quality]));
         $redirect = redirect()->route('schools.show', $onboarding);
 
-        return $warning === null
+        return $messages === []
             ? $redirect->with('saved', true)
-            : $redirect->withErrors(['logo' => $warning]);
+            : $redirect->withErrors(['logo' => $messages]);
     }
 
     /** Hochgeladenes Logo entfernen — danach gilt wieder der Formular-Upload. */
@@ -337,6 +371,43 @@ class SchoolOnboardingController extends Controller
             'id' => $p['id'],
             'title' => $p['title'] ?? '?',
         ])->values()]);
+    }
+
+    /** Ruft die Bestellseite der Schule ab — der QR-Code darf nicht ins Leere führen. */
+    public function checkShopPage(SchoolOnboarding $onboarding, ShopPageChecker $checker): RedirectResponse
+    {
+        return redirect()->route('schools.show', $onboarding)
+            ->with('shopPageCheck', $checker->check($onboarding))
+            ->withFragment('praesentationsblatt');
+    }
+
+    /**
+     * Antrag für ein neues Bestellfenster derselben Schule anlegen — Schulen
+     * bestellen jährlich wieder. Übernommen werden Stammdaten, Produkte samt
+     * Preisen/Farben, Logos, Druckeinstellungen und die Blatt-Vorgaben; alles
+     * Fensterbezogene (Zeitraum, Klassenliste, Shop-IDs, Protokoll) beginnt neu.
+     */
+    public function duplicate(SchoolOnboarding $onboarding): RedirectResponse
+    {
+        $copy = $onboarding->replicate([
+            // Fensterbezogen — muss neu erfasst werden
+            'window_start', 'window_end', 'class_list',
+            'auto_extended_at', 'auto_extend_from', 'documents_exported_at',
+            // Im Shop Angelegtes gehört zum alten Fenster
+            'woo_category_id', 'pods_post_id', 'woo_product_ids', 'printify_product_ids',
+            'provision_log', 'mockup_images',
+            // Mockups des alten Blatts: neue Fotos, neue Saison
+            'sheet_back_path', 'sheet_front_path', 'sheet_detail_path',
+        ]);
+        $copy->status = OnboardingStatus::IN_BEARBEITUNG;
+        $copy->source = 'folgejahr';
+        $copy->notes = trim(($onboarding->notes ? $onboarding->notes."\n\n" : '')
+            .'Übernommen aus Antrag #'.$onboarding->id.' vom '.$onboarding->created_at->format('d.m.Y').'.');
+        $copy->save();
+
+        return redirect()->route('schools.show', $copy)
+            ->with('saved', true)
+            ->withErrors(['duplicate' => 'Kopie angelegt. Bitte Bestellfenster und Klassenliste neu setzen — Mockups fürs Präsentationsblatt sind bewusst nicht übernommen.']);
     }
 
     public function destroy(SchoolOnboarding $onboarding): RedirectResponse

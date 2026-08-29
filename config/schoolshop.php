@@ -176,6 +176,8 @@ return [
     // Standard-Bestellfenster-Status beim Anlegen des CPT "schule"
     'pods' => [
         'bestellfenster_offen_default' => 'NEIN',
+        // Wert, den „Bestellfenster wieder öffnen" setzt (Umkehrung von Modul 3)
+        'bestellfenster_offen_open' => 'JA',
     ],
 
     // Mapping Formular-Produktname -> Katalog-Key

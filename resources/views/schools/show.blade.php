@@ -13,8 +13,13 @@
                     @if ($onboarding->created_at) · Eingang {{ $onboarding->created_at->format('d.m.Y H:i') }} @endif
                 </p>
             </div>
-            <div style="display:flex;gap:0.5rem;">
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
                 <a class="btn secondary" href="{{ route('schools.index') }}">Zur Übersicht</a>
+                <form method="post" action="{{ route('schools.duplicate', $onboarding) }}"
+                      onsubmit="return confirm('Neuen Antrag für dieselbe Schule anlegen?\n\nProdukte, Preise, Farben und Logos werden übernommen. Bestellfenster, Klassenliste und Mockups beginnen neu.');">
+                    @csrf
+                    <button class="btn secondary" type="submit" title="Für das nächste Schuljahr: Konfiguration übernehmen">Neues Bestellfenster (Folgejahr)</button>
+                </form>
                 <form method="post" action="{{ route('schools.destroy', $onboarding) }}"
                       onsubmit="return confirm('Diesen Antrag wirklich löschen? Bereits im Shop Angelegtes bleibt bestehen und müsste dort separat entfernt werden.');">
                     @csrf
@@ -34,11 +39,38 @@
         @endif
 
         <div class="stats">
-            <div class="stat"><div class="value">{{ $onboarding->expected_orders ?? '—' }}</div><div class="label">erwartete Bestellungen</div></div>
+            @if ($orderStats)
+                <div class="stat">
+                    <div class="value" style="color:var(--ok);">{{ $orderStats['orders'] }}</div>
+                    <div class="label">Bestellungen bisher</div>
+                </div>
+                <div class="stat"><div class="value">{{ $orderStats['items'] }}</div><div class="label">Teile bisher</div></div>
+            @endif
+            <div class="stat">
+                <div class="value">{{ $onboarding->expected_orders ?? '—' }}</div>
+                <div class="label">erwartete Bestellungen{{ $orderStats && $orderStats['share'] !== null ? ' ('.round($orderStats['share'] * 100).' % erreicht)' : '' }}</div>
+            </div>
             <div class="stat"><div class="value">{{ $onboarding->student_count ?? '—' }}</div><div class="label">Schüler:innen</div></div>
             <div class="stat"><div class="value">{{ count($onboarding->enabledProducts()) }}</div><div class="label">aktive Produkte</div></div>
             <div class="stat"><div class="value">{{ $onboarding->woo_category_id ? '✓' : '—' }}</div><div class="label">Shop angelegt</div></div>
         </div>
+        @if ($orderStats)
+            <p class="hint">Bestellzahlen live aus dem Shop (Kategorie der Schule, Bestellzeitraum) — alle 15 Minuten aktualisiert.</p>
+        @endif
+
+        {{-- Nächster Schritt, je nach Stand --}}
+        @if ($onboarding->woo_category_id)
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem;">
+                <a class="btn secondary" href="{{ route('shop.form', ['onboarding' => $onboarding->id]) }}">
+                    Auftragsdokumente erzeugen
+                    <span class="hint" style="color:inherit;">(Kategorie und Zeitraum vorbefüllt)</span>
+                </a>
+                @if ($onboarding->documents_exported_at)
+                    <span class="hint" style="align-self:center;">zuletzt erzeugt am {{ $onboarding->documents_exported_at->format('d.m.Y H:i') }}</span>
+                @endif
+                <a class="btn secondary" href="{{ route('close-window.index') }}">Bestellfenster schließen / öffnen</a>
+            </div>
+        @endif
     </div>
 
     {{-- Formulardaten (Webhook) --}}
@@ -185,12 +217,18 @@
                     </select>
                 </div>
                 <div>
-                    <label for="status">Status</label>
+                    <label for="status">Status <span class="hint" title="{{ $onboarding->statusDescription() }}">ⓘ</span></label>
                     <select id="status" name="status" style="width:100%;padding:0.6rem 0.75rem;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;">
-                        @foreach (\App\Models\SchoolOnboarding::STATUSES as $key => $label)
+                        @foreach ($statusOptions as $key => $label)
                             <option value="{{ $key }}" {{ old('status', $onboarding->status) === $key ? 'selected' : '' }}>{{ $label }}</option>
                         @endforeach
                     </select>
+                    <p class="hint" style="margin-top:0.25rem;">{{ $onboarding->statusDescription() }}</p>
+                    @foreach ($statusActions as $target)
+                        <p class="hint" style="margin:0.15rem 0 0;">
+                            → <strong>{{ $target['label'] }}</strong> {{ $target['hint'] }}
+                        </p>
+                    @endforeach
                 </div>
                 @php($isOndemandInitial = old('delivery_type', $onboarding->delivery_type) === 'ondemand')
                 <div id="window_start_field" style="{{ $isOndemandInitial ? 'display:none;' : '' }}">
@@ -208,6 +246,26 @@
                 <textarea id="class_list" name="class_list" rows="2">{{ old('class_list', $onboarding->class_list) }}</textarea>
             </div>
             <p class="hint" id="ondemand_window_hint" style="{{ $isOndemandInitial ? '' : 'display:none;' }}">On-Demand: Bestellfenster und Klassenliste entfallen — Produkte werden laufend einzeln an die Privatadresse der Kund:innen verschickt.</p>
+
+            {{-- Automatische Nachfrist für Sammelbestellfenster --}}
+            <div id="auto_extend_field" style="{{ $isOndemandInitial ? 'display:none;' : '' }}margin-top:0.75rem;">
+                <label style="font-weight:400;display:flex;gap:0.5rem;align-items:flex-start;">
+                    <input type="checkbox" name="auto_extend" value="1" style="margin-top:0.25rem;" {{ old('auto_extend', $onboarding->auto_extend) ? 'checked' : '' }}>
+                    <span>Nach Ablauf automatisch um
+                        <input type="number" name="auto_extend_days" min="1" max="60" value="{{ old('auto_extend_days', $onboarding->auto_extend_days) }}"
+                               style="width:64px;margin:0;display:inline-block;padding:0.2rem 0.35rem;"> Tage verlängern
+                        <span class="hint">— einmalig, und erst wenn das Fenster tatsächlich abgelaufen ist. Nachzügler können dann noch bestellen;
+                        endgültig geschlossen wird weiterhin über „Bestellfenster schließen".</span>
+                    </span>
+                </label>
+                @if ($onboarding->auto_extended_at)
+                    <div class="alert ok" style="margin-top:0.4rem;">
+                        ✓ Automatisch verlängert am {{ $onboarding->auto_extended_at->format('d.m.Y') }}
+                        (ursprüngliches Ende: {{ $onboarding->auto_extend_from?->format('d.m.Y') ?? '—' }}).
+                        Ein von Hand geändertes Enddatum gibt die Verlängerung wieder frei.
+                    </div>
+                @endif
+            </div>
 
             @php($isOndemand = $onboarding->delivery_type === 'ondemand')
             @php($hasNonEuProvider = collect($printifyEconomics ?? [])->contains(fn ($i) => $i['country'] !== null && ! $i['is_eu']))
@@ -628,7 +686,31 @@
                 <a class="btn secondary" href="{{ route('sheet.preview', $onboarding) }}" target="_blank" rel="noopener">Vorschau öffnen</a>
                 <a class="btn" href="{{ route('sheet.pdf', $onboarding) }}">PDF herunterladen</a>
             @endif
+            <form method="post" action="{{ route('schools.check-page', $onboarding) }}">
+                @csrf
+                <button class="btn secondary" type="submit" title="Ruft die Adresse ab, auf die der QR-Code zeigt">Bestellseite prüfen</button>
+            </form>
         </div>
+
+        @if (session('shopPageCheck'))
+            @php($check = session('shopPageCheck'))
+            <div class="alert {{ $check['ok'] ? 'ok' : 'error' }}" style="margin-top:0.75rem;">
+                {{ $check['ok'] ? '✓' : '✖' }} {{ $check['message'] }}
+                <div class="hint" style="margin-top:0.2rem;">Geprüft: <a href="{{ $check['url'] }}" target="_blank" rel="noopener">{{ $check['url'] }}</a></div>
+            </div>
+        @endif
+    </div>
+
+    {{-- E-Mail an die Schule --}}
+    <div class="card">
+        <h2>E-Mail an die Schule <span class="hint">(Vorlage zum Kopieren)</span></h2>
+        <p class="lead">Startet das Bestellfenster bei der Schule: Link, Zeitraum, Produktliste.
+            Das Präsentationsblatt oben herunterladen und anhängen.</p>
+        <p class="lead">Betreff: <strong>{{ $schoolMailSubject }}</strong></p>
+        <textarea id="schoolmail" rows="16" readonly style="font-family:ui-monospace,monospace;font-size:0.85rem;">{{ $schoolMailBody }}</textarea>
+        <button class="btn secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('schoolmail').value).then(() => this.textContent = '✓ Kopiert')">In Zwischenablage kopieren</button>
+        <a class="btn secondary" style="margin-left:0.5rem;"
+           href="mailto:{{ $onboarding->contact_email }}?subject={{ rawurlencode($schoolMailSubject) }}&body={{ rawurlencode($schoolMailBody) }}">Im Mailprogramm öffnen</a>
     </div>
 
     {{-- Bestellemail (nur Sammelbestellfenster) --}}
@@ -650,12 +732,13 @@
             const windowStart = document.getElementById('window_start_field');
             const windowEnd = document.getElementById('window_end_field');
             const classList = document.getElementById('class_list_field');
+            const autoExtend = document.getElementById('auto_extend_field');
             const hint = document.getElementById('ondemand_window_hint');
             if (! select) return;
 
             function sync() {
                 const isOndemand = select.value === 'ondemand';
-                [windowStart, windowEnd, classList].forEach(el => { if (el) el.style.display = isOndemand ? 'none' : ''; });
+                [windowStart, windowEnd, classList, autoExtend].forEach(el => { if (el) el.style.display = isOndemand ? 'none' : ''; });
                 if (hint) hint.style.display = isOndemand ? '' : 'none';
             }
             select.addEventListener('change', sync);

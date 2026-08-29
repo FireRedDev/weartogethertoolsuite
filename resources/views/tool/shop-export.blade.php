@@ -50,14 +50,17 @@
                 @csrf
                 <label for="category">Schule/Organisation <span class="hint">(Produktkategorie im Shop)</span></label>
                 <select id="category" name="category" required style="width:100%;padding:0.6rem 0.75rem;border:1px solid var(--line);border-radius:8px;font:inherit;margin-bottom:1rem;background:#fff;">
-                    <option value="" disabled {{ old('category') ? '' : 'selected' }}>Bitte auswählen …</option>
+                    <option value="" disabled {{ old('category', $prefill['category'] ?? null) ? '' : 'selected' }}>Bitte auswählen …</option>
                     @foreach ($categories as $category)
-                        <option value="{{ $category['id'] }}" {{ (string) old('category') === (string) $category['id'] ? 'selected' : '' }}>
+                        <option value="{{ $category['id'] }}" {{ (string) old('category', $prefill['category'] ?? '') === (string) $category['id'] ? 'selected' : '' }}>
                             {{ $category['name'] }} ({{ $category['count'] }} Produkte)
                         </option>
                     @endforeach
                 </select>
                 <input type="hidden" name="category_name" id="category_name" value="{{ old('category_name') }}">
+                @if (! empty($prefill['onboarding']))
+                    <input type="hidden" name="onboarding_id" value="{{ $prefill['onboarding']->id }}">
+                @endif
 
                 <label>Bestellstatus</label>
                 <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
@@ -73,11 +76,11 @@
                 <div style="display:flex;gap:1rem;flex-wrap:wrap;">
                     <div>
                         <label for="date_from">Bestellungen von <span class="hint">(optional)</span></label>
-                        <input type="date" id="date_from" name="date_from" value="{{ old('date_from') }}" style="width:auto;">
+                        <input type="date" id="date_from" name="date_from" value="{{ old('date_from', $prefill['date_from'] ?? '') }}" style="width:auto;">
                     </div>
                     <div>
                         <label for="date_to">bis <span class="hint">(optional)</span></label>
-                        <input type="date" id="date_to" name="date_to" value="{{ old('date_to') }}" style="width:auto;">
+                        <input type="date" id="date_to" name="date_to" value="{{ old('date_to', $prefill['date_to'] ?? '') }}" style="width:auto;">
                     </div>
                 </div>
 

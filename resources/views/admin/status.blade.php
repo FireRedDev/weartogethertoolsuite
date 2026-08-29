@@ -81,4 +81,17 @@
             </table>
         </div>
     </div>
+
+    <div class="card">
+        <h2>Datensicherung</h2>
+        <p class="lead">Datenbank (alle Anträge samt Konfiguration und Protokollen) und die hochgeladenen Dateien
+            (Schullogos, Mockups) als ZIP. Die Zugangsdaten aus der <code>.env</code> sind bewusst <strong>nicht</strong> enthalten.</p>
+        <form method="post" action="{{ route('admin.backup') }}">
+            @csrf
+            <button class="btn" type="submit">Sicherung herunterladen</button>
+        </form>
+        <p class="hint" style="margin-top:0.5rem;">Automatisch nächtlich per Cron:
+            <code>30 3 * * * cd {{ base_path() }} && php artisan backup:create</code> — die letzten fünf bleiben unter
+            <code>storage/app/backups</code> liegen.</p>
+    </div>
 @endsection

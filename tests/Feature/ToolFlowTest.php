@@ -2,11 +2,15 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
 
 class ToolFlowTest extends TestCase
 {
+    // Die Startseite liest die Anträge (Aufgabenübersicht).
+    use RefreshDatabase;
+
     public function test_full_flow_upload_generate_download(): void
     {
         // Kopie verwenden: UploadedFile verschiebt die Datei beim Upload

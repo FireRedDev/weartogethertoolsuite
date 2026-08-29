@@ -36,24 +36,7 @@ class ShopOrderFetcher
      */
     public function fetch(?int $categoryId, array $statuses, ?string $dateFrom = null, ?string $dateTo = null): array
     {
-        $categoryProducts = null; // Produkt-ID => Hauptproduktname
-        if ($categoryId !== null) {
-            $categoryProducts = $this->client->productsInCategory($categoryId);
-            // Serverseitig pro Produkt filtern statt den kompletten
-            // Bestellbestand zu laden (bei >10.000 Bestellungen sonst
-            // Gateway-Timeout). Bestellungen mit mehreren Produkten der
-            // Kategorie werden über die Order-ID dedupliziert.
-            $byId = [];
-            foreach (array_keys($categoryProducts) as $productId) {
-                foreach ($this->client->ordersForProduct($productId, $statuses, $dateFrom, $dateTo) as $order) {
-                    $byId[(int) $order['id']] = $order;
-                }
-            }
-            krsort($byId); // Order-ID absteigend, wie der Plugin-Export
-            $orders = array_values($byId);
-        } else {
-            $orders = $this->client->orders($statuses, $dateFrom, $dateTo);
-        }
+        [$orders, $categoryProducts] = $this->gather($categoryId, $statuses, $dateFrom, $dateTo);
 
         $rows = [];
         $ordersWithRows = 0;
@@ -72,6 +55,63 @@ class ShopOrderFetcher
         }
 
         return ['columns' => self::COLUMNS, 'rows' => $rows, 'orderCount' => $ordersWithRows];
+    }
+
+    /**
+     * Nur zählen statt den vollen Report zu bauen — für die Anzeige „so viel
+     * wurde bisher bestellt" im Antrag und auf der Startseite.
+     *
+     * @param  list<string>  $statuses
+     * @return array{orders: int, items: int}
+     */
+    public function summary(?int $categoryId, array $statuses, ?string $dateFrom = null, ?string $dateTo = null): array
+    {
+        [$orders, $categoryProducts] = $this->gather($categoryId, $statuses, $dateFrom, $dateTo);
+
+        $orderCount = 0;
+        $items = 0;
+        foreach ($orders as $order) {
+            $orderItems = 0;
+            foreach ($order['line_items'] ?? [] as $item) {
+                if ($categoryProducts !== null && ! isset($categoryProducts[(int) ($item['product_id'] ?? 0)])) {
+                    continue;
+                }
+                $orderItems += max(1, (int) ($item['quantity'] ?? 1));
+            }
+            if ($orderItems > 0) {
+                $orderCount++;
+                $items += $orderItems;
+            }
+        }
+
+        return ['orders' => $orderCount, 'items' => $items];
+    }
+
+    /**
+     * Bestellungen laden — bei gesetzter Kategorie serverseitig pro Produkt
+     * filtern statt den kompletten Bestellbestand zu holen (bei >10.000
+     * Bestellungen sonst Gateway-Timeout). Bestellungen mit mehreren Produkten
+     * der Kategorie werden über die Order-ID dedupliziert.
+     *
+     * @param  list<string>  $statuses
+     * @return array{0: list<array<string, mixed>>, 1: ?array<int, string>}
+     */
+    private function gather(?int $categoryId, array $statuses, ?string $dateFrom, ?string $dateTo): array
+    {
+        if ($categoryId === null) {
+            return [$this->client->orders($statuses, $dateFrom, $dateTo), null];
+        }
+
+        $categoryProducts = $this->client->productsInCategory($categoryId);
+        $byId = [];
+        foreach (array_keys($categoryProducts) as $productId) {
+            foreach ($this->client->ordersForProduct($productId, $statuses, $dateFrom, $dateTo) as $order) {
+                $byId[(int) $order['id']] = $order;
+            }
+        }
+        krsort($byId); // Order-ID absteigend, wie der Plugin-Export
+
+        return [array_values($byId), $categoryProducts];
     }
 
     /**

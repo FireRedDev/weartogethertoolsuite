@@ -101,6 +101,8 @@
         .alert.error { background: #fef2f2; border: 1px solid #fecaca; color: var(--error); }
         .alert.warn { background: #fffbeb; border: 1px solid #fde68a; color: var(--warn); }
         .alert.ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: var(--ok); }
+        /* Neutral: weder Problem noch Erfolgsmeldung — z. B. offene Punkte ohne Dringlichkeit */
+        .alert.info { background: #f8fafc; border: 1px solid var(--line); color: var(--ink); }
         details.warnrows { margin-top: 0.4rem; font-size: 0.85rem; }
         details.warnrows summary { cursor: pointer; }
         .stats { display: flex; gap: 1rem; flex-wrap: wrap; margin: 0.5rem 0 1rem; }
