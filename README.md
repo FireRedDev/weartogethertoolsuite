@@ -357,6 +357,57 @@ Einrichtung:
    doppelten Credits). Gilt für Sammelbestellfenster-Produkte; On-Demand-
    Produkte bekommen ihre Bilder von Printify.
 
+### Präsentationsblatt (A4)
+
+Zu jedem Bestellfenster gehört ein Präsentationsblatt für die Schule. Das
+erzeugt das Tool im Antrag unter **Präsentationsblatt** — optisch deckungs-
+gleich mit der bisherigen InDesign-Vorlage.
+
+Hochzuladen sind nur **zwei Mockups**: eine Rückenansicht (oben rechts, mit
+Backprint) und eine Vorderansicht (unten links, mit Frontprint). Alles andere
+kommt aus dem Antrag: Schulname, Produktzeilen samt Farben, Bestellzeitraum,
+QR-Code und die Adresse der Bestellseite.
+
+Einstellbar sind:
+
+* **Bildausschnitt je Mockup** (X, Y, Zoom) — Placeit-Vorlagen sind
+  unterschiedlich angeschnitten, deshalb pro Bild justierbar.
+* **Detailkreis** („Print your name!"): standardmäßig ein herangezoomter
+  Ausschnitt der Vorderansicht; über X/Y/Zoom auf den Brustdruck ziehen oder
+  ein eigenes Bild hochladen.
+* **Produktzeilen**: vorbelegt mit der Marketing-Bezeichnung (Premium
+  Zip-Hoodie statt Schulzoodie) und der ausgeschriebenen Farbliste, jede Zeile
+  frei überschreibbar, Icon wählbar. Es passen drei Produkte plus die feste
+  Zeile „1 Produkt = 1 Baum".
+* **Vorname im Kreis** und optional eine abweichende **Adresse der Bestellseite**.
+
+„Vorschau öffnen" zeigt das Blatt im Browser, „PDF herunterladen" liefert die
+Druckdatei. Beides erscheint erst, wenn beide Mockups, das Bestellfenster und
+mindestens ein Produkt vorhanden sind.
+
+**Hintergrund austauschen:** Das Statische (roter Kopf und Fuß, Diagonal-
+rahmen, „Print your name!", Logos) liegt als eine PNG-Datei unter
+`resources/presentation-sheet/background.png` — mit transparenten Fenstern an
+den drei Bildplätzen, durch die die Fotos scheinen. Eine neue Fassung vom
+Grafiker wird so eingespielt:
+
+```bash
+php artisan sheet:background pfad/zum/export.png
+```
+
+Der Export ist eine normale PNG-Datei in A4 bei 300 dpi (2481 × 3508 px), bei
+der die drei Bildplätze mit reinem Magenta (#FF00FF) gefüllt sind; der Befehl
+stanzt das Magenta heraus und sichert die bisherige Fassung als `.bak`.
+
+**Produkt-Icons** liegen als PNG mit Transparenz in
+`resources/presentation-sheet/icons/`. Der Dateiname ohne Endung ist der Name,
+der in `config/presentation_sheet.php` unter `icons` je Produkt zugeordnet
+wird; fehlt eine Datei, greift `icon_fallbacks`.
+
+**Schrift:** Source Sans 3 (SIL Open Font License, liegt in
+`resources/fonts/`) — der freie Ersatz für das lizenzpflichtige Myriad Pro der
+Originalvorlage, praktisch nicht zu unterscheiden.
+
 **Benötigte Zugänge (.env):**
 
 | Variable | Zweck |

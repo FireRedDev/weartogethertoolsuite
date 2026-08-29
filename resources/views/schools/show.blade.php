@@ -446,6 +446,122 @@
         @endif
     </div>
 
+    {{-- Präsentationsblatt --}}
+    @php($sheetSlots = ['back' => ['Mockup Rückenansicht', 'oben rechts — Person von hinten mit Backprint'], 'front' => ['Mockup Vorderansicht', 'unten links — Person mit Frontprint'], 'detail' => ['Detailaufnahme (optional)', 'für den Kreis; ohne Upload wird die Vorderansicht herangezoomt']])
+    <div class="card" id="praesentationsblatt">
+        <h2>Präsentationsblatt <span class="hint">A4, wie die bisherige InDesign-Vorlage</span></h2>
+        <p class="lead">Schulname, Produkte, Farben, Bestellzeitraum, QR-Code und Adresse kommen automatisch aus diesem
+            Antrag — hochzuladen sind nur die beiden Mockups.</p>
+
+        @if ($sheetMissing !== [])
+            <div class="alert warn">⚠ Noch nicht erzeugbar. Es fehlt: {{ implode(', ', $sheetMissing) }}.</div>
+        @endif
+
+        {{-- Upload-Formulare müssen eigenständig sein; die Einstellfelder hängen
+             per form="sheet-form" am Speichern-Formular weiter unten. --}}
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;">
+            @foreach ($sheetSlots as $slot => [$label, $note])
+                <div style="border:1px solid var(--line);border-radius:10px;padding:0.9rem;">
+                    <strong>{{ $label }}</strong>
+                    <p class="hint" style="margin:0.15rem 0 0.5rem;">{{ $note }}</p>
+
+                    <div style="display:flex;gap:0.75rem;align-items:flex-start;">
+                        <div style="width:110px;height:110px;flex:none;border:1px solid var(--line);border-radius:8px;background:#f7f8fa;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+                            @if ($onboarding->{"sheet_{$slot}_path"})
+                                <img src="{{ route('sheet.image', [$onboarding, $slot]) }}" alt="{{ $label }}" style="max-width:100%;max-height:100%;object-fit:contain;">
+                            @else
+                                <span class="hint" style="font-size:0.7rem;">noch kein Bild</span>
+                            @endif
+                        </div>
+                        <div style="min-width:0;flex:1;">
+                            <form method="post" action="{{ route('sheet.upload', [$onboarding, $slot]) }}" enctype="multipart/form-data">
+                                @csrf
+                                <input type="file" name="mockup" accept=".png,.jpg,.jpeg,.webp" required style="font-size:0.8rem;max-width:100%;">
+                                <button class="btn secondary" type="submit" style="padding:0.3rem 0.7rem;font-size:0.8rem;margin-top:0.3rem;">
+                                    {{ $onboarding->{"sheet_{$slot}_path"} ? 'Austauschen' : 'Hochladen' }}
+                                </button>
+                            </form>
+                            @if ($onboarding->{"sheet_{$slot}_path"})
+                                <form method="post" action="{{ route('sheet.delete', [$onboarding, $slot]) }}" onsubmit="return confirm('Bild entfernen?');">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button class="btn secondary" type="submit" style="padding:0.25rem 0.6rem;font-size:0.78rem;color:var(--error);">Entfernen</button>
+                                </form>
+                            @endif
+                        </div>
+                    </div>
+
+                    <p class="hint" style="margin:0.6rem 0 0.2rem;">Bildausschnitt <span style="font-weight:400;">(0 = links/oben, 1 = rechts/unten)</span></p>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.4rem;">
+                        @foreach ([['focus_x', 'X'], ['focus_y', 'Y'], ['zoom', 'Zoom']] as [$field, $short])
+                            <div>
+                                <label for="sheet_{{ $slot }}_{{ $field }}" style="font-size:0.78rem;">{{ $short }}</label>
+                                <input form="sheet-form" type="number" step="0.01"
+                                       min="{{ $field === 'zoom' ? 1 : 0 }}" max="{{ $field === 'zoom' ? ($slot === 'detail' ? 12 : 6) : 1 }}"
+                                       id="sheet_{{ $slot }}_{{ $field }}" name="sheet_{{ $slot }}_{{ $field }}"
+                                       value="{{ $onboarding->{"sheet_{$slot}_{$field}"} }}" style="margin:0;width:100%;">
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endforeach
+        </div>
+
+        <form method="post" action="{{ route('sheet.update', $onboarding) }}" id="sheet-form" style="margin-top:1rem;">
+            @csrf
+            @method('PUT')
+
+            <h3 style="font-size:1rem;margin-bottom:0.4rem;">Produktzeilen</h3>
+            <p class="hint" style="margin-top:0;">Vorbelegt aus dem Konfigurator (maximal {{ config('presentation_sheet.products.max_products') }} Zeilen — mehr passt neben dem Foto nicht).
+                Die Zeile „1 Produkt = 1 Baum" kommt automatisch dazu.</p>
+            <div class="tablewrap">
+                <table class="data">
+                    <thead><tr><th>Bezeichnung</th><th>Untertitel</th><th>Icon</th></tr></thead>
+                    <tbody>
+                        @foreach ($sheetRows as $i => $row)
+                            <tr>
+                                <td><input form="sheet-form" type="text" name="rows[{{ $i }}][name]" value="{{ $row['name'] }}" style="margin:0;width:220px;"></td>
+                                <td><input form="sheet-form" type="text" name="rows[{{ $i }}][sub]" value="{{ $row['sub'] }}" style="margin:0;width:240px;"></td>
+                                <td>
+                                    <select form="sheet-form" name="rows[{{ $i }}][icon]" style="margin:0;padding:0.4rem;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;">
+                                        <option value="">— kein Icon —</option>
+                                        @foreach ($sheetIcons as $iconName)
+                                            <option value="{{ $iconName }}" {{ $row['iconName'] === $iconName ? 'selected' : '' }}>{{ $iconName }}</option>
+                                        @endforeach
+                                    </select>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem;margin-top:1rem;">
+                <div>
+                    <label for="sheet_first_name">Vorname im Kreis <span class="hint">(„Print your name!")</span></label>
+                    <input type="text" id="sheet_first_name" name="sheet_first_name" value="{{ $onboarding->sheet_first_name }}" placeholder="z. B. Julian">
+                </div>
+                <div>
+                    <label for="sheet_shop_url">Adresse der Bestellseite <span class="hint">(leer = automatisch)</span></label>
+                    <input type="url" id="sheet_shop_url" name="sheet_shop_url" value="{{ $onboarding->sheet_shop_url }}" placeholder="{{ $sheetShopUrl }}">
+                </div>
+            </div>
+
+            <button class="btn" type="submit">Speichern</button>
+        </form>
+
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem;align-items:center;">
+            <form method="post" action="{{ route('sheet.reset-rows', $onboarding) }}">
+                @csrf
+                <button class="btn secondary" type="submit">Produktzeilen aus dem Konfigurator übernehmen</button>
+            </form>
+            @if ($sheetMissing === [])
+                <a class="btn secondary" href="{{ route('sheet.preview', $onboarding) }}" target="_blank" rel="noopener">Vorschau öffnen</a>
+                <a class="btn" href="{{ route('sheet.pdf', $onboarding) }}">PDF herunterladen</a>
+            @endif
+        </div>
+    </div>
+
     {{-- Bestellemail (nur Sammelbestellfenster) --}}
     @if ($emailBody !== null)
         <div class="card">

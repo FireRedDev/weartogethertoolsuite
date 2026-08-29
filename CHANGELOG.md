@@ -25,6 +25,15 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 - Antragsliste: „Öffnen"-Button ganz nach links verschoben und beim horizontalen Scrollen fixiert — er war bei breiten Tabellen nicht mehr sichtbar
 - Fehlertransparenz überall: erklärte Fehlermeldungen mit kopierbaren technischen Details statt 500er-Seiten; Schutz vor Redirect-Verlust bei Schreibzugriffen (www vs. ohne www)
 
+### Präsentationsblatt (neu)
+- Je Bestellfenster erzeugt das Tool das A4-Präsentationsblatt automatisch — deckungsgleich mit der bisherigen InDesign-Vorlage (größte Abweichung 2,6 pt bei der Überschrift, alles übrige unter 0,4 pt)
+- Eingabe sind nur die beiden Mockups; Schulname, Produktzeilen, Farben, Bestellzeitraum, QR-Code und Adresse kommen aus dem Onboarding-Datensatz
+- Bildausschnitt je Mockup einstellbar (X/Y/Zoom); der Detailkreis („Print your name!") wird standardmäßig aus der Vorderansicht herangezoomt, alternativ eigenes Bild hochladen
+- Produktzeilen sind vorbelegt (Marketing-Bezeichnung + ausgeschriebene Farbliste) und frei überschreibbar, Icon je Zeile wählbar
+- Vorschau im Browser und PDF-Download; erzeugbar erst, wenn beide Mockups, Bestellfenster und mindestens ein Produkt vorhanden sind
+- Statischer Hintergrund als PNG mit transparenten Fenstern — `php artisan sheet:background <datei.png>` macht aus einem Grafik-Export (Bildplätze magenta gefüllt) die fertige Datei
+- Schrift: Source Sans 3 (OFL, im Repo) als Ersatz für das lizenzpflichtige Myriad Pro
+
 ### Modul 3: Bestellfenster schließen
 - Schule auswählen → alle Produkte der Schule im Shop auf privat setzen (nicht mehr sichtbar/bestellbar, `status=private` + `catalog_visibility=hidden`) und im CPT „schule" „Bestellfenster offen" auf NEIN — idempotent (bereits private Produkte werden übersprungen), mit Schritt-Protokoll und erklärten Fehlern
 - Produkte werden über die eindeutige Schul-Kategorie gefunden (Fallback: Namenssuche)

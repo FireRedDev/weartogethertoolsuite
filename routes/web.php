@@ -6,6 +6,7 @@ use App\Http\Controllers\CloseOrderWindowController;
 use App\Http\Controllers\FluentFormsWebhookController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\OrderToolController;
+use App\Http\Controllers\PresentationSheetController;
 use App\Http\Controllers\SchoolOnboardingController;
 use App\Http\Controllers\ShopExportController;
 use App\Http\Middleware\ToolAuth;
@@ -51,6 +52,15 @@ Route::middleware(ToolAuth::class)->group(function () {
     Route::post('/schulen/{onboarding}/anlegen', [SchoolOnboardingController::class, 'provision'])->name('schools.provision');
     Route::post('/schulen/{onboarding}/ondemand-sync', [SchoolOnboardingController::class, 'ondemandSync'])->name('schools.ondemand-sync');
     Route::delete('/schulen/{onboarding}', [SchoolOnboardingController::class, 'destroy'])->name('schools.destroy');
+
+    // Präsentationsblatt je Bestellfenster
+    Route::post('/schulen/{onboarding}/blatt/{slot}', [PresentationSheetController::class, 'upload'])->name('sheet.upload');
+    Route::delete('/schulen/{onboarding}/blatt/{slot}', [PresentationSheetController::class, 'deleteUpload'])->name('sheet.delete');
+    Route::put('/schulen/{onboarding}/blatt', [PresentationSheetController::class, 'update'])->name('sheet.update');
+    Route::post('/schulen/{onboarding}/blatt-zuruecksetzen', [PresentationSheetController::class, 'resetRows'])->name('sheet.reset-rows');
+    Route::get('/schulen/{onboarding}/blatt-bild/{slot}', [PresentationSheetController::class, 'image'])->name('sheet.image');
+    Route::get('/schulen/{onboarding}/blatt-vorschau', [PresentationSheetController::class, 'preview'])->name('sheet.preview');
+    Route::get('/schulen/{onboarding}/blatt.pdf', [PresentationSheetController::class, 'pdf'])->name('sheet.pdf');
 
     // Modul 3: Bestellfenster schließen
     Route::get('/bestellfenster-schliessen', [CloseOrderWindowController::class, 'index'])->name('close-window.index');

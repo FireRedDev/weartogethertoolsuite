@@ -10,7 +10,7 @@ Drei Module, verlinkt von der Startseite (`/` → `HomeController`):
 2. **Schul-Onboarding** (`/schulen`, `schools.*`) — FluentForms-Webhook → Konfigurator → Shop-Anlage (WooCommerce + Pods-CPT „schule" + optional Printify).
 3. **Bestellfenster schließen** (`/bestellfenster-schliessen`, `close-window.*`) — Produkte einer Schule auf privat setzen + CPT „Bestellfenster offen" = NEIN.
 
-Dazu ein Diagnose-Bereich **Admin-Informationen** (`/admin-informationen`, `admin.*`) — Live-Status aller API-Anbindungen, siehe unten.
+Dazu im Schul-Antrag ein **Präsentationsblatt** (A4-PDF je Bestellfenster, siehe unten) und ein Diagnose-Bereich **Admin-Informationen** (`/admin-informationen`, `admin.*`) — Live-Status aller API-Anbindungen, siehe unten.
 
 ## Befehle
 ```bash
@@ -34,6 +34,11 @@ php artisan printify:check --description=92,91  # Blueprint-Katalogbeschreibung 
   - `OrderEmailGenerator` — Bestellemail (Sammelbestellfenster).
 - **Katalog & Defaults:** `config/schoolshop.php` (12+ Produkte inkl. vorbefüllter Printify Blueprint/Provider-IDs, Preise, Pods-Defaults, Feld-Mapping).
 - **Views:** `resources/views/schools/{index,show,create}.blade.php`, `close-window/index.blade.php`, `admin/status.blade.php`, `home.blade.php`, Layout `layouts/app.blade.php`.
+- **`app/Services/PresentationSheet/`** — A4-Präsentationsblatt je Bestellfenster (ersetzt den InDesign-Handsatz):
+  - `PresentationSheetRenderer` — baut aus dem Onboarding eine flache Liste fertig positionierter Elemente (`data()`), daraus HTML bzw. PDF (dompdf). Die Blade-Vorlage `presentation-sheet/sheet.blade.php` enthält bewusst keinerlei Rechnerei.
+  - `SheetImages` — GD: Fotos „cover" auf die Fensterrechtecke zuschneiden (X/Y/Zoom je Bild), Detailkreis rund maskieren, QR-Code erzeugen.
+  - Layout: `config/presentation_sheet.php` — alle Koordinaten in pt, 1:1 aus der InDesign-Vorlage vermessen.
+  - `php artisan sheet:background <datei.png>` — Grafik-Export (Bildplätze magenta) → Hintergrund mit transparenten Fenstern.
 - **`app/Services/IntegrationStatusChecker`** — prüft live alle API-Clients (`testConnection()`-Methode je Client) + `WordPressAdminNotifier` (E-Mail-Alarm **nur** über einen WordPress-REST-Endpunkt, siehe Gotchas). Model `IntegrationStatus` speichert den letzten Stand pro Schnittstelle (verhindert Mehrfach-Benachrichtigung).
 
 ## Wichtige Gotchas (teuer erkauft — bitte beachten)
@@ -50,6 +55,10 @@ php artisan printify:check --description=92,91  # Blueprint-Katalogbeschreibung 
 - **Checkbox-Marker im Konfigurator:** Ein nicht angehaktes Kästchen wird nicht mitgeschickt. Die Druck-Häkchen (`print_front`/`print_back`) werden deshalb nur übernommen, wenn das versteckte Feld `print_slots_submitted` dabei ist — sonst würde jedes Speichern ohne den Logo-Bereich beide Drucke abschalten. Die Felder des Logo-Bereichs hängen per `form="configurator-form"` am Konfigurator-Formular (HTML erlaubt keine verschachtelten Formulare, die Upload-Formulare müssen eigenständig sein).
 - **Webhook ist verlustsicher + protokolliert:** Jeder Treffer wird in `webhook_logs` gespeichert (sichtbar unter Schul-Onboarding), bevor irgendeine Logik läuft. Schlägt das Mapping fehl, wird der Rohdatensatz trotzdem als Antrag gesichert. GET auf die Webhook-URL = Browser-Test (200/404/503).
 - **Toolsuite verschickt NIE selbst E-Mails.** Kein Mailer/SMTP in Laravel konfiguriert (bewusst so lassen). Ausfall-Alarme laufen über `WordPressAdminNotifier` → POST an einen custom WP-REST-Endpunkt (`wordpress-mu-plugin/weartogether-notify.php`, muss auf dem WP-Server als mu-Plugin liegen), der dort `wp_mail()` aufruft. Fehlt das mu-Plugin, schlägt der Call einfach fehl (404) — kein Absturz, nur kein Alarm.
+- **Präsentationsblatt — drei Ebenen:** Fotos zuerst, darüber der Hintergrund (`resources/presentation-sheet/background.png`, PNG mit transparenten Fenstern), darüber Texte/Icons/QR. Der Hintergrund übernimmt das Freistellen der schrägen Rahmen und des Kreises — deshalb **kein** Polygon-Masking im Code. Die Detailaufnahme muss trotzdem rund maskiert werden, sonst überdeckt ihr Quadrat das darunterliegende Mockup (beide liegen unter dem Hintergrund).
+- **Blade: `@php(...)` und `@php … @endphp` nie in derselben Datei mischen.** Blades Regex für den Blockform-`@php` greift vom ersten inline `@php(` bis zum nächsten `@endphp` und verschluckt alles dazwischen — die Vorlage kompiliert dann still falsch. Gilt auch für ein `@php(` in einem Blade-Kommentar.
+- **dompdf setzt Text tiefer als angefragt** (`factor × Schriftgröße − offset`, gemessen in `presentation_sheet.text_top_correction`). Die `top`-Werte in der Config sind Buchstaben-Oberkanten wie in InDesign; `PresentationSheetTest` rechnet zurück und prüft gegen die Vorlagenkoordinaten.
+- **dompdf liest nur innerhalb des Projektverzeichnisses** (chroot). Erzeugte Bilder müssen deshalb unter `storage/app/public` liegen, nicht in `/tmp`.
 - **`Http::fake()` in Tests überschreibt eine bereits registrierte URL NICHT** (erste Registrierung gewinnt) — für Tests, die denselben Endpunkt über mehrere Aufrufe hinweg unterschiedlich antworten lassen müssen (z. B. Status-Wechsel OK→Fehler→OK), `Http::fake(['url' => Http::sequence()->push(...)->push(...)])` verwenden, nicht `Http::fake()` mehrfach mit derselben URL aufrufen.
 
 ## Deployment & Versionsnummer

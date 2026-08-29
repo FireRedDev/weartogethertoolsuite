@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\WooCommerceApiException;
 use App\Models\SchoolOnboarding;
+use App\Services\PresentationSheet\PresentationSheetRenderer;
 use App\Services\SchoolShop\LogoManager;
 use App\Services\SchoolShop\OrderEmailGenerator;
 use App\Services\SchoolShop\PrintifyClient;
@@ -55,8 +56,25 @@ class SchoolOnboardingController extends Controller
         return redirect()->route('schools.show', $onboarding);
     }
 
-    public function show(SchoolOnboarding $onboarding, PrintifyProvisioner $printifyProvisioner): View
-    {
+    public function show(
+        SchoolOnboarding $onboarding,
+        PrintifyProvisioner $printifyProvisioner,
+        PresentationSheetRenderer $sheet,
+    ): View {
+        // Produktzeilen des Präsentationsblatts: gespeicherte Fassung, sonst der
+        // Vorschlag aus dem Konfigurator — immer auf die Zeilenzahl aufgefüllt,
+        // damit auch leere Zeilen bearbeitbar sind.
+        $rows = $sheet->productRows($onboarding);
+        $rowCount = max(count($rows), (int) config('presentation_sheet.products.max_products'));
+        $sheetRows = [];
+        for ($i = 0; $i < $rowCount; $i++) {
+            $sheetRows[] = [
+                'name' => $rows[$i]['name'] ?? '',
+                'sub' => $rows[$i]['sub'] ?? '',
+                'iconName' => $rows[$i]['icon'] ?? '',
+            ];
+        }
+
         return view('schools.show', [
             'onboarding' => $onboarding,
             'emailBody' => $onboarding->delivery_type === 'collective'
@@ -66,6 +84,10 @@ class SchoolOnboardingController extends Controller
             'printifyEconomics' => $onboarding->delivery_type === 'ondemand'
                 ? $this->printifyEconomics($onboarding, $printifyProvisioner)
                 : [],
+            'sheetMissing' => $sheet->missingRequirements($onboarding),
+            'sheetRows' => $sheetRows,
+            'sheetIcons' => $sheet->availableIcons(),
+            'sheetShopUrl' => $sheet->shopUrl($onboarding),
         ]);
     }
 
