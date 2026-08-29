@@ -49,9 +49,17 @@ class ShopProvisioner
             $steps[] = 'Sammelbestellfenster: Produkte ohne Versandklasse (kostenloser Versand)';
         }
 
+        foreach ($onboarding->activePrintSlots() as $slot) {
+            $steps[] = sprintf(
+                '%s: Logo %s (%s)',
+                SchoolOnboarding::PRINT_SLOTS[$slot],
+                $onboarding->logoPlacementLabel($slot),
+                $onboarding->logoUrl($slot) ? 'Datei vorhanden' : 'FEHLT — bitte Logo hochladen',
+            );
+        }
+
         if ($onboarding->mockups_enabled && $onboarding->delivery_type !== 'ondemand') {
-            $placementLabel = config("schoolshop.mockups.placements.{$onboarding->mockup_placement}.label", $onboarding->mockup_placement);
-            $steps[] = "Mockups erzeugen (Model-Fotos + Detailansichten, Logo-Platzierung: {$placementLabel}) und als Produktbild/Galerie setzen";
+            $steps[] = 'Mockups erzeugen (Model-Fotos + Detailansichten, Logo wie beim Frontprint) und als Produktbild/Galerie setzen';
         }
 
         $steps[] = $onboarding->pods_post_id
@@ -160,7 +168,7 @@ class ShopProvisioner
             }
 
             // 5c. Logo als Beitragsbild (falls vorhanden)
-            $logoUrl = ($onboarding->logo_files ?? [])[0] ?? null;
+            $logoUrl = $onboarding->logoUrl('front');
             if ($logoUrl && $onboarding->pods_post_id) {
                 $run('Logo als Beitragsbild setzen', function () use ($onboarding, $logoUrl) {
                     $mediaId = $this->wordpress->uploadMediaFromUrl($logoUrl);
@@ -291,9 +299,9 @@ class ShopProvisioner
      */
     private function applyMockups(SchoolOnboarding $onboarding, array &$log): void
     {
-        $logoUrl = ($onboarding->logo_files ?? [])[0] ?? null;
+        $logoUrl = $onboarding->logoUrl('front');
         if (! $logoUrl) {
-            $log[] = ['step' => 'Mockups', 'ok' => false, 'detail' => 'Kein Logo hinterlegt — Mockups übersprungen. Logo-Datei im Antrag ergänzen und erneut anlegen.'];
+            $log[] = ['step' => 'Mockups', 'ok' => false, 'detail' => 'Kein Logo hinterlegt — Mockups übersprungen. Im Bereich „Schullogo & Druck" ein Logo hochladen und erneut anlegen.'];
 
             return;
         }
@@ -358,13 +366,14 @@ class ShopProvisioner
      */
     private function applyPrintify(SchoolOnboarding $onboarding, callable $run, array &$log): void
     {
-        $frontLogo = ($onboarding->logo_files ?? [])[0] ?? null;
-        $backLogo = ($onboarding->logo_files ?? [])[1] ?? null;
-        $wantsBackprint = in_array('Backprint', $onboarding->print_areas ?? [], true);
-        if (! $frontLogo) {
+        $activeSlots = $onboarding->activePrintSlots();
+        $slotsWithLogo = array_filter($activeSlots, fn ($slot) => $onboarding->logoUrl($slot) !== null);
+        if ($slotsWithLogo === []) {
             throw new ProvisionAbortedException([...$log, [
                 'step' => 'Printify-Produkte anlegen', 'ok' => false,
-                'detail' => 'Kein Logo vorhanden. Bitte im Antrag eine Logo-Datei hinterlegen (kommt normalerweise aus dem Formular-Upload).',
+                'detail' => $activeSlots === []
+                    ? 'Weder Frontprint noch Backprint ist aktiviert — es gäbe nichts zu drucken. Bitte im Bereich „Schullogo & Druck" mindestens einen Druck anhaken und speichern.'
+                    : 'Kein Logo vorhanden. Bitte im Bereich „Schullogo & Druck" ein Logo hochladen — das Logo ist im Formular kein Pflichtfeld und fehlt deshalb häufig.',
             ]], new \RuntimeException('Logo fehlt'));
         }
 
@@ -388,16 +397,12 @@ class ShopProvisioner
 
             $result = $run(
                 "Printify-Produkt '".$onboarding->school_name.' '.$preset['name_suffix']."' anlegen + publishen (inkl. Margen-Prüfung)",
-                fn () => $this->printify->createAndPublish(
-                    $onboarding,
-                    $product,
-                    $blueprintId,
-                    $providerId,
-                    $frontLogo,
-                    $wantsBackprint ? $backLogo : null,
-                ),
+                fn () => $this->printify->createAndPublish($onboarding, $product, $blueprintId, $providerId),
             );
             $log[] = ['step' => "Margen-Prüfung {$key}", 'ok' => true, 'detail' => $result['price_check']['message']];
+            foreach ($result['notes'] as $note) {
+                $log[] = ['step' => "Varianten/Druck {$key}", 'ok' => true, 'detail' => $note];
+            }
             $printifyIds[$key] = $result['printify_product_id'];
             $onboarding->printify_product_ids = $printifyIds;
             $onboarding->save();

@@ -74,10 +74,100 @@
         @endif
     </div>
 
+    {{-- Schullogo & Druck --}}
+    {{-- Die Upload-Formulare müssen eigenständig sein (HTML erlaubt keine
+         verschachtelten Formulare); Druck-Häkchen und Platzierung gehören
+         dagegen zum Konfigurator und werden über form="configurator-form"
+         mitgespeichert. --}}
+    <div class="card">
+        <h2>Schullogo &amp; Druck</h2>
+        <p class="lead">Das Logo ist im Formular kein Pflichtfeld — hier lässt es sich nachträglich hochladen und austauschen.
+            Der Upload der Kund:innen gilt automatisch für beide Drucke; pro Druck kann aber eine eigene Datei hinterlegt werden.
+            Druck-Häkchen, Position und Größe werden mit <strong>Speichern</strong> im Konfigurator übernommen.</p>
+
+        {{-- Marker: ohne ihn wäre „Häkchen weg" nicht von „Feld nicht mitgeschickt" zu unterscheiden --}}
+        <input type="hidden" form="configurator-form" name="print_slots_submitted" value="1">
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem;">
+            @foreach (\App\Models\SchoolOnboarding::PRINT_SLOTS as $slot => $slotLabel)
+                @php($logoUrl = $onboarding->logoUrl($slot))
+                @php($previewUrl = $onboarding->hasUploadedLogo($slot) ? route('schools.logo.show', [$onboarding, $slot]) : $logoUrl)
+                <div style="border:1px solid var(--line);border-radius:10px;padding:0.9rem;">
+                    <label style="font-weight:600;display:flex;gap:0.5rem;align-items:center;">
+                        <input type="checkbox" form="configurator-form" name="print_{{ $slot }}" value="1" {{ $onboarding->prints($slot) ? 'checked' : '' }}>
+                        {{ $slotLabel }}
+                    </label>
+
+                    <div style="display:flex;gap:0.75rem;align-items:flex-start;margin-top:0.6rem;">
+                        <div style="width:96px;height:96px;flex:none;border:1px solid var(--line);border-radius:8px;background:#f7f8fa url('data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\'><rect width=\'8\' height=\'8\' fill=\'%23eceff3\'/><rect x=\'8\' y=\'8\' width=\'8\' height=\'8\' fill=\'%23eceff3\'/></svg>');display:flex;align-items:center;justify-content:center;overflow:hidden;">
+                            @if ($previewUrl)
+                                <img src="{{ $previewUrl }}" alt="Logo {{ $slotLabel }}" style="max-width:100%;max-height:100%;object-fit:contain;">
+                            @else
+                                <span class="hint" style="text-align:center;font-size:0.7rem;">kein Logo</span>
+                            @endif
+                        </div>
+                        <div style="min-width:0;">
+                            @if ($previewUrl)
+                                <p class="hint" style="margin:0;word-break:break-all;">
+                                    {{ $onboarding->hasUploadedLogo($slot) ? 'Im Tool hochgeladen' : 'Aus dem Formular übernommen' }}
+                                </p>
+                                <a class="btn secondary" style="padding:0.25rem 0.6rem;font-size:0.8rem;margin-top:0.35rem;"
+                                   href="{{ $onboarding->hasUploadedLogo($slot) ? route('schools.logo.show', [$onboarding, $slot, 'download' => 1]) : $logoUrl }}"
+                                   target="_blank" rel="noopener" download>Herunterladen</a>
+                                @if ($onboarding->hasUploadedLogo($slot))
+                                    <form method="post" action="{{ route('schools.logo.reset', [$onboarding, $slot]) }}" style="display:inline;"
+                                          onsubmit="return confirm('Hochgeladenes Logo entfernen? Danach gilt wieder die Datei aus dem Formular.');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button class="btn secondary" type="submit" style="padding:0.25rem 0.6rem;font-size:0.8rem;color:var(--error);">Entfernen</button>
+                                    </form>
+                                @endif
+                            @else
+                                <p class="hint" style="margin:0;">Für diesen Druck ist noch keine Datei hinterlegt.</p>
+                            @endif
+                        </div>
+                    </div>
+
+                    <form method="post" action="{{ route('schools.logo.upload', [$onboarding, $slot]) }}" enctype="multipart/form-data" style="margin-top:0.6rem;">
+                        @csrf
+                        <input type="file" name="logo" accept=".png,.jpg,.jpeg,.webp" required style="font-size:0.82rem;">
+                        <button class="btn secondary" type="submit" style="padding:0.3rem 0.7rem;font-size:0.82rem;">
+                            {{ $onboarding->hasUploadedLogo($slot) ? 'Austauschen' : 'Hochladen' }}
+                        </button>
+                    </form>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:0.7rem;">
+                        <div>
+                            <label for="logo_{{ $slot }}_position">Position</label>
+                            <select form="configurator-form" id="logo_{{ $slot }}_position" name="logo_{{ $slot }}_position"
+                                    style="width:100%;padding:0.5rem;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;">
+                                @foreach (config('schoolshop.logo_positions') as $positionKey => $position)
+                                    <option value="{{ $positionKey }}" {{ $onboarding->logoPositionKey($slot) === $positionKey ? 'selected' : '' }}>{{ $position['label'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label for="logo_{{ $slot }}_size">Größe</label>
+                            <select form="configurator-form" id="logo_{{ $slot }}_size" name="logo_{{ $slot }}_size"
+                                    style="width:100%;padding:0.5rem;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;">
+                                @foreach (config('schoolshop.logo_sizes') as $sizeKey => $size)
+                                    <option value="{{ $sizeKey }}" {{ $onboarding->logoSizeKey($slot) === $sizeKey ? 'selected' : '' }}>{{ $size['label'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+
+        <p class="hint" style="margin-top:0.75rem;">Erlaubt sind PNG, JPG und WebP bis 5 MB (kein SVG — Printify und die Mockup-Erzeugung brauchen ein Pixelformat).
+            Hochgeladene Logos werden zusätzlich in die WordPress-Mediathek gelegt, weil Printify und Dynamic Mockups die Datei selbst herunterladen müssen.</p>
+    </div>
+
     {{-- Konfigurator --}}
     <div class="card">
         <h2>Konfigurator</h2>
-        <form method="post" action="{{ route('schools.update', $onboarding) }}">
+        <form method="post" action="{{ route('schools.update', $onboarding) }}" id="configurator-form">
             @csrf
             @method('PUT')
 
@@ -120,10 +210,14 @@
             <p class="hint" id="ondemand_window_hint" style="{{ $isOndemandInitial ? '' : 'display:none;' }}">On-Demand: Bestellfenster und Klassenliste entfallen — Produkte werden laufend einzeln an die Privatadresse der Kund:innen verschickt.</p>
 
             @php($isOndemand = $onboarding->delivery_type === 'ondemand')
-            @php($hasNonEuProvider = collect($printifyShippingInfo ?? [])->contains(fn ($i) => $i['country'] !== null && ! $i['is_eu']))
+            @php($hasNonEuProvider = collect($printifyEconomics ?? [])->contains(fn ($i) => $i['country'] !== null && ! $i['is_eu']))
             <h2 style="margin-top:1rem;">Produkte & Preise</h2>
             @if ($isOndemand)
-                <p class="hint">On-Demand: Blueprint-ID und Print-Provider-ID pro Produkt eintragen — mit dem 🔍-Button direkt hier im Konfigurator suchen (siehe auch Spaltenkopf-Hinweis ⓘ). Der Verkaufspreis wird beim Anlegen automatisch gegen Produktionskosten + Versand + {{ (int) round(config('schoolshop.printify.min_margin') * 100) }}% Marge geprüft.</p>
+                <p class="hint">On-Demand: Blueprint-ID und Print-Provider-ID pro Produkt eintragen — mit dem 🔍-Button direkt hier im Konfigurator suchen (siehe auch Spaltenkopf-Hinweis ⓘ).
+                    Die Spalten Einkauf, Versand und Marge kommen live aus dem Printify-Katalog (24 h gecacht) und beziehen sich auf genau die Varianten, die auch angelegt werden.
+                    Der Verkaufspreis wird beim Anlegen automatisch gegen Produktionskosten + Versand + {{ (int) round(config('schoolshop.printify.min_margin') * 100) }}% Marge geprüft.
+                    Angelegt werden nur Varianten in den oben gewählten Farben und Größen — sonst greift das Printify-Limit von {{ config('schoolshop.printify.max_variants') }} Varianten pro Produkt,
+                    und die Vorschaubilder zeigen Farben, die die Schule gar nicht bestellt.</p>
                 @if ($hasNonEuProvider)
                     <div class="alert warn">⚠ Mindestens ein Produkt hat aktuell keinen EU-Provider hinterlegt — außerhalb der EU sind Versandkosten und Lieferzeit nach Österreich in der Regel höher (siehe Region/Versand-Spalte unten). Die Marge wird trotzdem korrekt gegen die tatsächlichen Versandkosten geprüft.</div>
                 @endif
@@ -136,14 +230,17 @@
                             @if ($isOndemand)
                                 <th title="IDs herausfinden: (1) 🔍-Button in dieser Zeile — sucht direkt im Printify-Katalog. (2) Per SSH am Server: php artisan printify:check --blueprints=SUCHBEGRIFF. (3) Direkt auf printify.com im Produktkatalog nachsehen.">Printify Blueprint-ID ⓘ</th>
                                 <th title="IDs herausfinden: (1) 🔍-Button in dieser Zeile (braucht eine bereits eingetragene Blueprint-ID). (2) Per SSH am Server: php artisan printify:check --providers=BLUEPRINT_ID. (3) Direkt auf printify.com beim Produkt nachsehen.">Provider-ID ⓘ</th>
-                                <th>Region / Versand</th>
+                                <th>Region</th>
+                                <th title="Einkaufspreis bei Printify (Produktionskosten je Stück, ohne Versand). Bei mehreren Größen/Farben die Spanne — für die Margenprüfung zählt der höchste Wert.">Einkauf (€) ⓘ</th>
+                                <th title="Versandkosten des ersten Artikels nach Österreich, laut Versandprofil des Print-Providers.">Versand (€) ⓘ</th>
+                                <th title="Marge = (Verkaufspreis − Einkauf − Versand) ÷ (Einkauf + Versand). Rot, wenn sie unter der Mindestmarge liegt — dann verweigert die Shop-Anlage das Produkt.">Marge ⓘ</th>
                             @endif
                         </tr>
                     </thead>
                     <tbody>
                         @foreach ($onboarding->products ?? [] as $product)
                             @if (! empty($product['unmapped']))
-                                <tr><td colspan="{{ $isOndemand ? 9 : 6 }}"><span class="alert warn" style="display:block;">⚠ {{ $product['label'] }} — bitte manuell im Shop anlegen.</span></td></tr>
+                                <tr><td colspan="{{ $isOndemand ? 12 : 6 }}"><span class="alert warn" style="display:block;">⚠ {{ $product['label'] }} — bitte manuell im Shop anlegen.</span></td></tr>
                                 @continue
                             @endif
                             <tr>
@@ -162,20 +259,60 @@
                                         <input type="text" id="pv-{{ $product['key'] }}" name="products[{{ $product['key'] }}][printify_provider_id]" value="{{ $product['printify_provider_id'] ?? '' }}" style="width:70px;margin:0;display:inline-block;vertical-align:middle;" placeholder="z. B. 27">
                                         <button type="button" class="btn secondary" style="padding:0.2rem 0.45rem;font-size:0.75rem;margin-left:0.2rem;vertical-align:middle;" onclick="openPrintifySearch('provider', 'pv-{{ $product['key'] }}', 'bp-{{ $product['key'] }}')" title="Provider suchen (braucht Blueprint-ID)">🔍</button>
                                     </td>
+                                @php($info = $printifyEconomics[$product['key']] ?? null)
                                     <td style="white-space:nowrap;">
-                                        @php($info = $printifyShippingInfo[$product['key']] ?? null)
                                         @if ($info === null)
                                             <span class="hint">—</span>
                                         @else
-                                            <span title="{{ $info['provider_title'] }}">
+                                            <span title="Print-Provider: {{ $info['provider_title'] }}">
                                                 {{ $info['country'] ? ($info['is_eu'] ? '🇪🇺 '.$info['country'] : '🌍 '.$info['country']) : '?' }}
                                             </span>
-                                            @if ($info['shipping_eur'] !== null)
-                                                · {{ number_format($info['shipping_eur'], 2, ',', '') }} €
-                                            @endif
                                             @if ($info['country'] !== null && ! $info['is_eu'])
                                                 <br><span class="hint" style="color:var(--error);">außerhalb EU</span>
                                             @endif
+                                        @endif
+                                    </td>
+                                    <td style="white-space:nowrap;">
+                                        @if ($info === null || $info['cost_max_eur'] === null)
+                                            <span class="hint">—</span>
+                                        @else
+                                            <span title="Gilt für die {{ $info['variant_selected'] ?: $info['variant_total'] }} tatsächlich angelegten Varianten (von {{ $info['variant_total'] }} im Katalog).">
+                                                @if ($info['cost_min_eur'] !== null && $info['cost_min_eur'] < $info['cost_max_eur'])
+                                                    {{ number_format($info['cost_min_eur'], 2, ',', '') }}–{{ number_format($info['cost_max_eur'], 2, ',', '') }}
+                                                @else
+                                                    {{ number_format($info['cost_max_eur'], 2, ',', '') }}
+                                                @endif
+                                            </span>
+                                            @if ($info['missing_colors'] !== [])
+                                                <br><span class="hint" style="color:var(--error);" title="Verfügbar bei diesem Provider: {{ implode(', ', $info['available_colors']) ?: '—' }}">Farbe fehlt: {{ implode(', ', $info['missing_colors']) }}</span>
+                                            @endif
+                                        @endif
+                                    </td>
+                                    <td style="white-space:nowrap;">
+                                        @if ($info === null || $info['shipping_eur'] === null)
+                                            <span class="hint">—</span>
+                                        @else
+                                            @php($shipTo = $info['shipping_is_row']
+                                                ? 'alle übrigen Länder (Sammelprofil „Rest der Welt")'
+                                                : (count($info['shipping_countries']) > 12
+                                                    ? implode(', ', array_slice($info['shipping_countries'], 0, 12)).' … ('.count($info['shipping_countries']).' Länder)'
+                                                    : implode(', ', $info['shipping_countries'])))
+                                            <span title="Versand von {{ $info['country'] ?? 'unbekannt' }} nach {{ $shipTo ?: 'unbekannt' }}. Angegeben ist der erste Artikel einer Sendung.">
+                                                {{ number_format($info['shipping_eur'], 2, ',', '') }}
+                                            </span>
+                                            @if ($info['shipping_is_fallback'])
+                                                <br><span class="hint" style="color:var(--error);">kein Profil für AT — Ersatzwert</span>
+                                            @endif
+                                        @endif
+                                    </td>
+                                    <td style="white-space:nowrap;">
+                                        @if ($info === null || $info['margin_pct'] === null)
+                                            <span class="hint">—</span>
+                                        @else
+                                            <strong style="color:{{ $info['margin_ok'] ? 'var(--ok, #16803c)' : 'var(--error)' }};">{{ number_format($info['margin_pct'], 1, ',', '') }} %</strong>
+                                            @unless ($info['margin_ok'])
+                                                <br><span class="hint" style="color:var(--error);">min. {{ number_format($info['min_price_eur'], 2, ',', '') }} €</span>
+                                            @endunless
                                         @endif
                                     </td>
                                 @endif
@@ -193,15 +330,8 @@
                     1–2 Model-Fotos (bevorzugt eine Frau und ein Mann, wechselnd je Schule) plus Detailansichten in den
                     gewählten Farben, jeweils mit dem Schullogo an der gewählten Position.</span>
             </label>
-            <div style="max-width:320px;margin-top:0.5rem;">
-                <label for="mockup_placement">Logo-Platzierung</label>
-                <select id="mockup_placement" name="mockup_placement" style="width:100%;padding:0.6rem 0.75rem;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;">
-                    @foreach (config('schoolshop.mockups.placements') as $placementKey => $placement)
-                        <option value="{{ $placementKey }}" {{ old('mockup_placement', $onboarding->mockup_placement ?? 'brust_links') === $placementKey ? 'selected' : '' }}>{{ $placement['label'] }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <p class="hint">Gilt für Sammelbestellfenster-Produkte (On-Demand: Printify erzeugt eigene Produktbilder).
+            <p class="hint">Logo-Position und -Größe kommen aus dem <strong>Frontprint</strong> (Bereich „Schullogo &amp; Druck" oben).
+                Gilt für Sammelbestellfenster-Produkte (On-Demand: Printify erzeugt eigene Produktbilder).
                 Vorlagen je Produkt werden einmalig in <code>config/schoolshop.php</code> (<code>mockups.templates</code>) hinterlegt —
                 nachschlagen mit <code>php artisan mockups:check</code>. Produkte ohne Vorlagen werden übersprungen.</p>
 
@@ -230,7 +360,7 @@
                     <input type="text" id="pv-__KEY__" name="products[__KEY__][printify_provider_id]" style="width:70px;margin:0;display:inline-block;vertical-align:middle;" placeholder="z. B. 27">
                     <button type="button" class="btn secondary" style="padding:0.2rem 0.45rem;font-size:0.75rem;margin-left:0.2rem;vertical-align:middle;" onclick="openPrintifySearch('provider', 'pv-__KEY__', 'bp-__KEY__')" title="Provider suchen (braucht Blueprint-ID)">🔍</button>
                 </td>
-                <td class="hint">nach dem Speichern sichtbar</td>
+                <td class="hint" colspan="4">Kosten/Marge nach dem Speichern sichtbar</td>
             @endif
             <td><input type="hidden" name="products[__KEY__][new]" value="1"><button type="button" class="btn secondary" style="color:var(--error);padding:0.2rem 0.5rem;" onclick="this.closest('tr').remove()">✕ entfernen</button></td>
         </tr>

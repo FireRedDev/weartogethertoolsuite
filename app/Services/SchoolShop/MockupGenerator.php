@@ -32,7 +32,8 @@ class MockupGenerator
     public function generateForProduct(SchoolOnboarding $onboarding, array $product, string $logoUrl): array
     {
         $templates = config("schoolshop.mockups.templates.{$product['key']}", ['lifestyle' => [], 'detail' => []]);
-        $placement = $this->placement($onboarding);
+        // Mockups zeigen die Vorderseite — Position/Größe kommen daher aus dem Frontprint.
+        $placement = $onboarding->logoPlacement('front');
         $images = [];
 
         foreach ($this->pickLifestyle($onboarding, $product['key'], $templates['lifestyle'] ?? []) as $i => $template) {
@@ -52,15 +53,6 @@ class MockupGenerator
         }
 
         return $images;
-    }
-
-    /** @return array{x: float, y: float, width: float} */
-    private function placement(SchoolOnboarding $onboarding): array
-    {
-        $placements = config('schoolshop.mockups.placements');
-        $key = $onboarding->mockup_placement;
-
-        return $placements[$key] ?? $placements['brust_links'];
     }
 
     /**

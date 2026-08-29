@@ -477,6 +477,9 @@ class SchoolOnboardingTest extends TestCase
             'shop.example/wp-json/wp/v2/media*' => Http::response(['id' => 555], 201),
             'shop.example/uploads/*' => Http::response('img', 200, ['Content-Type' => 'image/png']),
             'api.printify.com/v1/uploads/images.json' => Http::response(['id' => 'img-1'], 200),
+            'api.printify.com/v1/catalog/print_providers/27.json' => Http::response([
+                'id' => 27, 'title' => 'Textildruck Europa', 'location' => ['country' => 'DE'],
+            ]),
             'api.printify.com/v1/catalog/blueprints/6/print_providers/27/variants.json' => Http::response([
                 'variants' => [['id' => 101, 'cost' => 1500], ['id' => 102, 'cost' => 1600]],
             ]),
@@ -579,6 +582,9 @@ class SchoolOnboardingTest extends TestCase
     public function test_printify_price_rule_enforces_minimum_margin(): void
     {
         Http::fake([
+            'api.printify.com/v1/catalog/print_providers/27.json' => Http::response([
+                'id' => 27, 'title' => 'Textildruck Europa', 'location' => ['country' => 'DE'],
+            ]),
             'api.printify.com/v1/catalog/blueprints/6/print_providers/27/variants.json' => Http::response([
                 'variants' => [
                     ['id' => 1, 'cost' => 1500], ['id' => 2, 'cost' => 1800],
@@ -599,51 +605,91 @@ class SchoolOnboardingTest extends TestCase
         $this->assertTrue($ok['ok']);
     }
 
-    public function test_show_page_displays_printify_provider_region_and_shipping_cost(): void
+    /** Katalog-Fakes für die Konfigurator-Anzeige (Provider, Varianten, Versand). */
+    private function fakePrintifyCatalog(string $providerCountry, int $shippingCents, ?array $profiles = null): void
     {
         Http::fake([
             'api.printify.com/v1/catalog/print_providers/26.json' => Http::response([
-                'id' => 26, 'title' => 'Textildruck Europa', 'location' => ['country' => 'DE'],
+                'id' => 26, 'title' => 'Textildruck Europa', 'location' => ['country' => $providerCountry],
+            ]),
+            'api.printify.com/v1/catalog/blueprints/92/print_providers/26/variants.json' => Http::response([
+                'variants' => [
+                    ['id' => 1, 'title' => 'White / M', 'options' => ['color' => 'White', 'size' => 'M'], 'cost' => 1500],
+                    ['id' => 2, 'title' => 'Burgundy / L', 'options' => ['color' => 'Burgundy', 'size' => 'L'], 'cost' => 1800],
+                    ['id' => 3, 'title' => 'Olive / M', 'options' => ['color' => 'Olive', 'size' => 'M'], 'cost' => 9900],
+                ],
             ]),
             'api.printify.com/v1/catalog/blueprints/92/print_providers/26/shipping.json' => Http::response([
-                'profiles' => [['countries' => ['AT'], 'first_item' => ['cost' => 390]]],
+                'profiles' => $profiles ?? [['countries' => ['AT'], 'first_item' => ['cost' => $shippingCents]]],
             ]),
         ]);
+    }
 
+    private function ondemandOnboarding(): SchoolOnboarding
+    {
         $payload = $this->webhookPayload();
         $payload['input_radio_7'] = 'On-Demand online';
         $payload['multi_select_1'] = ['Hoodie'];
         $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
-        $onboarding = SchoolOnboarding::sole();
+
+        return SchoolOnboarding::sole();
+    }
+
+    public function test_show_page_displays_printify_region_purchase_price_shipping_and_margin(): void
+    {
+        $this->fakePrintifyCatalog('DE', 390);
+        $onboarding = $this->ondemandOnboarding();
 
         $response = $this->get("/schulen/{$onboarding->id}");
 
         $response->assertOk();
         $response->assertSee('DE');
-        $response->assertSee('3,90');
+        $response->assertSee('3,90');                 // Versand
+        $response->assertSee('15,00–18,00');          // Einkaufspreis-Spanne der gewählten Farben
+        $response->assertDontSee('99,00');            // Olive ist keine Schulfarbe -> zählt nicht mit
+        $response->assertSee('Marge');
         $response->assertDontSee('außerhalb EU');
     }
 
     public function test_show_page_flags_non_eu_printify_provider(): void
     {
-        Http::fake([
-            'api.printify.com/v1/catalog/print_providers/26.json' => Http::response([
-                'id' => 26, 'title' => 'Some US Provider', 'location' => ['country' => 'US'],
-            ]),
-            'api.printify.com/v1/catalog/blueprints/92/print_providers/26/shipping.json' => Http::response([
-                'profiles' => [['countries' => ['AT'], 'first_item' => ['cost' => 890]]],
-            ]),
-        ]);
+        $this->fakePrintifyCatalog('US', 890);
+        $onboarding = $this->ondemandOnboarding();
 
-        $payload = $this->webhookPayload();
-        $payload['input_radio_7'] = 'On-Demand online';
-        $payload['multi_select_1'] = ['Hoodie'];
-        $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
-        $onboarding = SchoolOnboarding::sole();
+        $this->get("/schulen/{$onboarding->id}")->assertOk()->assertSee('außerhalb EU');
+    }
+
+    /**
+     * Printify liefert oft mehrere Versandprofile. Ein Profil, das AT
+     * ausdrücklich nennt, muss das Sammelprofil REST_OF_THE_WORLD schlagen —
+     * auch wenn dieses in der Antwort zuerst steht.
+     */
+    public function test_shipping_cost_prefers_austria_profile_over_rest_of_world(): void
+    {
+        $this->fakePrintifyCatalog('DE', 0, [
+            ['countries' => ['REST_OF_THE_WORLD'], 'first_item' => ['cost' => 1290]],
+            ['countries' => ['AT', 'DE', 'CH'], 'first_item' => ['cost' => 490]],
+        ]);
+        $onboarding = $this->ondemandOnboarding();
 
         $response = $this->get("/schulen/{$onboarding->id}");
 
         $response->assertOk();
-        $response->assertSee('außerhalb EU');
+        $response->assertSee('4,90');
+        $response->assertDontSee('12,90');
+    }
+
+    public function test_margin_column_flags_price_below_minimum(): void
+    {
+        // Teuerste gewählte Variante 18,00 + Versand 3,90 = 21,90 -> Mindestpreis 24,09
+        $this->fakePrintifyCatalog('DE', 390);
+        $onboarding = $this->ondemandOnboarding();
+        $onboarding->products = collect($onboarding->products)->map(fn ($p) => [
+            ...$p,
+            'base_price' => ($p['key'] ?? '') === 'schulpullover' ? 22.00 : $p['base_price'],
+        ])->all();
+        $onboarding->save();
+
+        $this->get("/schulen/{$onboarding->id}")->assertOk()->assertSee('min. 24,09 €');
     }
 }

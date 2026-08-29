@@ -46,6 +46,78 @@ return [
         'shop_id' => env('PRINTIFY_SHOP_ID', ''),
         // Verkaufspreis muss mindestens (Produktionskosten + Versand) * (1 + Marge) sein
         'min_margin' => 0.10,
+
+        // Harte Obergrenze der Printify-API: ein Produkt darf max. 100 Varianten
+        // haben. Wir filtern ohnehin auf die gewählten Farben/Größen; dieser
+        // Deckel greift nur als letzte Sicherung (mit Protokoll-Hinweis).
+        'max_variants' => 100,
+
+        /*
+         * Farb-/Größennamen im Konfigurator sind deutsch, der Printify-Katalog
+         * ist englisch. Nur Varianten in den gewählten Farben/Größen werden
+         * angelegt — sonst entstehen Produkte mit hunderten Varianten und
+         * Vorschaubildern in Farben, die die Schule gar nicht bestellt hat.
+         *
+         * Zuerst wird exakt verglichen (nach Kleinschreibung), erst wenn es dafür
+         * keinen Treffer gibt, als Teilstring ("Black" trifft dann auch
+         * "Black Heather"). Unbekannte Farben einfach hier ergänzen.
+         */
+        'color_aliases' => [
+            'schwarz' => ['black', 'jet black', 'solid black'],
+            'weiss' => ['white', 'solid white'],
+            'weiß' => ['white', 'solid white'],
+            'grau' => ['sport grey', 'sport gray', 'heather grey', 'heather gray', 'grey', 'gray'],
+            'dunkelgrau' => ['dark heather', 'charcoal', 'dark grey', 'dark gray'],
+            'hellgrau' => ['light grey', 'light gray', 'ash'],
+            'burgundy' => ['burgundy', 'maroon', 'cardinal'],
+            'bordeaux' => ['burgundy', 'maroon'],
+            'rot' => ['red', 'cherry red'],
+            'blau' => ['royal blue', 'blue', 'royal'],
+            'dunkelblau' => ['navy', 'french navy', 'true navy'],
+            'navy' => ['navy', 'french navy', 'true navy'],
+            'hellblau' => ['light blue', 'carolina blue', 'sky blue'],
+            'grün' => ['kelly green', 'green', 'irish green'],
+            'dunkelgrün' => ['forest green', 'bottle green'],
+            'gelb' => ['yellow', 'daisy'],
+            'orange' => ['orange'],
+            'pink' => ['pink', 'light pink', 'azalea'],
+            'lila' => ['purple', 'violet'],
+            'beige' => ['sand', 'natural', 'beige'],
+            'braun' => ['brown', 'chocolate'],
+        ],
+        'size_aliases' => [
+            'xxl' => ['2xl', 'xxl'],
+            'xxxl' => ['3xl', 'xxxl'],
+            'xxxxl' => ['4xl', 'xxxxl'],
+            'einheitsgröße' => ['one size', 'default', 'os'],
+            'einheitsgrosse' => ['one size', 'default', 'os'],
+        ],
+    ],
+
+    /*
+     * Logo-Platzierung je Druck (Frontprint/Backprint). Werte sind relativ zum
+     * Druckbereich: x/y = Mittelpunkt (0..1), width = Breitenanteil (0..1).
+     * Gilt sowohl für Printify (placeholder x/y/scale) als auch für die
+     * Mockup-Erzeugung über Dynamic Mockups.
+     */
+    'logo_positions' => [
+        'mitte' => ['label' => 'Mittig', 'x' => 0.50, 'y' => 0.50],
+        'mitte_links' => ['label' => 'Mittig links', 'x' => 0.27, 'y' => 0.50],
+        'mitte_rechts' => ['label' => 'Mittig rechts', 'x' => 0.73, 'y' => 0.50],
+        'oben_links' => ['label' => 'Links oben (Brust links)', 'x' => 0.27, 'y' => 0.22],
+        'oben_rechts' => ['label' => 'Rechts oben (Brust rechts)', 'x' => 0.73, 'y' => 0.22],
+        'unten_links' => ['label' => 'Links unten', 'x' => 0.27, 'y' => 0.78],
+        'unten_rechts' => ['label' => 'Rechts unten', 'x' => 0.73, 'y' => 0.78],
+    ],
+    'logo_sizes' => [
+        'klein' => ['label' => 'Klein (ca. 25 % der Druckbreite)', 'width' => 0.25],
+        'mittel' => ['label' => 'Mittel (ca. 50 % der Druckbreite)', 'width' => 0.50],
+        'gross' => ['label' => 'Groß (ca. 90 % der Druckbreite)', 'width' => 0.90],
+    ],
+    // Vorbelegung im Konfigurator: Frontprint klein oben links, Backprint groß mittig
+    'logo_defaults' => [
+        'front' => ['position' => 'oben_links', 'size' => 'klein'],
+        'back' => ['position' => 'mitte', 'size' => 'gross'],
     ],
 
     /*
@@ -62,22 +134,14 @@ return [
      * 'color' bei Detail-Vorlagen muss den Farbnamen aus dem Konfigurator
      * entsprechen (z. B. burgundy, schwarz, weiß) — gerendert werden nur
      * Farben, die die Schule gewählt hat.
+     *
+     * Die Logo-Platzierung kommt aus dem Frontprint-Druck des Onboardings
+     * (siehe 'logo_positions'/'logo_sizes') — sie wird nicht separat gepflegt.
      */
     'mockups' => [
         'api_key' => env('DYNAMIC_MOCKUPS_API_KEY', ''),
         'base_url' => 'https://app.dynamicmockups.com/api/v1',
         'image_size' => 1500,
-
-        // Platzierung des Logos im Druckbereich (relativ: x/y = Mittelpunkt 0..1,
-        // width = Anteil an der Druckbereichsbreite). Auswahl im Konfigurator.
-        'placements' => [
-            'brust_links' => ['label' => 'Brust links (klein)', 'x' => 0.27, 'y' => 0.22, 'width' => 0.28],
-            'brust_rechts' => ['label' => 'Brust rechts (klein)', 'x' => 0.73, 'y' => 0.22, 'width' => 0.28],
-            'brust_mitte' => ['label' => 'Brust mitte', 'x' => 0.50, 'y' => 0.28, 'width' => 0.45],
-            'mitte_voll' => ['label' => 'Mitte, volle Breite', 'x' => 0.50, 'y' => 0.45, 'width' => 0.95],
-            'mitte_halb' => ['label' => 'Mitte, halbe Breite', 'x' => 0.50, 'y' => 0.45, 'width' => 0.50],
-            'unten_mitte' => ['label' => 'Unten mitte', 'x' => 0.50, 'y' => 0.78, 'width' => 0.40],
-        ],
 
         /*
          * Vorlagen je Produkt-Key (siehe 'catalog'). Struktur je Eintrag:

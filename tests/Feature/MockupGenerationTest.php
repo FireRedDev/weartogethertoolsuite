@@ -99,7 +99,7 @@ class MockupGenerationTest extends TestCase
         ];
         $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
         $onboarding = SchoolOnboarding::sole();
-        $onboarding->forceFill(['mockups_enabled' => $enabled, 'mockup_placement' => 'brust_links'])->save();
+        $onboarding->forceFill(['mockups_enabled' => $enabled])->save();
 
         return $onboarding->fresh();
     }
@@ -114,11 +114,13 @@ class MockupGenerationTest extends TestCase
             'delivery_type' => 'collective',
             'status' => $onboarding->status,
             'mockups_enabled' => '1',
-            'mockup_placement' => 'mitte_voll',
+            'logo_front_position' => 'mitte',
+            'logo_front_size' => 'gross',
         ])->assertRedirect();
         $onboarding->refresh();
         $this->assertTrue($onboarding->mockups_enabled);
-        $this->assertSame('mitte_voll', $onboarding->mockup_placement);
+        $this->assertSame('mitte', $onboarding->logoPositionKey('front'));
+        $this->assertSame('gross', $onboarding->logoSizeKey('front'));
 
         // Checkbox weggelassen => wieder AUS
         $this->put("/schulen/{$onboarding->id}", [
@@ -149,16 +151,17 @@ class MockupGenerationTest extends TestCase
         // 3 Renders: 1 Frau + 1 Mann (Lifestyle) + Detail burgundy (grün ist nicht Schulfarbe)
         $this->assertCount(3, Http::recorded(fn ($req) => str_contains($req->url(), '/api/v1/renders')));
 
-        // Platzierung brust_links auf 1000x1200-Druckbereich: Box 280, left 130, top 124
+        // Frontprint-Standard (oben links, klein: x 0.27 / y 0.22 / Breite 0.25)
+        // auf 1000x1200-Druckbereich: Box 250, left 145, top 139
         Http::assertSent(function ($r) {
             if (! str_contains($r->url(), '/api/v1/renders')) {
                 return false;
             }
             $asset = $r->data()['smart_objects'][0]['asset'] ?? [];
 
-            return ($asset['size']['width'] ?? null) === 280
-                && ($asset['position']['left'] ?? null) === 130
-                && ($asset['position']['top'] ?? null) === 124
+            return ($asset['size']['width'] ?? null) === 250
+                && ($asset['position']['left'] ?? null) === 145
+                && ($asset['position']['top'] ?? null) === 139
                 && ($asset['fit'] ?? null) === 'contain';
         });
 

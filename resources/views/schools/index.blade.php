@@ -27,13 +27,15 @@
                 <table class="data">
                     <thead>
                         <tr>
-                            <th>#</th><th>Schule/Organisation</th><th>Status</th><th>Lieferart</th>
-                            <th>Bestellfenster</th><th>Kontakt</th><th>Eingang</th><th></th>
+                            <th class="stickycol"></th><th>#</th><th>Schule/Organisation</th><th>Status</th><th>Lieferart</th>
+                            <th>Bestellfenster</th><th>Kontakt</th><th>Eingang</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach ($onboardings as $onboarding)
                             <tr>
+                                {{-- Ganz links und beim horizontalen Scrollen fixiert, damit der Button nie außer Sicht gerät --}}
+                                <td class="stickycol"><a class="btn secondary" style="padding:0.3rem 0.8rem;font-size:0.85rem;" href="{{ route('schools.show', $onboarding) }}">Öffnen</a></td>
                                 <td>{{ $onboarding->id }}</td>
                                 <td><strong>{{ $onboarding->school_name }}</strong></td>
                                 <td>{{ $onboarding->statusLabel() }}</td>
@@ -47,7 +49,6 @@
                                 </td>
                                 <td>{{ $onboarding->contact_name }} <span class="hint">{{ $onboarding->contact_email }}</span></td>
                                 <td>{{ $onboarding->created_at->format('d.m.Y H:i') }}</td>
-                                <td><a class="btn secondary" style="padding:0.3rem 0.8rem;font-size:0.85rem;" href="{{ route('schools.show', $onboarding) }}">Öffnen</a></td>
                             </tr>
                         @endforeach
                     </tbody>

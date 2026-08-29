@@ -130,6 +130,10 @@
         table.data th, table.data td { border-bottom: 1px solid var(--line); padding: 0.4rem 0.6rem; text-align: left; white-space: nowrap; }
         table.data th { background: #eef2f7; position: sticky; top: 0; }
         table.data tr:nth-child(even) td { background: #fafbfc; }
+        /* Fixierte erste Spalte: bleibt beim horizontalen Scrollen sichtbar (z. B. „Öffnen"-Button) */
+        table.data th.stickycol, table.data td.stickycol { position: sticky; left: 0; z-index: 2; background: var(--card); box-shadow: 1px 0 0 var(--line); }
+        table.data th.stickycol { z-index: 3; background: #eef2f7; }
+        table.data tr:nth-child(even) td.stickycol { background: #fafbfc; }
         .tabs { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
         .tab {
             border: 1px solid var(--line);

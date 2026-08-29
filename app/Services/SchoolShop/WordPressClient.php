@@ -84,12 +84,33 @@ class WordPressClient
             throw WooCommerceApiException::unreachable("Logo-Download {$url}: HTTP {$binary->status()}");
         }
         $filename = basename(parse_url($url, PHP_URL_PATH) ?: 'logo.png') ?: 'logo.png';
-        $storeUrl = rtrim(config('ordersuite.woocommerce.store_url'), '/');
 
+        return $this->uploadMedia($filename, $binary->body(), $binary->header('Content-Type') ?: 'image/png')['id'];
+    }
+
+    /**
+     * Lädt Binärdaten in die WordPress-Mediathek. Die zurückgegebene
+     * source_url ist öffentlich erreichbar — nur so können Printify und
+     * Dynamic Mockups das Logo selbst herunterladen (die Toolsuite selbst
+     * liegt hinter dem Zugangsschutz).
+     *
+     * @return array{id: int, source_url: ?string}
+     */
+    public function uploadMedia(string $filename, string $contents, string $mime = 'image/png'): array
+    {
+        if (! $this->isConfigured()) {
+            throw new WooCommerceApiException(
+                'Der WordPress-Zugriff ist noch nicht eingerichtet.',
+                'WP_APP_USER / WP_APP_PASSWORD fehlen in der .env-Datei.',
+                'Ein:e Administrator:in muss in WordPress unter Benutzer → Profil → Anwendungspasswörter ein Passwort erstellen und in der .env-Datei eintragen.',
+            );
+        }
+
+        $storeUrl = rtrim(config('ordersuite.woocommerce.store_url'), '/');
         $response = Http::withBasicAuth(config('schoolshop.wordpress.user'), config('schoolshop.wordpress.password'))
             ->timeout(60)
             ->withHeaders(['Content-Disposition' => 'attachment; filename="'.$filename.'"'])
-            ->withBody($binary->body(), $binary->header('Content-Type') ?: 'image/png')
+            ->withBody($contents, $mime)
             ->post("{$storeUrl}/wp-json/wp/v2/media");
 
         if (! $response->successful() || ! isset($response->json()['id'])) {
@@ -98,7 +119,10 @@ class WordPressClient
             );
         }
 
-        return (int) $response->json()['id'];
+        return [
+            'id' => (int) $response->json()['id'],
+            'source_url' => $response->json()['source_url'] ?? null,
+        ];
     }
 
     private function request(string $method, string $endpoint, array $body = []): Response

@@ -276,6 +276,24 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
    Blueprint-IDs, zeigt die Original-Beschreibung aus dem Printify-Katalog,
    meist Englisch).
 
+   **Varianten:** Angelegt werden nur Varianten in den im Konfigurator
+   gewählten **Farben und Größen** (deutsche Namen werden über
+   `config/schoolshop.php` → `printify.color_aliases` / `size_aliases` auf die
+   englischen Katalogwerte abgebildet). Das ist doppelt wichtig: Printify
+   erlaubt maximal 100 Varianten pro Produkt, und die automatisch erzeugten
+   Vorschaubilder zeigen sonst Farben, die die Schule gar nicht bestellt hat.
+   Findet sich zu keiner gewünschten Farbe/Größe ein Treffer, bricht die
+   Anlage mit einer Meldung ab, die die tatsächlich verfügbaren Werte auflistet.
+   Einzelne nicht gefundene Farben/Größen werden nur im Protokoll vermerkt.
+
+   **Kostenübersicht im Konfigurator:** Je On-Demand-Produkt zeigt die Tabelle
+   Region des Print-Providers, **Einkaufspreis** (Produktionskosten je Stück,
+   als Spanne über die angelegten Varianten), **Versand** (erster Artikel nach
+   Österreich — Tooltip nennt Herkunfts- und Zielländer des Versandprofils)
+   und die **Marge**. Rot bedeutet: unter der Mindestmarge, die Shop-Anlage
+   würde das Produkt ablehnen; daneben steht der nötige Mindestpreis. Die
+   Werte kommen live aus dem Printify-Katalog und sind 24 h gecacht.
+
    On-Demand-Produkte werden laufend einzeln an die Privatadresse der
    Kund:innen verschickt — es gibt kein Bestellfenster und keine Klassenliste
    (die für die Sammelbestellung sonst als Lieferziel dient). Beide Felder
@@ -292,13 +310,35 @@ entweder pro Produkt manuell setzen oder global unter WooCommerce →
 German Market → Allgemein → Produkte die Option für Produkteigenschaften im
 Checkout aktivieren.
 
+**Schullogo & Druck:** Das Logo ist im FluentForms-Formular **kein
+Pflichtfeld** — im Antrag lässt es sich deshalb jederzeit selbst hochladen,
+als Vorschaubild ansehen, herunterladen und austauschen. Es gibt zwei Drucke:
+
+* **Frontprint** und **Backprint** lassen sich einzeln an-/abwählen
+  (vorbelegt aus dem Formularwunsch, danach frei änderbar).
+* Der Logo-Upload der Kund:innen gilt automatisch für **beide** Drucke; pro
+  Druck kann aber eine eigene Datei hinterlegt werden (z. B. kleines Logo
+  vorne, großer Schriftzug hinten).
+* Je Druck sind **Position** (mittig, mittig links/rechts, links/rechts oben,
+  links/rechts unten) und **Größe** (klein ≈ 25 %, mittel ≈ 50 %, groß ≈ 90 %
+  der Druckbreite) einstellbar. Diese Werte steuern sowohl die
+  Printify-Platzierung als auch die Mockup-Erzeugung (Mockups nutzen den
+  Frontprint).
+
+Erlaubt sind PNG, JPG und WebP bis 5 MB (kein SVG — Printify und Dynamic
+Mockups brauchen ein Pixelformat). Jedes hochgeladene Logo wird zusätzlich in
+die **WordPress-Mediathek** gelegt: nur diese Adresse ist von außen erreichbar,
+und Printify bzw. Dynamic Mockups laden die Datei selbst herunter. Scheitert
+das (z. B. WordPress nicht erreichbar), bleibt die lokale Kopie erhalten und
+der Fehler wird angezeigt.
+
 **Produktfotos (Mockups, optional):** Im Konfigurator lässt sich pro Schule
 „Produktfotos erzeugen" anhaken (Standard: aus). Beim Anlegen rendert die App
 dann über die **Dynamic-Mockups-API** pro Produkt 1–2 Model-Fotos (bevorzugt
 eine Frau und ein Mann; die Auswahl wechselt von Schule zu Schule, bleibt aber
 pro Schule stabil) sowie Detailansichten in den gewählten Schulfarben — jeweils
-mit dem Schullogo an der gewählten Position (Brust links/rechts/mitte, Mitte
-volle/halbe Breite, unten) — und setzt sie als Produktbild + Produktgalerie.
+mit dem Schullogo an der Position und in der Größe des **Frontprints**
+(siehe „Schullogo & Druck" oben) — und setzt sie als Produktbild + Produktgalerie.
 Einrichtung:
 
 1. `DYNAMIC_MOCKUPS_API_KEY` in der `.env` setzen (app.dynamicmockups.com → API),

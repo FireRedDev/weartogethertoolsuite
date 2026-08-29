@@ -10,6 +10,10 @@ use Illuminate\Support\Facades\Cache;
  * Produkt), prüft die Mindestmarge und published in den WooCommerce-Shop.
  *
  * Preisregel (Vorgabe): Verkaufspreis >= (Produktionskosten + Versand) * (1 + Marge).
+ *
+ * Angelegt werden ausschließlich Varianten in den im Konfigurator gewählten
+ * Farben und Größen — sonst läuft ein Produkt in das Printify-Limit von 100
+ * Varianten und bekommt Vorschaubilder in Farben, die die Schule nie bestellt.
  */
 class PrintifyProvisioner
 {
@@ -23,46 +27,253 @@ class PrintifyProvisioner
     public function __construct(private readonly PrintifyClient $printify) {}
 
     /**
-     * Provider-Standort + Versandkosten (erster Artikel) für die Anzeige im
-     * Konfigurator — 24h gecacht, damit die Seite nicht bei jedem Aufruf auf
-     * Printify wartet.
+     * Katalogdaten eines Blueprint/Provider-Paares (Provider-Stammdaten,
+     * Varianten, Versandprofil) — 24h gecacht, damit der Konfigurator nicht
+     * bei jedem Aufruf auf Printify wartet. Der Katalog ändert sich praktisch nie.
      *
-     * @return array{provider_title: string, country: ?string, is_eu: bool, shipping_eur: ?float}
+     * @return array{provider: array, variants: list<array>, shipping: ?array}
      */
-    public function shippingInfo(int $blueprintId, int $providerId): array
+    private function catalog(int $blueprintId, int $providerId): array
     {
         return Cache::remember(
-            "printify.shipping_info.{$blueprintId}.{$providerId}",
+            "printify.catalog.{$blueprintId}.{$providerId}",
             now()->addDay(),
-            function () use ($blueprintId, $providerId) {
-                $details = $this->printify->providerDetails($providerId);
-                $country = $details['location']['country'] ?? null;
-                $shippingCents = $this->printify->firstItemShippingCents($blueprintId, $providerId);
-
-                return [
-                    'provider_title' => $details['title'] ?? '?',
-                    'country' => $country,
-                    'is_eu' => $country !== null && in_array($country, self::EU_COUNTRIES, true),
-                    'shipping_eur' => $shippingCents !== null ? $shippingCents / 100 : null,
-                ];
-            },
+            fn () => [
+                'provider' => $this->printify->providerDetails($providerId),
+                'variants' => $this->printify->variants($blueprintId, $providerId),
+                'shipping' => $this->printify->shippingProfile($blueprintId, $providerId),
+            ],
         );
     }
 
     /**
-     * Mindest-Verkaufspreis in Cent für einen Blueprint/Provider
-     * (teuerste Variante + Versand erster Artikel, plus Marge).
+     * Kennzahlen eines On-Demand-Produkts für die Anzeige im Konfigurator:
+     * Einkaufspreis (Produktionskosten), Versand, Marge und welche der
+     * gewünschten Farben/Größen es bei diesem Provider überhaupt gibt.
      *
+     * @param  array<string, mixed>  $product  Eintrag aus dem products-JSON
+     * @return ?array<string, mixed>  null, wenn Blueprint/Provider fehlen
+     */
+    public function economics(array $product): ?array
+    {
+        $blueprintId = (int) ($product['printify_blueprint_id'] ?? 0);
+        $providerId = (int) ($product['printify_provider_id'] ?? 0);
+        if ($blueprintId === 0 || $providerId === 0) {
+            return null;
+        }
+
+        $catalog = $this->catalog($blueprintId, $providerId);
+        $selection = $this->selectVariants($catalog['variants'], $product);
+
+        // Für die Kostenanzeige zählen die tatsächlich angelegten Varianten;
+        // passt keine, behelfsweise der gesamte Katalog (sonst stünde hier gar nichts).
+        $relevant = $selection['variants'] !== [] ? $selection['variants'] : $catalog['variants'];
+        $costs = array_values(array_filter(array_map(fn ($v) => (int) ($v['cost'] ?? 0), $relevant), fn ($c) => $c > 0));
+
+        $country = $catalog['provider']['location']['country'] ?? null;
+        $shipping = $catalog['shipping'];
+        $shippingCents = $shipping['cost_cents'] ?? null;
+        $maxCostCents = $costs === [] ? null : max($costs);
+
+        $salePrice = (float) ($product['base_price'] ?? 0);
+        $baseCents = ($maxCostCents ?? 0) + ($shippingCents ?? 0);
+        $minMargin = (float) config('schoolshop.printify.min_margin');
+
+        return [
+            'provider_title' => $catalog['provider']['title'] ?? '?',
+            'country' => $country,
+            'is_eu' => $country !== null && in_array($country, self::EU_COUNTRIES, true),
+
+            'shipping_eur' => $shippingCents !== null ? $shippingCents / 100 : null,
+            'shipping_countries' => $shipping['countries'] ?? [],
+            'shipping_is_row' => (bool) ($shipping['is_rest_of_world'] ?? false),
+            'shipping_is_fallback' => (bool) ($shipping['is_fallback'] ?? false),
+
+            'cost_min_eur' => $costs === [] ? null : min($costs) / 100,
+            'cost_max_eur' => $maxCostCents !== null ? $maxCostCents / 100 : null,
+
+            'variant_total' => count($catalog['variants']),
+            'variant_selected' => count($selection['variants']),
+            'missing_colors' => $selection['missing_colors'],
+            'missing_sizes' => $selection['missing_sizes'],
+            'available_colors' => $selection['available_colors'],
+            'capped' => $selection['capped'],
+
+            'min_price_eur' => $baseCents > 0 ? ceil($baseCents * (1 + $minMargin)) / 100 : null,
+            'margin_pct' => $baseCents > 0 ? ($salePrice * 100 - $baseCents) / $baseCents * 100 : null,
+            'margin_ok' => $baseCents > 0 && $salePrice * 100 >= ceil($baseCents * (1 + $minMargin)),
+        ];
+    }
+
+    /**
+     * Wählt aus dem Variantenkatalog die Varianten in den gewünschten Farben
+     * und Größen aus.
+     *
+     * Bietet der Blueprint eine Dimension gar nicht an (z. B. keine Größen bei
+     * einer Tasche), wird danach auch nicht gefiltert. Findet sich zu keiner
+     * gewünschten Farbe/Größe ein Treffer, bleibt die Auswahl leer — der
+     * Aufrufer bricht dann mit einer Meldung ab, die die verfügbaren Werte nennt.
+     *
+     * @param  list<array<string, mixed>>  $allVariants
+     * @param  array<string, mixed>  $product
+     * @return array{variants: list<array<string, mixed>>, missing_colors: list<string>, missing_sizes: list<string>, available_colors: list<string>, available_sizes: list<string>, capped: bool}
+     */
+    public function selectVariants(array $allVariants, array $product): array
+    {
+        $rows = array_map(fn ($variant) => ['variant' => $variant] + $this->variantOptions($variant), $allVariants);
+
+        $available = fn (string $dimension) => array_values(array_unique(array_filter(
+            array_column($rows, $dimension),
+            fn ($v) => $v !== null && $v !== '',
+        )));
+        $availableColors = $available('color');
+        $availableSizes = $available('size');
+
+        $colorMatch = $this->matchValues($product['colors'] ?? [], $availableColors, config('schoolshop.printify.color_aliases', []));
+        $sizeMatch = $this->matchValues($product['sizes'] ?? [], $availableSizes, config('schoolshop.printify.size_aliases', []));
+
+        $selected = array_values(array_filter($rows, function (array $row) use ($colorMatch, $sizeMatch) {
+            foreach ([['color', $colorMatch], ['size', $sizeMatch]] as [$dimension, $match]) {
+                if ($match['filter'] === null) {
+                    continue; // Dimension nicht gefiltert (Blueprint hat sie nicht / kein Wunsch hinterlegt)
+                }
+                if (! in_array($this->normalize($row[$dimension] ?? ''), $match['filter'], true)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }));
+
+        // Letzte Sicherung gegen das Printify-Limit von 100 Varianten pro Produkt
+        $max = (int) config('schoolshop.printify.max_variants', 100);
+        $capped = count($selected) > $max;
+        if ($capped) {
+            $selected = array_slice($selected, 0, $max);
+        }
+
+        return [
+            'variants' => array_column($selected, 'variant'),
+            'missing_colors' => $colorMatch['missing'],
+            'missing_sizes' => $sizeMatch['missing'],
+            'available_colors' => $availableColors,
+            'available_sizes' => $availableSizes,
+            'capped' => $capped,
+        ];
+    }
+
+    /**
+     * Farbe/Größe einer Printify-Variante. Bevorzugt das options-Objekt,
+     * fällt sonst auf den Titel ("Black / S") zurück.
+     *
+     * @param  array<string, mixed>  $variant
+     * @return array{color: ?string, size: ?string}
+     */
+    private function variantOptions(array $variant): array
+    {
+        $options = is_array($variant['options'] ?? null) ? $variant['options'] : [];
+        $fromOptions = function (array $names) use ($options): ?string {
+            foreach ($options as $key => $value) {
+                if (is_scalar($value) && in_array(mb_strtolower((string) $key), $names, true)) {
+                    return trim((string) $value) ?: null;
+                }
+            }
+
+            return null;
+        };
+
+        $color = $fromOptions(['color', 'colors', 'colour']);
+        $size = $fromOptions(['size', 'sizes']);
+
+        if ($color === null || $size === null) {
+            $parts = array_values(array_filter(array_map('trim', explode('/', (string) ($variant['title'] ?? '')))));
+            $color ??= $parts[0] ?? null;
+            if (count($parts) > 1) {
+                $size ??= end($parts);
+            }
+        }
+
+        return ['color' => $color, 'size' => $size];
+    }
+
+    /**
+     * Ordnet deutsche Konfigurator-Werte den englischen Katalogwerten zu:
+     * erst exakt, sonst als Teilstring ("Black" trifft dann auch "Black Heather").
+     *
+     * @param  list<string>  $wanted
+     * @param  list<string>  $availableValues
+     * @param  array<string, list<string>>  $aliases
+     * @return array{filter: ?list<string>, missing: list<string>}
+     */
+    private function matchValues(array $wanted, array $availableValues, array $aliases): array
+    {
+        $wanted = array_values(array_filter(array_map('trim', $wanted), fn ($v) => $v !== ''));
+        if ($wanted === [] || $availableValues === []) {
+            return ['filter' => null, 'missing' => []];
+        }
+
+        $filter = [];
+        $missing = [];
+        foreach ($wanted as $want) {
+            $needle = $this->normalize($want);
+            $candidates = array_unique([$needle, ...array_map(fn ($a) => $this->normalize($a), $aliases[$needle] ?? [])]);
+
+            $hits = array_filter($availableValues, fn ($value) => in_array($this->normalize($value), $candidates, true));
+            if ($hits === []) {
+                $hits = array_filter($availableValues, function ($value) use ($candidates) {
+                    foreach ($candidates as $candidate) {
+                        if ($candidate !== '' && str_contains($this->normalize($value), $candidate)) {
+                            return true;
+                        }
+                    }
+
+                    return false;
+                });
+            }
+
+            if ($hits === []) {
+                $missing[] = $want;
+
+                continue;
+            }
+            foreach ($hits as $hit) {
+                $filter[$this->normalize($hit)] = true;
+            }
+        }
+
+        // Keine einzige gewünschte Farbe/Größe gefunden: leerer Filter, damit der
+        // Aufrufer den Fall erkennt (statt still alle Varianten anzulegen).
+        return ['filter' => array_keys($filter), 'missing' => $missing];
+    }
+
+    private function normalize(string $value): string
+    {
+        return mb_strtolower(trim($value));
+    }
+
+    /**
+     * Mindest-Verkaufspreis in Cent für einen Blueprint/Provider
+     * (teuerste angelegte Variante + Versand erster Artikel, plus Marge).
+     *
+     * @param  array<string, mixed>  $product  optional: begrenzt auf die gewählten Farben/Größen
      * @return array{min_price_cents: int, max_variant_cost_cents: int, shipping_cents: int}
      */
-    public function minimumPrice(int $blueprintId, int $providerId): array
+    public function minimumPrice(int $blueprintId, int $providerId, array $product = []): array
     {
-        $variants = $this->printify->variants($blueprintId, $providerId);
+        $catalog = $this->catalog($blueprintId, $providerId);
+        $variants = $catalog['variants'];
+        if ($product !== []) {
+            $selected = $this->selectVariants($variants, $product)['variants'];
+            if ($selected !== []) {
+                $variants = $selected;
+            }
+        }
+
         $maxCost = 0;
         foreach ($variants as $variant) {
             $maxCost = max($maxCost, (int) ($variant['cost'] ?? 0));
         }
-        $shipping = $this->printify->firstItemShippingCents($blueprintId, $providerId) ?? 0;
+        $shipping = $catalog['shipping']['cost_cents'] ?? 0;
         $margin = (float) config('schoolshop.printify.min_margin');
 
         return [
@@ -75,11 +286,12 @@ class PrintifyProvisioner
     /**
      * Prüft den konfigurierten Verkaufspreis gegen die Mindestmarge.
      *
+     * @param  array<string, mixed>  $product
      * @return array{ok: bool, message: string, min_price_cents: int}
      */
-    public function checkPrice(float $salePriceEur, int $blueprintId, int $providerId): array
+    public function checkPrice(float $salePriceEur, int $blueprintId, int $providerId, array $product = []): array
     {
-        $minimum = $this->minimumPrice($blueprintId, $providerId);
+        $minimum = $this->minimumPrice($blueprintId, $providerId, $product);
         $salePriceCents = (int) round($salePriceEur * 100);
         $ok = $salePriceCents >= $minimum['min_price_cents'];
 
@@ -100,62 +312,92 @@ class PrintifyProvisioner
 
     /**
      * Legt ein Printify-Produkt an und published es in den Shop.
-     * Bricht ab, wenn der Preis die Mindestmarge verletzt.
+     * Bricht ab, wenn der Preis die Mindestmarge verletzt oder keine der
+     * gewünschten Farben/Größen im Katalog vorkommt.
      *
-     * @param  array{key: string, base_price: float, colors: list<string>}  $product
-     * @return array{printify_product_id: string, price_check: array}
+     * @param  array{key: string, base_price: float, colors: list<string>, sizes: list<string>}  $product
+     * @return array{printify_product_id: string, price_check: array, notes: list<string>}
      */
     public function createAndPublish(
         SchoolOnboarding $onboarding,
         array $product,
         int $blueprintId,
         int $providerId,
-        string $logoUrl,
-        ?string $backLogoUrl = null,
     ): array {
-        $priceCheck = $this->checkPrice((float) $product['base_price'], $blueprintId, $providerId);
+        $preset = ProductConfigurator::preset($product);
+        $catalog = $this->catalog($blueprintId, $providerId);
+        $selection = $this->selectVariants($catalog['variants'], $product);
+
+        if ($selection['variants'] === []) {
+            throw new \RuntimeException(sprintf(
+                'Keine passende Printify-Variante für "%s": gewünschte Farben (%s) bzw. Größen (%s) gibt es bei diesem Print-Provider nicht. '
+                .'Verfügbare Farben: %s. Verfügbare Größen: %s. Bitte im Konfigurator anpassen oder einen anderen Provider wählen.',
+                $preset['label'],
+                implode(', ', $product['colors'] ?? []) ?: '—',
+                implode(', ', $product['sizes'] ?? []) ?: '—',
+                implode(', ', $selection['available_colors']) ?: '—',
+                implode(', ', $selection['available_sizes']) ?: '—',
+            ));
+        }
+
+        $priceCheck = $this->checkPrice((float) $product['base_price'], $blueprintId, $providerId, $product);
         if (! $priceCheck['ok']) {
             throw new \RuntimeException('Preisprüfung fehlgeschlagen: '.$priceCheck['message']);
         }
 
-        $image = $this->printify->uploadImageFromUrl(
-            basename(parse_url($logoUrl, PHP_URL_PATH) ?: 'logo.png'),
-            $logoUrl,
-        );
-
-        $variants = $this->printify->variants($blueprintId, $providerId);
         $priceCents = (int) round((float) $product['base_price'] * 100);
         $variantPayload = [];
         $variantIds = [];
-        foreach ($variants as $variant) {
+        foreach ($selection['variants'] as $variant) {
             $variantPayload[] = ['id' => (int) $variant['id'], 'price' => $priceCents, 'is_enabled' => true];
             $variantIds[] = (int) $variant['id'];
         }
 
-        // Frontprint links auf der Brust (wie die Bestellemail-Vorlage);
-        // optionaler Backprint mittig.
-        $placeholders = [[
-            'position' => 'front',
-            'images' => [[
-                'id' => $image['id'],
-                'x' => 0.5, 'y' => 0.35, 'scale' => 0.35, 'angle' => 0,
-            ]],
-        ]];
-        if ($backLogoUrl !== null) {
-            $backImage = $this->printify->uploadImageFromUrl(
-                basename(parse_url($backLogoUrl, PHP_URL_PATH) ?: 'backprint.png'),
-                $backLogoUrl,
+        // Ein Placeholder je aktivem Druck, mit der im Konfigurator gewählten
+        // Position/Größe (x/y = Mittelpunkt, scale = Breitenanteil).
+        $placeholders = [];
+        $notes = [];
+        foreach ($onboarding->activePrintSlots() as $slot) {
+            $logoUrl = $onboarding->logoUrl($slot);
+            if ($logoUrl === null) {
+                $notes[] = SchoolOnboarding::PRINT_SLOTS[$slot].': kein Logo hinterlegt — Druck übersprungen.';
+
+                continue;
+            }
+            $placement = $onboarding->logoPlacement($slot);
+            $image = $this->printify->uploadImageFromUrl(
+                basename(parse_url($logoUrl, PHP_URL_PATH) ?: $slot.'.png'),
+                $logoUrl,
             );
             $placeholders[] = [
-                'position' => 'back',
+                'position' => $slot === 'back' ? 'back' : 'front',
                 'images' => [[
-                    'id' => $backImage['id'],
-                    'x' => 0.5, 'y' => 0.4, 'scale' => 0.7, 'angle' => 0,
+                    'id' => $image['id'],
+                    'x' => $placement['x'],
+                    'y' => $placement['y'],
+                    'scale' => $placement['width'],
+                    'angle' => 0,
                 ]],
             ];
+            $notes[] = SchoolOnboarding::PRINT_SLOTS[$slot].': '.$onboarding->logoPlacementLabel($slot);
+        }
+        if ($placeholders === []) {
+            throw new \RuntimeException(
+                'Kein druckbares Logo vorhanden. Bitte im Bereich „Schullogo & Druck" ein Logo hochladen (oder den Druck deaktivieren).',
+            );
         }
 
-        $preset = ProductConfigurator::preset($product);
+        $notes[] = sprintf('%d von %d Katalog-Varianten angelegt', count($variantIds), count($catalog['variants']));
+        foreach ([['Farben', $selection['missing_colors']], ['Größen', $selection['missing_sizes']]] as [$label, $missing]) {
+            if ($missing !== []) {
+                $notes[] = "Nicht im Printify-Katalog und daher ausgelassen ({$label}): ".implode(', ', $missing);
+            }
+        }
+        if ($selection['capped']) {
+            $notes[] = 'Achtung: Printify erlaubt max. '.config('schoolshop.printify.max_variants')
+                .' Varianten pro Produkt — die Auswahl wurde gekürzt. Bitte Farben/Größen im Konfigurator eingrenzen.';
+        }
+
         $description = $preset['printify_description'] ?? $preset['description'];
         $created = $this->printify->createProduct([
             'title' => $onboarding->school_name.' '.$preset['name_suffix'],
@@ -171,6 +413,10 @@ class PrintifyProvisioner
 
         $this->printify->publishProduct((string) $created['id']);
 
-        return ['printify_product_id' => (string) $created['id'], 'price_check' => $priceCheck];
+        return [
+            'printify_product_id' => (string) $created['id'],
+            'price_check' => $priceCheck,
+            'notes' => $notes,
+        ];
     }
 }

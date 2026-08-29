@@ -20,6 +20,10 @@ Route::post('/webhooks/fluentforms/{secret}', [FluentFormsWebhookController::cla
 // Dieselbe URL im Browser (GET) öffnen = Test, ob Secret/URL stimmen
 Route::get('/webhooks/fluentforms/{secret}', [FluentFormsWebhookController::class, 'verify'])->name('webhooks.fluentforms.verify');
 
+// Schullogo ausliefern (Vorschau/Download im Tool). Bewusst ohne Zugangsschutz,
+// damit Printify/Dynamic Mockups die Datei notfalls selbst laden können.
+Route::get('/schul-logo/{onboarding}/{slot}', [SchoolOnboardingController::class, 'logoShow'])->name('schools.logo.show');
+
 Route::middleware(ToolAuth::class)->group(function () {
     Route::get('/', [HomeController::class, 'index'])->name('home');
 
@@ -41,6 +45,8 @@ Route::middleware(ToolAuth::class)->group(function () {
     Route::get('/schulen/printify/providers', [SchoolOnboardingController::class, 'printifyProviderSearch'])->name('schools.printify.providers');
     Route::get('/schulen/{onboarding}', [SchoolOnboardingController::class, 'show'])->name('schools.show');
     Route::put('/schulen/{onboarding}', [SchoolOnboardingController::class, 'update'])->name('schools.update');
+    Route::post('/schulen/{onboarding}/logo/{slot}', [SchoolOnboardingController::class, 'logoUpload'])->name('schools.logo.upload');
+    Route::delete('/schulen/{onboarding}/logo/{slot}', [SchoolOnboardingController::class, 'logoReset'])->name('schools.logo.reset');
     Route::post('/schulen/{onboarding}/vorschau', [SchoolOnboardingController::class, 'preview'])->name('schools.preview');
     Route::post('/schulen/{onboarding}/anlegen', [SchoolOnboardingController::class, 'provision'])->name('schools.provision');
     Route::post('/schulen/{onboarding}/ondemand-sync', [SchoolOnboardingController::class, 'ondemandSync'])->name('schools.ondemand-sync');

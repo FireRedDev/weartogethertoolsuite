@@ -69,19 +69,44 @@ class PrintifyClient
         return is_array($data['variants'] ?? null) ? $data['variants'] : [];
     }
 
-    /** Versandkosten (erster Artikel) in Cent, oder null wenn unbekannt. */
-    public function firstItemShippingCents(int $blueprintId, int $providerId): ?int
+    /**
+     * Das für Österreich gültige Versandprofil eines Blueprint/Provider-Paares.
+     *
+     * Wichtig ist die Reihenfolge: ein Profil, das AT ausdrücklich nennt, gilt
+     * immer vor dem Sammelprofil REST_OF_THE_WORLD — sonst wird bei Providern
+     * mit mehreren Profilen der falsche (meist zu hohe oder zu niedrige)
+     * Versandpreis angezeigt.
+     *
+     * @return ?array{cost_cents: int, additional_cents: ?int, countries: list<string>, is_rest_of_world: bool, is_fallback: bool}
+     */
+    public function shippingProfile(int $blueprintId, int $providerId): ?array
     {
         $data = $this->request('get', "/catalog/blueprints/{$blueprintId}/print_providers/{$providerId}/shipping.json")->json();
-        foreach ($data['profiles'] ?? [] as $profile) {
-            $countries = $profile['countries'] ?? [];
-            if (in_array('AT', $countries, true) || in_array('REST_OF_THE_WORLD', $countries, true)) {
-                return (int) ($profile['first_item']['cost'] ?? 0);
-            }
+        $profiles = array_values(array_filter($data['profiles'] ?? [], 'is_array'));
+        if ($profiles === []) {
+            return null;
         }
-        $first = ($data['profiles'] ?? [])[0]['first_item']['cost'] ?? null;
 
-        return $first !== null ? (int) $first : null;
+        $pick = fn (callable $matches) => collect($profiles)->first(fn ($p) => $matches($p['countries'] ?? []));
+
+        $profile = $pick(fn ($countries) => in_array('AT', $countries, true))
+            ?? $pick(fn ($countries) => in_array('REST_OF_THE_WORLD', $countries, true));
+        $isFallback = $profile === null;
+        $profile ??= $profiles[0];
+
+        $cost = $profile['first_item']['cost'] ?? null;
+        if ($cost === null) {
+            return null;
+        }
+        $countries = array_values(array_filter($profile['countries'] ?? [], 'is_string'));
+
+        return [
+            'cost_cents' => (int) $cost,
+            'additional_cents' => isset($profile['additional_items']['cost']) ? (int) $profile['additional_items']['cost'] : null,
+            'countries' => $countries,
+            'is_rest_of_world' => in_array('REST_OF_THE_WORLD', $countries, true),
+            'is_fallback' => $isFallback,
+        ];
     }
 
     /** Lädt ein Bild (per URL) in die Printify-Mediathek. */

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\WooCommerceApiException;
 use App\Models\SchoolOnboarding;
+use App\Services\SchoolShop\LogoManager;
 use App\Services\SchoolShop\OrderEmailGenerator;
 use App\Services\SchoolShop\PrintifyClient;
 use App\Services\SchoolShop\PrintifyProvisioner;
@@ -14,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\Response;
 
 class SchoolOnboardingController extends Controller
 {
@@ -61,32 +63,35 @@ class SchoolOnboardingController extends Controller
                 ? app(OrderEmailGenerator::class)->body($onboarding)
                 : null,
             'emailSubject' => app(OrderEmailGenerator::class)->subject($onboarding),
-            'printifyShippingInfo' => $onboarding->delivery_type === 'ondemand'
-                ? $this->printifyShippingInfo($onboarding, $printifyProvisioner)
+            'printifyEconomics' => $onboarding->delivery_type === 'ondemand'
+                ? $this->printifyEconomics($onboarding, $printifyProvisioner)
                 : [],
         ]);
     }
 
     /**
-     * Provider-Region + Versandkosten je Produkt für die Konfigurator-Anzeige
-     * (Blueprint/Provider muss gesetzt sein; Printify-Fehler blocken die
-     * Seite nicht, das Feld bleibt dann einfach leer).
+     * Einkaufspreis, Versand, Region und Marge je Produkt für die
+     * Konfigurator-Anzeige (Blueprint/Provider muss gesetzt sein;
+     * Printify-Fehler blocken die Seite nicht, die Zelle bleibt dann leer).
      *
-     * @return array<string, array{provider_title: string, country: ?string, is_eu: bool, shipping_eur: ?float}>
+     * @return array<string, array<string, mixed>>
      */
-    private function printifyShippingInfo(SchoolOnboarding $onboarding, PrintifyProvisioner $printifyProvisioner): array
+    private function printifyEconomics(SchoolOnboarding $onboarding, PrintifyProvisioner $printifyProvisioner): array
     {
         $info = [];
         foreach ($onboarding->products ?? [] as $product) {
-            $blueprintId = $product['printify_blueprint_id'] ?? null;
-            $providerId = $product['printify_provider_id'] ?? null;
-            if ($blueprintId === null || $providerId === null) {
+            if (empty($product['key'])) {
                 continue;
             }
             try {
-                $info[$product['key']] = $printifyProvisioner->shippingInfo((int) $blueprintId, (int) $providerId);
+                $economics = $printifyProvisioner->economics($product);
             } catch (\Throwable $e) {
                 report($e);
+
+                continue;
+            }
+            if ($economics !== null) {
+                $info[$product['key']] = $economics;
             }
         }
 
@@ -105,7 +110,13 @@ class SchoolOnboardingController extends Controller
             'notes' => ['nullable', 'string', 'max:5000'],
             'products' => ['nullable', 'array'],
             'mockups_enabled' => ['nullable', 'boolean'],
-            'mockup_placement' => ['nullable', 'in:'.implode(',', array_keys(config('schoolshop.mockups.placements')))],
+            'print_slots_submitted' => ['nullable', 'boolean'],
+            'print_front' => ['nullable', 'boolean'],
+            'print_back' => ['nullable', 'boolean'],
+            'logo_front_position' => ['nullable', 'in:'.implode(',', array_keys(config('schoolshop.logo_positions')))],
+            'logo_back_position' => ['nullable', 'in:'.implode(',', array_keys(config('schoolshop.logo_positions')))],
+            'logo_front_size' => ['nullable', 'in:'.implode(',', array_keys(config('schoolshop.logo_sizes')))],
+            'logo_back_size' => ['nullable', 'in:'.implode(',', array_keys(config('schoolshop.logo_sizes')))],
         ]);
 
         // On-Demand: Produkte werden laufend einzeln verschickt, es gibt kein
@@ -122,8 +133,23 @@ class SchoolOnboardingController extends Controller
             'window_end' => $isOndemand ? SchoolOnboarding::ONDEMAND_WINDOW_END : ($validated['window_end'] ?? null),
             'notes' => $validated['notes'] ?? null,
             'mockups_enabled' => $request->boolean('mockups_enabled'),
-            'mockup_placement' => $validated['mockup_placement'] ?? $onboarding->mockup_placement ?? 'brust_links',
+            'logo_front_position' => $validated['logo_front_position'] ?? $onboarding->logoPositionKey('front'),
+            'logo_front_size' => $validated['logo_front_size'] ?? $onboarding->logoSizeKey('front'),
+            'logo_back_position' => $validated['logo_back_position'] ?? $onboarding->logoPositionKey('back'),
+            'logo_back_size' => $validated['logo_back_size'] ?? $onboarding->logoSizeKey('back'),
         ]);
+
+        // Ein nicht angehaktes Kästchen wird gar nicht mitgeschickt — ohne den
+        // Marker ließe sich „aus" nicht von „gar nicht im Formular enthalten"
+        // unterscheiden, und ein Speichern ohne den Logo-Bereich würde beide
+        // Drucke abschalten. Ab dem ersten Speichern mit Marker sind die Drucke
+        // explizit gesetzt und lösen sich vom Formularwunsch (print_areas).
+        if ($request->boolean('print_slots_submitted')) {
+            $onboarding->fill([
+                'print_front' => $request->boolean('print_front'),
+                'print_back' => $request->boolean('print_back'),
+            ]);
+        }
         if ($onboarding->status === 'neu') {
             $onboarding->status = 'in_bearbeitung';
         }
@@ -131,6 +157,62 @@ class SchoolOnboardingController extends Controller
         $onboarding->save();
 
         return redirect()->route('schools.show', $onboarding)->with('saved', true);
+    }
+
+    /**
+     * Logo für einen Druck hochladen bzw. austauschen. Das Logo ist im
+     * FluentForms-Formular kein Pflichtfeld — ohne diese Möglichkeit ließe sich
+     * für solche Anträge weder ein Printify-Produkt noch ein Mockup erzeugen.
+     */
+    public function logoUpload(Request $request, SchoolOnboarding $onboarding, string $slot, LogoManager $logos): RedirectResponse
+    {
+        abort_unless(array_key_exists($slot, SchoolOnboarding::PRINT_SLOTS), 404);
+
+        $request->validate(
+            ['logo' => ['required', 'file', 'mimes:'.implode(',', LogoManager::ALLOWED_EXTENSIONS), 'max:5120']],
+            [
+                'logo.required' => 'Bitte eine Logo-Datei auswählen.',
+                'logo.mimes' => 'Erlaubt sind PNG, JPG und WebP — Printify und die Mockup-Erzeugung brauchen ein Pixelformat (kein SVG/PDF).',
+                'logo.max' => 'Die Datei ist zu groß (maximal 5 MB).',
+            ],
+        );
+
+        $warning = $logos->store($onboarding, $slot, $request->file('logo'));
+        $redirect = redirect()->route('schools.show', $onboarding);
+
+        return $warning === null
+            ? $redirect->with('saved', true)
+            : $redirect->withErrors(['logo' => $warning]);
+    }
+
+    /** Hochgeladenes Logo entfernen — danach gilt wieder der Formular-Upload. */
+    public function logoReset(SchoolOnboarding $onboarding, string $slot, LogoManager $logos): RedirectResponse
+    {
+        abort_unless(array_key_exists($slot, SchoolOnboarding::PRINT_SLOTS), 404);
+        $logos->reset($onboarding, $slot);
+
+        return redirect()->route('schools.show', $onboarding)->with('saved', true);
+    }
+
+    /**
+     * Liefert ein im Tool hochgeladenes Logo aus (Vorschaubild und Download).
+     * Bewusst ohne Zugangsschutz: Schullogos sind nicht vertraulich, und externe
+     * Dienste (Printify/Dynamic Mockups) müssen die Datei notfalls selbst laden
+     * können, wenn der Upload in die WordPress-Mediathek gescheitert ist.
+     */
+    public function logoShow(Request $request, SchoolOnboarding $onboarding, string $slot, LogoManager $logos): Response
+    {
+        abort_unless(array_key_exists($slot, SchoolOnboarding::PRINT_SLOTS), 404);
+        $file = $logos->read($onboarding, $slot);
+        abort_if($file === null, 404);
+
+        $disposition = $request->boolean('download') ? 'attachment' : 'inline';
+
+        return response($file['contents'], 200, [
+            'Content-Type' => $file['mime'],
+            'Content-Disposition' => $disposition.'; filename="'.$file['filename'].'"',
+            'Cache-Control' => 'private, max-age=300',
+        ]);
     }
 
     public function preview(SchoolOnboarding $onboarding, ShopProvisioner $provisioner): RedirectResponse

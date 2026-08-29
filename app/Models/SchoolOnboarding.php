@@ -26,6 +26,9 @@ class SchoolOnboarding extends Model
 
     public const ONDEMAND_WINDOW_END = '2099-01-01';
 
+    /** Die beiden Druckstellen mit ihrer Bezeichnung im Formular/in der UI. */
+    public const PRINT_SLOTS = ['front' => 'Frontprint', 'back' => 'Backprint'];
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -41,6 +44,8 @@ class SchoolOnboarding extends Model
             'provision_log' => 'array',
             'mockups_enabled' => 'boolean',
             'mockup_images' => 'array',
+            'print_front' => 'boolean',
+            'print_back' => 'boolean',
             'window_start' => 'date',
             'window_end' => 'date',
         ];
@@ -66,5 +71,98 @@ class SchoolOnboarding extends Model
     public function isProvisioned(): bool
     {
         return $this->woo_category_id !== null || $this->pods_post_id !== null;
+    }
+
+    /**
+     * Wird dieser Druck gedruckt? Solange im Konfigurator nichts explizit
+     * gesetzt wurde (NULL), zählt der Formularwunsch aus print_areas; hat das
+     * Formular gar nichts geliefert, gibt es zumindest einen Frontprint.
+     */
+    public function prints(string $slot): bool
+    {
+        $explicit = $slot === 'back' ? $this->print_back : $this->print_front;
+        if ($explicit !== null) {
+            return $explicit;
+        }
+
+        $areas = $this->print_areas ?? [];
+        if ($areas === []) {
+            return $slot === 'front';
+        }
+
+        return in_array(self::PRINT_SLOTS[$slot] ?? '', $areas, true);
+    }
+
+    /** @return list<string> Die tatsächlich zu druckenden Slots ('front'/'back'). */
+    public function activePrintSlots(): array
+    {
+        return array_values(array_filter(array_keys(self::PRINT_SLOTS), fn ($slot) => $this->prints($slot)));
+    }
+
+    /**
+     * Extern erreichbare Logo-Adresse für diesen Druck — Printify und Dynamic
+     * Mockups laden die Datei selbst herunter. Vorrang hat ein im Tool
+     * hochgeladenes Logo; sonst gilt der Formular-Upload der Kund:innen
+     * (dieselbe Datei ist Standard für beide Drucke).
+     */
+    public function logoUrl(string $slot): ?string
+    {
+        $own = $slot === 'back' ? $this->logo_back_url : $this->logo_front_url;
+        if ($own) {
+            return $own;
+        }
+
+        $files = array_values($this->logo_files ?? []);
+
+        return $slot === 'back'
+            ? ($files[1] ?? $files[0] ?? null)
+            : ($files[0] ?? null);
+    }
+
+    /** Wurde für diesen Druck im Tool eine eigene Datei hochgeladen? */
+    public function hasUploadedLogo(string $slot): bool
+    {
+        return (bool) ($slot === 'back' ? $this->logo_back_path : $this->logo_front_path);
+    }
+
+    public function logoPath(string $slot): ?string
+    {
+        return $slot === 'back' ? $this->logo_back_path : $this->logo_front_path;
+    }
+
+    public function logoPositionKey(string $slot): string
+    {
+        $stored = $slot === 'back' ? $this->logo_back_position : $this->logo_front_position;
+        $positions = config('schoolshop.logo_positions');
+
+        return isset($positions[$stored]) ? $stored : config("schoolshop.logo_defaults.{$slot}.position");
+    }
+
+    public function logoSizeKey(string $slot): string
+    {
+        $stored = $slot === 'back' ? $this->logo_back_size : $this->logo_front_size;
+        $sizes = config('schoolshop.logo_sizes');
+
+        return isset($sizes[$stored]) ? $stored : config("schoolshop.logo_defaults.{$slot}.size");
+    }
+
+    /**
+     * Platzierung eines Drucks als relative Werte für Printify/Dynamic Mockups.
+     *
+     * @return array{x: float, y: float, width: float}
+     */
+    public function logoPlacement(string $slot): array
+    {
+        $position = config('schoolshop.logo_positions.'.$this->logoPositionKey($slot));
+        $size = config('schoolshop.logo_sizes.'.$this->logoSizeKey($slot));
+
+        return ['x' => $position['x'], 'y' => $position['y'], 'width' => $size['width']];
+    }
+
+    /** Menschlich lesbare Beschreibung eines Drucks (Protokoll/Vorschau). */
+    public function logoPlacementLabel(string $slot): string
+    {
+        return config('schoolshop.logo_positions.'.$this->logoPositionKey($slot).'.label')
+            .', '.config('schoolshop.logo_sizes.'.$this->logoSizeKey($slot).'.label');
     }
 }
