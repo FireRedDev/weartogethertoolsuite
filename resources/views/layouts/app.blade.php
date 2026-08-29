@@ -147,7 +147,9 @@
         .tab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
         .searchbox { margin-bottom: 0.75rem; }
         .searchbox input { margin-bottom: 0; max-width: 320px; }
-        footer.site { text-align: center; color: var(--muted); font-size: 0.8rem; padding: 2rem 0 3rem; }
+        footer.site { text-align: center; color: var(--muted); font-size: 0.8rem; padding: 2rem 1rem 3rem; }
+        footer.site nav { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; margin-bottom: 0.5rem; }
+        footer.site a { color: var(--muted); }
     </style>
 </head>
 <body>
@@ -168,8 +170,9 @@
         <a href="{{ route('schools.index') }}" style="color:{{ $isSchools ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Schul-Onboarding</a>
         <span style="color:#475569;">|</span>
         <a href="{{ route('close-window.index') }}" style="color:{{ $isClose ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Bestellfenster schließen</a>
-        <span style="color:#475569;">|</span>
-        <a href="{{ route('admin.status') }}" style="color:{{ $isAdmin ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Admin-Informationen</a>
+        {{-- Deutlich abgesetzt: das ist der Prüfstand, nicht ein weiteres Modul --}}
+        <a href="{{ route('admin.status') }}" title="Schnittstellen und Webhook prüfen"
+           style="margin-left:0.5rem;padding:0.25rem 0.7rem;border:1px solid {{ $isAdmin ? '#ffbb00' : '#475569' }};border-radius:999px;color:{{ $isAdmin ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">🛠 Admin-Informationen</a>
         @if (config('ordersuite.password') !== '' && session('tool_authenticated'))
             <form method="post" action="{{ route('logout') }}" style="margin-left:0.75rem;">
                 @csrf
@@ -181,6 +184,15 @@
 <main>
     @yield('content')
 </main>
-<footer class="site">Wear Together Order Suite — Nachfolger der Wear Together Toolsuite</footer>
+<footer class="site">
+    <nav>
+        <a href="{{ route('home') }}">Startseite</a><span>·</span>
+        <a href="{{ route('tool.index') }}">Auftragsdokumente</a><span>·</span>
+        <a href="{{ route('schools.index') }}">Schul-Onboarding</a><span>·</span>
+        <a href="{{ route('close-window.index') }}">Bestellfenster schließen</a><span>·</span>
+        <a href="{{ route('admin.status') }}"><strong>Admin-Informationen</strong> (Schnittstellen &amp; Webhook prüfen)</a>
+    </nav>
+    Wear Together Order Suite — Nachfolger der Wear Together Toolsuite
+</footer>
 </body>
 </html>

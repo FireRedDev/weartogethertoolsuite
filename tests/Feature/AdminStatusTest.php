@@ -58,10 +58,42 @@ class AdminStatusTest extends TestCase
             ->assertSee('nicht eingerichtet'); // Dynamic Mockups hat keinen Key
     }
 
-    public function test_nav_link_present_on_every_page(): void
+    /** Der Prüfstand muss von überall auffindbar sein — Navigation, Fußzeile und Startseite. */
+    public function test_admin_page_is_linked_from_nav_footer_and_home(): void
     {
         $this->fakeAllOk();
-        $this->get('/')->assertSee('Admin-Informationen');
+
+        $response = $this->get('/');
+
+        $response->assertOk();
+        // Navigationsleiste (abgesetzter Knopf), Fußzeile und Kachel auf der Startseite
+        $this->assertGreaterThanOrEqual(3, substr_count($response->getContent(), route('admin.status')));
+        $response->assertSee('Admin-Informationen');
+        $response->assertSee('Zu den Admin-Informationen');
+    }
+
+    /** Das Webhook-Protokoll gehört auf den Prüfstand — dort sucht man es. */
+    public function test_admin_page_shows_the_webhook_log(): void
+    {
+        $this->fakeAllOk();
+        WebhookLog::create([
+            'method' => 'POST', 'ip' => '9.9.9.9', 'content_type' => 'application/json',
+            'secret_ok' => true, 'outcome' => 'Antrag #42 angelegt', 'body_snippet' => '{"a":1}',
+        ]);
+
+        $this->get('/admin-informationen')
+            ->assertOk()
+            ->assertSee('Webhook-Diagnose')
+            ->assertSee('Antrag #42 angelegt')
+            ->assertSee('9.9.9.9')
+            ->assertSee('Version &amp; Umgebung', false);
+    }
+
+    public function test_admin_page_says_when_no_webhook_ever_arrived(): void
+    {
+        $this->fakeAllOk();
+
+        $this->get('/admin-informationen')->assertOk()->assertSee('kein einziger');
     }
 
     public function test_all_configured_interfaces_ok_persists_status(): void

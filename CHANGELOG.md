@@ -25,10 +25,15 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 - Antragsliste: „Öffnen"-Button ganz nach links verschoben und beim horizontalen Scrollen fixiert — er war bei breiten Tabellen nicht mehr sichtbar
 - Fehlertransparenz überall: erklärte Fehlermeldungen mit kopierbaren technischen Details statt 500er-Seiten; Schutz vor Redirect-Verlust bei Schreibzugriffen (www vs. ohne www)
 
+### Admin-Informationen
+- Prüfstand deutlich auffindbar gemacht: abgesetzter Knopf in der Navigationsleiste, Kachel auf der Startseite und Links in einer neuen Fußzeilen-Navigation
+- Die vollständige Webhook-Diagnose steht jetzt auf der Admin-Seite (nicht mehr nur unter Schul-Onboarding, wo sie niemand gesucht hat) — als gemeinsame Vorlage an beiden Stellen eingebunden, inklusive der Webhook-URL zum Selbsttest im Browser
+- Neuer Block „Version & Umgebung": Versionsnummer, Shop-Adresse, ob Webhook-Secret und Zugangsschutz gesetzt sind, PHP-Version und ob der Konfigurations-Cache aktiv ist
+
 ### Präsentationsblatt (neu)
 - Je Bestellfenster erzeugt das Tool das A4-Präsentationsblatt automatisch — deckungsgleich mit der bisherigen InDesign-Vorlage (größte Abweichung 2,6 pt bei der Überschrift, alles übrige unter 0,4 pt)
 - Eingabe sind nur die beiden Mockups; Schulname, Produktzeilen, Farben, Bestellzeitraum, QR-Code und Adresse kommen aus dem Onboarding-Datensatz
-- Bildausschnitt je Mockup einstellbar (X/Y/Zoom); der Detailkreis („Print your name!") wird standardmäßig aus der Vorderansicht herangezoomt, alternativ eigenes Bild hochladen
+- Bildausschnitt je Mockup mit Klick ins Bild einstellbar, mit Live-Vorschau des tatsächlichen Zuschnitts und Zoom-Regler; der Detailkreis („Print your name!") wird standardmäßig aus der Vorderansicht herangezoomt, alternativ eigenes Bild hochladen
 - Produktzeilen sind vorbelegt (Marketing-Bezeichnung + ausgeschriebene Farbliste) und frei überschreibbar, Icon je Zeile wählbar
 - Vorschau im Browser und PDF-Download; erzeugbar erst, wenn beide Mockups, Bestellfenster und mindestens ein Produkt vorhanden sind
 - Statischer Hintergrund als PNG mit transparenten Fenstern — `php artisan sheet:background <datei.png>` macht aus einem Grafik-Export (Bildplätze magenta gefüllt) die fertige Datei

@@ -35,6 +35,15 @@
                 exportiert wurden.</p>
             <span class="btn" style="margin-top:0.5rem;">Zum Bestellfenster-Schließen</span>
         </a>
+
+        <a href="{{ route('admin.status') }}" class="card home-link-card">
+            <h2>🛠 Admin-Informationen</h2>
+            <p class="lead">Prüfstand für alle Schnittstellen: WooCommerce, WordPress, Printify, Dynamic Mockups und der
+                FluentForms-Webhook werden bei jedem Aufruf live getestet. Dazu das vollständige Webhook-Protokoll —
+                dort steht jeder Aufruf der Webhook-URL, auch abgelehnte. Erste Anlaufstelle, wenn eine
+                Formular-Einsendung nicht ankommt oder die Shop-Anlage scheitert.</p>
+            <span class="btn" style="margin-top:0.5rem;">Zu den Admin-Informationen</span>
+        </a>
     </div>
 
     <style>

@@ -491,21 +491,90 @@
                         </div>
                     </div>
 
-                    <p class="hint" style="margin:0.6rem 0 0.2rem;">Bildausschnitt <span style="font-weight:400;">(0 = links/oben, 1 = rechts/unten)</span></p>
-                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.4rem;">
-                        @foreach ([['focus_x', 'X'], ['focus_y', 'Y'], ['zoom', 'Zoom']] as [$field, $short])
-                            <div>
-                                <label for="sheet_{{ $slot }}_{{ $field }}" style="font-size:0.78rem;">{{ $short }}</label>
-                                <input form="sheet-form" type="number" step="0.01"
-                                       min="{{ $field === 'zoom' ? 1 : 0 }}" max="{{ $field === 'zoom' ? ($slot === 'detail' ? 12 : 6) : 1 }}"
-                                       id="sheet_{{ $slot }}_{{ $field }}" name="sheet_{{ $slot }}_{{ $field }}"
-                                       value="{{ $onboarding->{"sheet_{$slot}_{$field}"} }}" style="margin:0;width:100%;">
+                    @php($sourceSlot = $slot === 'detail' && ! $onboarding->sheet_detail_path ? 'front' : $slot)
+                    @if ($onboarding->{"sheet_{$sourceSlot}_path"})
+                        <p class="hint" style="margin:0.7rem 0 0.3rem;">
+                            Bildausschnitt — <strong>ins linke Bild klicken</strong>, um den Mittelpunkt zu setzen.
+                            @if ($slot === 'detail' && ! $onboarding->sheet_detail_path)
+                                Quelle ist die Vorderansicht; ziel auf den Brustdruck.
+                            @endif
+                        </p>
+                        <div class="cropper" data-slot="{{ $slot }}"
+                             data-src="{{ route('sheet.image', [$onboarding, $sourceSlot]) }}"
+                             data-aspect="{{ $sheetWindows[$slot]['width'] / $sheetWindows[$slot]['height'] }}"
+                             data-round="{{ $slot === 'detail' ? '1' : '0' }}"
+                             style="display:flex;gap:0.6rem;align-items:flex-start;">
+                            <div class="crop-pick" style="position:relative;flex:1;min-width:0;cursor:crosshair;border:1px solid var(--line);border-radius:6px;overflow:hidden;">
+                                <img alt="Quellbild" style="display:block;width:100%;">
+                                <span class="crop-marker" style="position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1.5px var(--error);pointer-events:none;"></span>
                             </div>
-                        @endforeach
-                    </div>
+                            <div style="flex:none;">
+                                <div class="crop-preview" style="width:104px;background-repeat:no-repeat;border:1px solid var(--line);"></div>
+                                <p class="hint" style="margin:0.2rem 0 0;text-align:center;font-size:0.7rem;">so wird's gedruckt</p>
+                            </div>
+                        </div>
+                        <label for="sheet_{{ $slot }}_zoom" style="font-size:0.78rem;margin-top:0.4rem;">Zoom</label>
+                        <input class="crop-zoom" form="sheet-form" type="range" step="0.05"
+                               min="1" max="{{ $slot === 'detail' ? 12 : 4 }}"
+                               id="sheet_{{ $slot }}_zoom" name="sheet_{{ $slot }}_zoom"
+                               value="{{ $onboarding->{"sheet_{$slot}_zoom"} }}" style="width:100%;margin:0;">
+                    @endif
+
+                    {{-- Die tatsächlich gespeicherten Werte; werden vom Wähler oben gesetzt --}}
+                    @foreach (['focus_x', 'focus_y'] as $field)
+                        <input class="crop-{{ $field }}" form="sheet-form" type="hidden"
+                               name="sheet_{{ $slot }}_{{ $field }}" value="{{ $onboarding->{"sheet_{$slot}_{$field}"} }}">
+                    @endforeach
                 </div>
             @endforeach
         </div>
+
+        <script>
+            // Ausschnitt-Wähler: bildet exakt nach, was SheetImages::coverCrop()
+            // serverseitig rechnet — Klickpunkt = Mittelpunkt des Ausschnitts,
+            // Zoom vergrößert ihn. Die Vorschau rechts zeigt das Ergebnis.
+            document.querySelectorAll('.cropper').forEach(function (root) {
+                const img = root.querySelector('.crop-pick img');
+                const marker = root.querySelector('.crop-marker');
+                const preview = root.querySelector('.crop-preview');
+                const zoom = root.parentElement.querySelector('.crop-zoom');
+                const fx = root.parentElement.querySelector('.crop-focus_x');
+                const fy = root.parentElement.querySelector('.crop-focus_y');
+                const aspect = parseFloat(root.dataset.aspect);
+                const round = root.dataset.round === '1';
+
+                preview.style.height = Math.round(104 / aspect) + 'px';
+                preview.style.borderRadius = round ? '50%' : '4px';
+                img.src = root.dataset.src;
+
+                function draw() {
+                    const x = parseFloat(fx.value), y = parseFloat(fy.value), z = parseFloat(zoom.value);
+                    marker.style.left = (x * 100) + '%';
+                    marker.style.top = (y * 100) + '%';
+
+                    const sw = img.naturalWidth, sh = img.naturalHeight;
+                    if (! sw) return;
+                    const pw = preview.clientWidth, ph = preview.clientHeight;
+                    const scale = Math.max(pw / sw, ph / sh) * z;
+                    const w = sw * scale, h = sh * scale;
+                    // gleiche Begrenzung wie serverseitig: der Ausschnitt bleibt im Bild
+                    const left = Math.min(0, Math.max(pw - w, pw / 2 - x * w));
+                    const top = Math.min(0, Math.max(ph - h, ph / 2 - y * h));
+                    preview.style.backgroundImage = 'url("' + img.src + '")';
+                    preview.style.backgroundSize = w + 'px ' + h + 'px';
+                    preview.style.backgroundPosition = left + 'px ' + top + 'px';
+                }
+
+                root.querySelector('.crop-pick').addEventListener('click', function (event) {
+                    const box = this.getBoundingClientRect();
+                    fx.value = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width)).toFixed(3);
+                    fy.value = Math.min(1, Math.max(0, (event.clientY - box.top) / box.height)).toFixed(3);
+                    draw();
+                });
+                zoom.addEventListener('input', draw);
+                img.complete ? draw() : img.addEventListener('load', draw);
+            });
+        </script>
 
         <form method="post" action="{{ route('sheet.update', $onboarding) }}" id="sheet-form" style="margin-top:1rem;">
             @csrf

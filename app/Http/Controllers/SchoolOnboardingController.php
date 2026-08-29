@@ -88,6 +88,12 @@ class SchoolOnboardingController extends Controller
             'sheetRows' => $sheetRows,
             'sheetIcons' => $sheet->availableIcons(),
             'sheetShopUrl' => $sheet->shopUrl($onboarding),
+            // Seitenverhältnis der drei Bildfenster für den Ausschnitt-Wähler
+            'sheetWindows' => [
+                'back' => config('presentation_sheet.windows.mockup_back'),
+                'front' => config('presentation_sheet.windows.mockup_front'),
+                'detail' => config('presentation_sheet.windows.detail_circle'),
+            ],
         ]);
     }
 

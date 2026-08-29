@@ -57,9 +57,28 @@
         </div>
 
         <p class="hint" style="margin-top:0.75rem;">
-            Der FluentForms-Webhook empfängt nur (kein aktiver Verbindungstest möglich) — Details siehe Spalte
-            „Details" bzw. die Webhook-Diagnose unter <a href="{{ route('schools.index') }}">Schul-Onboarding</a>.
-            Er löst nie automatisch eine Benachrichtigung aus.
+            Der FluentForms-Webhook empfängt nur (kein aktiver Verbindungstest möglich) — jeder Aufruf steht unten
+            in der Webhook-Diagnose. Er löst nie automatisch eine Benachrichtigung aus.
         </p>
+    </div>
+
+    <div class="card">
+        @include('partials.webhook-log')
+    </div>
+
+    <div class="card">
+        <h2>Version &amp; Umgebung</h2>
+        <div class="tablewrap">
+            <table class="data">
+                <tbody>
+                    <tr><th style="width:240px;">Version</th><td>v{{ trim(@file_get_contents(base_path('VERSION')) ?: '?') }} <span class="hint">— steht auch in der Navigationsleiste; stimmt sie nicht mit dem letzten Push überein, wurde noch nicht deployt</span></td></tr>
+                    <tr><th>Shop-Adresse</th><td><code>{{ config('ordersuite.woocommerce.store_url') ?: '— nicht gesetzt' }}</code></td></tr>
+                    <tr><th>Webhook-Secret</th><td>{{ config('schoolshop.webhook_secret') ? '✓ gesetzt' : '✖ fehlt' }}</td></tr>
+                    <tr><th>Zugangsschutz (TOOL_PASSWORD)</th><td>{{ config('ordersuite.password') !== '' ? '✓ aktiv' : '— kein Login nötig' }}</td></tr>
+                    <tr><th>PHP</th><td>{{ PHP_VERSION }}</td></tr>
+                    <tr><th>Konfigurations-Cache</th><td>{{ file_exists(base_path('bootstrap/cache/config.php')) ? '✓ aktiv — nach .env-Änderungen php artisan config:cache ausführen' : '— nicht aktiv' }}</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 @endsection
