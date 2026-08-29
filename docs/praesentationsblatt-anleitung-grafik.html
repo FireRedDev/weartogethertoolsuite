@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Präsentationsblatt — Vorlage aufbereiten</title>
+<style>
+    @page {
+        size: A4;
+        margin: 1.6cm 1.8cm 1.5cm 1.8cm;
+        @bottom-center {
+            content: "Präsentationsblatt — Vorlage aufbereiten · Seite " counter(page) " von " counter(pages);
+            font-family: "Source Sans 3", "DejaVu Sans", sans-serif;
+            font-size: 8pt;
+            color: #9a9a9a;
+        }
+    }
+    @page :first { margin-top: 0; }
+
+    body {
+        font-family: "Source Sans 3", "DejaVu Sans", sans-serif;
+        font-size: 10.5pt;
+        line-height: 1.5;
+        color: #24292e;
+        margin: 0;
+    }
+    h1 { font-size: 22pt; color: #8c171a; margin: 0 0 0.15cm; line-height: 1.15; }
+    h2 {
+        font-size: 14pt; color: #8c171a; margin: 0.9cm 0 0.25cm;
+        padding-bottom: 0.12cm; border-bottom: 2px solid #e8d5d5;
+        break-after: avoid; page-break-after: avoid;
+    }
+    h3 { font-size: 11.5pt; margin: 0.55cm 0 0.15cm; color: #24292e; break-after: avoid; page-break-after: avoid; }
+    p { margin: 0 0 0.3cm; }
+    ul, ol { margin: 0 0 0.35cm; padding-left: 0.65cm; }
+    li { margin-bottom: 0.14cm; }
+    code {
+        font-family: "DejaVu Sans Mono", monospace; font-size: 9pt;
+        background: #f3f1f1; padding: 0.03cm 0.14cm; border-radius: 2px;
+    }
+    strong { font-weight: 700; }
+
+    /* Deckkopf */
+    .cover {
+        background: #b61615; color: #fff;
+        margin: 0 -1.8cm 0.9cm; padding: 1.5cm 1.8cm 1.2cm;
+    }
+    .cover .kicker { font-size: 9.5pt; letter-spacing: 0.09em; text-transform: uppercase; color: #f0c9c9; margin-bottom: 0.25cm; }
+    .cover h1 { color: #fff; font-size: 25pt; }
+    .cover .sub { font-size: 12pt; color: #ffe3e3; margin: 0.25cm 0 0; }
+
+    .callout {
+        border-left: 4px solid #8c171a; background: #fdf6f6;
+        padding: 0.35cm 0.5cm; margin: 0.4cm 0 0.5cm;
+        break-inside: avoid; page-break-inside: avoid;
+    }
+    .callout.warn { border-left-color: #b45309; background: #fffaf0; }
+    .callout.ok { border-left-color: #16803c; background: #f6fdf8; }
+    .callout p:last-child { margin-bottom: 0; }
+
+    table { width: 100%; border-collapse: collapse; margin: 0.3cm 0 0.5cm; font-size: 9.5pt; }
+    th, td { text-align: left; padding: 0.17cm 0.25cm; border-bottom: 1px solid #e6e2e2; vertical-align: top; }
+    th { background: #f6f2f2; font-weight: 700; }
+    td.k { font-family: "DejaVu Sans Mono", monospace; font-size: 8.5pt; white-space: nowrap; }
+
+    figure { margin: 0.4cm 0 0.6cm; break-inside: avoid; page-break-inside: avoid; }
+    figure img { width: 100%; border: 1px solid #ddd6d6; }
+    /* Die beiden Blattabbildungen sind selbst A4 — sie bekommen je eine eigene
+       Seite, sonst bleibt die vorhergehende Seite halb leer. */
+    figure.shot { break-before: page; page-break-before: always; margin-top: 0; }
+    figure.shot img { max-height: 22.2cm; width: auto; max-width: 100%; display: block; margin: 0 auto; }
+    figcaption { font-size: 9pt; color: #6b6b6b; margin-top: 0.15cm; }
+
+    .steps { list-style: none; padding-left: 0; counter-reset: s; }
+    .steps > li {
+        counter-increment: s; position: relative; padding-left: 0.95cm; margin-bottom: 0.3cm;
+        break-inside: avoid; page-break-inside: avoid;
+    }
+    .steps > li::before {
+        content: counter(s); position: absolute; left: 0; top: 0.02cm;
+        width: 0.62cm; height: 0.62cm; border-radius: 50%;
+        background: #8c171a; color: #fff; font-size: 9.5pt; font-weight: 700;
+        text-align: center; line-height: 0.62cm;
+    }
+    .steps > li > strong:first-child { display: block; margin-bottom: 0.04cm; }
+
+    dl.faq { margin: 0.2cm 0 0; }
+    dl.faq dt { font-weight: 700; margin-top: 0.35cm; break-after: avoid; page-break-after: avoid; }
+    dl.faq dd { margin: 0.06cm 0 0; break-inside: avoid; page-break-inside: avoid; }
+
+    .newpage { break-before: page; page-break-before: always; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+    <div class="kicker">Wear Together · Präsentationsblatt</div>
+    <h1>Die Vorlage für die Automatik aufbereiten</h1>
+    <p class="sub">Was genau zu liefern ist — und in welchem Format</p>
+</div>
+
+<h2>Worum es geht</h2>
+
+<p>Das Präsentationsblatt, das wir bisher pro Schule in InDesign von Hand
+gesetzt haben, erzeugt unser Bestell-Tool ab sofort automatisch. Schulname,
+Produktzeilen, Farben, Bestellzeitraum, QR-Code und die Adresse der
+Bestellseite kommen direkt aus dem Auftrag; die beiden Mockups werden im Tool
+hochgeladen.</p>
+
+<p>Damit das Blatt weiterhin exakt so aussieht wie bisher, braucht das Tool
+zwei Dinge von dir — <strong>einmalig</strong>, nicht pro Schule:</p>
+
+<table>
+    <tr><th style="width:1.1cm;">Nr.</th><th>Was</th><th>Format</th></tr>
+    <tr>
+        <td><strong>1</strong></td>
+        <td><strong>Der Hintergrund</strong> — alles, was auf jedem Blatt gleich ist</td>
+        <td>eine PNG-Datei, A4, 300&nbsp;dpi</td>
+    </tr>
+    <tr>
+        <td><strong>2</strong></td>
+        <td><strong>Die Produkt-Icons</strong> — ein Satz für alle Produkte</td>
+        <td>PNG mit transparentem Grund, 512 × 512&nbsp;px</td>
+    </tr>
+</table>
+
+<div class="callout">
+    <p><strong>Der Trick mit dem Magenta:</strong> Die drei Bildplätze (beide
+    Mockup-Rahmen und der Kreis) füllst du in der Exportdatei mit reinem
+    Magenta. Das Tool stanzt diese Flächen automatisch heraus und legt die
+    Fotos dahinter. Dadurch bleiben deine schrägen Rahmen und der rote
+    Kreisring exakt so, wie du sie gesetzt hast — die Fotos werden von deiner
+    Datei beschnitten, nicht von der Software.</p>
+</div>
+
+<h2>Teil 1 — Der Hintergrund</h2>
+
+<figure class="shot">
+    <img src="markierungen.png" alt="Das bisherige Blatt mit Markierungen">
+    <figcaption><strong>Rot = ersatzlos löschen.</strong> Diese Inhalte setzt
+    das Tool selbst. <strong>Magenta = Fläche mit #FF00FF füllen.</strong>
+    Der Rahmen und der Kreisring bleiben dabei stehen, nur die Bildfläche
+    darin wird magenta.</figcaption>
+</figure>
+
+<h3>Was drin bleibt</h3>
+<ul>
+    <li>Roter Kopfbereich mit dem WEAR-TOGETHER-Logo und dem Claim</li>
+    <li>Der helle Blatthintergrund mit allen roten und weißen Diagonalen</li>
+    <li>Der rote Kreisring samt gebogenem Schriftzug „Print your name!"</li>
+    <li>„Jetzt online bestellen" und „Hol dir jetzt deinen Schulmerch!"</li>
+    <li>Der komplette rote Fußbereich mit Kontaktdaten, Adresse und WT-Logo</li>
+</ul>
+
+<h3>Was raus muss</h3>
+<ul>
+    <li>Beide Überschriftzeilen („Schulmerchandise" und der Schulname)</li>
+    <li>Der gesamte Produktblock links — Icons, Produktnamen und Farbzeilen,
+        <strong>auch</strong> die Zeile „1 Produkt = 1 Baum"</li>
+    <li>Der Bestellzeitraum</li>
+    <li>Der QR-Code und die beiden Adresszeilen darunter</li>
+    <li>Der Vorname im Kreis</li>
+    <li>Beide Mockup-Fotos und die Detailaufnahme im Kreis</li>
+</ul>
+
+<h3>Schritt für Schritt</h3>
+<ol class="steps">
+    <li><strong>Vorlage kopieren</strong>
+        Arbeite an einer Kopie der bestehenden InDesign-Datei, damit die
+        Originalvorlage erhalten bleibt.</li>
+    <li><strong>Variable Inhalte löschen</strong>
+        Alles, was oben unter „Was raus muss" steht — inklusive der leeren
+        Textrahmen. Zurück bleibt das Blatt ohne jede schulspezifische Angabe.</li>
+    <li><strong>Bildplätze magenta füllen</strong>
+        Die beiden Mockup-Rahmen und den Kreis mit einer Vollfläche in reinem
+        Magenta füllen: <code>R 255 · G 0 · B 255</code> (bzw.
+        <code>#FF00FF</code>). Wichtig: keine Transparenz, kein Verlauf, keine
+        Deckkraft unter 100&nbsp;%, kein Schlagschatten. Die Fläche muss den
+        Rahmen randlos ausfüllen.</li>
+    <li><strong>Prüfen, dass sonst nirgends Magenta vorkommt</strong>
+        Das Tool erkennt die Bildplätze allein an dieser Farbe. Ein magentafarbenes
+        Detail an anderer Stelle würde ebenfalls ausgestanzt.</li>
+    <li><strong>Als PNG exportieren</strong>
+        Datei → Exportieren → PNG. Einstellungen: <strong>Auflösung 300&nbsp;dpi</strong>,
+        Farbraum <strong>RGB</strong>, Hintergrund <strong>deckend</strong>
+        (nicht transparent), Qualität „Maximum", <strong>ohne</strong> Anschnitt
+        und ohne Druckermarken.</li>
+    <li><strong>Dateigröße kontrollieren</strong>
+        Das Ergebnis muss <strong>2481 × 3508 Pixel</strong> groß sein. Weicht
+        das ab, stimmt die Auflösung oder das Seitenformat nicht.</li>
+</ol>
+
+<figure class="shot">
+    <img src="soll-hintergrund.png" alt="So soll die fertige Exportdatei aussehen">
+    <figcaption><strong>So sieht die fertige Datei aus.</strong> Genau das ist
+    das erwartete Ergebnis: alles Statische unverändert, die drei Bildplätze
+    magenta, keine schulspezifischen Angaben.</figcaption>
+</figure>
+
+<div class="callout warn">
+    <p><strong>Wichtig zum Kreis:</strong> Der rote Ring und der Schriftzug
+    „Print your name!" bleiben Teil des Hintergrunds — nur die Kreisfläche
+    <em>innerhalb</em> des Rings wird magenta. Der Ring darf die Magentafläche
+    ruhig ein Stück überlappen, das ist sogar erwünscht: er verdeckt die Kante
+    des eingesetzten Fotos.</p>
+</div>
+
+<h2>Teil 2 — Die Produkt-Icons</h2>
+
+<p>Jede Produktzeile bekommt ein Icon. Vier davon konnten wir aus der
+bestehenden Vorlage übernehmen, die übrigen fehlen noch. Bitte liefere den
+kompletten Satz in einheitlichem Stil — dieselbe Strichstärke und optisch
+gleiche Größe wie die bereits vorhandenen.</p>
+
+<table>
+    <tr><th>Dateiname</th><th>Produkt</th><th>Status</th></tr>
+    <tr><td class="k">zoodie.png</td><td>Zip-Hoodie</td><td>vorhanden</td></tr>
+    <tr><td class="k">polo.png</td><td>Poloshirt, Match-Polo</td><td>vorhanden</td></tr>
+    <tr><td class="k">t-shirt.png</td><td>T-Shirt, Sportshirt, Kinder-T-Shirt</td><td>vorhanden</td></tr>
+    <tr><td class="k">tree.png</td><td>Baum („1 Produkt = 1 Baum")</td><td>vorhanden</td></tr>
+    <tr><td class="k">hoodie.png</td><td>Hoodie, Kinder-Hoodie</td><td><strong>wird gebraucht</strong></td></tr>
+    <tr><td class="k">sweater.png</td><td>Sweater</td><td><strong>wird gebraucht</strong></td></tr>
+    <tr><td class="k">jacket.png</td><td>College-Jacke</td><td><strong>wird gebraucht</strong></td></tr>
+    <tr><td class="k">bag.png</td><td>Umhängetasche</td><td><strong>wird gebraucht</strong></td></tr>
+</table>
+
+<p><strong>Format je Icon:</strong> PNG mit transparentem Hintergrund,
+512 × 512&nbsp;Pixel, schwarze Strichzeichnung, im Quadrat zentriert und rundum
+etwas Luft. Die Dateinamen bitte exakt wie in der Tabelle (klein, ohne
+Umlaute) — das Tool ordnet sie darüber zu.</p>
+
+<div class="callout ok">
+    <p>Die vier vorhandenen Icons bekommst du von mir als Muster mitgeliefert.
+    Am einfachsten nimmst du eines davon als Vorlage und zeichnest die
+    fehlenden im selben Stil.</p>
+</div>
+
+<h2>Wie du mir das übergibst</h2>
+
+<p>Ein Ordner mit:</p>
+<ul>
+    <li><code>hintergrund.png</code> — der Export aus Teil 1</li>
+    <li><code>icons/</code> — die acht Icon-Dateien aus Teil 2</li>
+    <li>die bearbeitete InDesign-Datei, damit spätere Änderungen möglich bleiben</li>
+</ul>
+
+<p>Ich spiele beides ins Tool ein und schicke dir ein fertig erzeugtes Blatt
+zur Kontrolle zurück.</p>
+
+<h2>Häufige Fragen</h2>
+
+<dl class="faq">
+    <dt>Muss ich das pro Schule machen?</dt>
+    <dd>Nein. Einmalig. Danach erzeugt das Tool jedes Blatt selbst — für neue
+    Schulen ändert sich für dich nichts mehr.</dd>
+
+    <dt>Warum PNG und nicht PDF?</dt>
+    <dd>Das Tool legt die Fotos hinter den Hintergrund und braucht dafür eine
+    Datei mit echten Transparenzflächen. Das geht mit PNG zuverlässig, mit PDF
+    nicht. Die Schriften im Hintergrund sind dabei fest eingebrannt — bei
+    300&nbsp;dpi ist das im Druck nicht von Text zu unterscheiden.</dd>
+
+    <dt>Was passiert mit der Schrift der variablen Texte?</dt>
+    <dd>Die setzt das Tool selbst, in <strong>Source Sans 3</strong>. Myriad
+    Pro dürfen wir auf dem Server nicht einbetten. Die beiden Schriften stammen
+    vom selben Gestalter und sind praktisch deckungsgleich — im direkten
+    Vergleich mit dem alten Blatt liegen alle Zeilen auf einem Zehntel
+    Millimeter genau an derselben Stelle.</dd>
+
+    <dt>Kann ich das Layout auch ändern, nicht nur nachbauen?</dt>
+    <dd>Ja, solange die drei Bildplätze magenta bleiben und das Blatt A4 bleibt.
+    Verschiebst du aber die variablen Textbereiche (Überschrift, Produktzeilen,
+    Datum, QR-Code), sag mir vorher Bescheid — deren Positionen sind im Tool
+    hinterlegt und müssen dann angepasst werden.</dd>
+
+    <dt>Was, wenn ein Blatt in einer anderen Farbe gebraucht wird?</dt>
+    <dd>Kein Problem: Dann lieferst du denselben Export in der anderen Farbe.
+    Wir hinterlegen mehrere Hintergründe und wählen im Tool aus.</dd>
+</dl>
+
+</body>
+</html>
