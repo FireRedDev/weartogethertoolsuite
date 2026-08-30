@@ -75,6 +75,41 @@ class OrderRepository
     }
 
     /**
+     * Alle Produktkategorien des Shops — die Statistik leitet daraus die
+     * Schulen ab.
+     *
+     * Bewusst NICHT aus den Onboarding-Anträgen: die Toolsuite kennt nur die
+     * Schulen, die sie selbst angelegt hat. Alles, was vorher von Hand im Shop
+     * entstanden ist, fehlte sonst in der Auswertung — und genau das hat dazu
+     * geführt, dass die Fenster-Durchschnitte 0 waren.
+     *
+     * @return list<array{id: int, name: string, count: int, parent: int}>
+     */
+    public function categories(bool $fresh = false): array
+    {
+        $key = 'statistics.categories';
+        if ($fresh) {
+            Cache::forget($key);
+        }
+
+        return Cache::remember(
+            $key,
+            now()->addHours((int) config('statistics.cache.products_hours')),
+            fn () => $this->client->productCategories(),
+        );
+    }
+
+    public function hasCategories(): bool
+    {
+        return Cache::has('statistics.categories');
+    }
+
+    public function forgetCategories(): void
+    {
+        Cache::forget('statistics.categories');
+    }
+
+    /**
      * Bestellungen eines Schuljahres, normalisiert.
      *
      * Der Zeitraum greift bewusst über den Schuljahresrand hinaus

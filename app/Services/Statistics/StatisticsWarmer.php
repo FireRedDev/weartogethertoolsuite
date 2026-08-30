@@ -45,14 +45,14 @@ class StatisticsWarmer
     public function progress(StatisticsFilters $filters): array
     {
         $steps = $this->steps($filters);
-        $loaded = $this->repository->hasProducts() ? 1 : 0;
+        $loaded = ($this->repository->hasProducts() ? 1 : 0) + ($this->repository->hasCategories() ? 1 : 0);
         foreach ($steps as $month) {
             if ($this->repository->isMonthCached($month['key'], $filters->statuses)) {
                 $loaded++;
             }
         }
 
-        $total = count($steps) + 1; // + Produktkatalog
+        $total = count($steps) + 2; // + Produktkatalog + Kategorien (= Schulen)
 
         return [
             'loaded' => $loaded,
@@ -97,6 +97,11 @@ class StatisticsWarmer
         Cache::put(self::RUNNING, true, now()->addMinutes(5));
 
         try {
+            if (! $this->repository->hasCategories()) {
+                $this->repository->categories();
+                $fetched++;
+                $this->pause($pause);
+            }
             if (! $this->repository->hasProducts()) {
                 $this->repository->products();
                 $fetched++;
@@ -140,6 +145,7 @@ class StatisticsWarmer
     public function reset(StatisticsFilters $filters): void
     {
         $this->repository->forgetProducts();
+        $this->repository->forgetCategories();
         foreach ($this->years($filters) as $year) {
             $this->repository->forget($year, $filters->statuses, $filters->fetchPadding());
         }

@@ -56,6 +56,13 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 - Ein Bestellabruf je Schuljahr statt einem je Schule; abgeschlossene Schuljahre 24 h gecacht, das laufende 30 Minuten, mit „↻ Daten neu laden". Ist der Shop nicht erreichbar, erscheint eine erklärte Meldung mit kopierbaren Details statt eines 500ers
 - Auf dem Telefon schrumpfen die Diagramme nicht mit, sondern scrollen waagrecht im eigenen Kasten — bei 390 px wäre die Beschriftung sonst 6 px groß
 
+### Statistiken: richtige Schulzuordnung, Produktarten, Schul-Rangliste
+- **Behoben: „Ø je Sammelbestellfenster" und „Ø je On-Demand-Shop" waren 0.** Die Auswertung kannte Schulen nur aus den Onboarding-Anträgen — also nur die, die die Toolsuite selbst angelegt hat. Alles, was vorher von Hand im Shop entstand, war unsichtbar. Jetzt sind die **Produktkategorien des Shops** die Quelle; der Antrag liefert nur noch Lieferart und Bestellfenster-Daten
+- **Meistverkaufte Produkte gehen nach Produktart, nicht nach Produktname.** Im Shop heißt jedes Produkt anders, weil der Schulname darin steckt — die Rangliste hatte deshalb je Schule eigene Zeilen. Jetzt fallen „BG Korneuburg Schulhoodie", „HAK Wien STICK-Hoodie + Backprint" und „VS Wolkersdorf Kapuzenpullover" in eine Zeile „Schulhoodie". Die Stichwörter kommen aus dem Produktkatalog und aus `statistics.product_group_aliases`
+- **Neu: Rangliste „Umsatzstärkste Schulen"** (Umsatz je Schul-Kategorie im Schuljahr, mit Vorjahresvergleich) — sie ersetzt die Tabelle „Bestellfenster im Detail", die zu wenige Schulen und dort 0 € zeigte. Auch Schulen ohne Antrag in der Toolsuite erscheinen darin
+- **„Zielumsatz (Vorjahr)" war missverständlich** — der Wert ist der tatsächlich erreichte Vorjahresumsatz, der als Ziel übernommen wird. Steht jetzt so da: „= Umsatz 2024/25 (kein eigenes Ziel eingetragen)"
+- **Neu erklärt, was die Filter beeinflussen**: Schuljahr, Lieferart, Schule und Bestellstatus wirken auf alles; Vorlauf/Nachlauf ausschließlich auf die beiden Fenster-Durchschnitte; der Zielumsatz ausschließlich auf die Prognose
+
 ### Statistiken laden jetzt im Hintergrund
 - **Die Seite wartet nicht mehr auf den Shop.** Sie antwortet sofort und zeigt, solange Daten fehlen, eine Ladeanzeige mit **Spinner und Fortschrittsbalken** („12 von 39 Datenpaketen geladen"). Kennzahlen und Diagramme bleiben bis dahin vollständig verborgen — eine halbe Auswertung wäre irreführender als gar keine
 - **Der Aufbau läuft automatisch weiter**, ohne Klick. Die Ladeseite fragt den Fortschritt alle paar Sekunden ab und öffnet die Auswertung selbstständig, sobald alles da ist. Das frühere manuelle „Weiterladen" entfällt

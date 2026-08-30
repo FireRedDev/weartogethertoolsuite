@@ -90,6 +90,7 @@ class StatisticsController extends Controller
             'previousAtSamePoint' => $data['previousAtSamePoint'],
             'productRanking' => $data['products'],
             'colorRanking' => $data['colors'],
+            'schoolRanking' => $data['schoolRanking'],
             'forecast' => $projection,
             'monthChart' => (new ColumnChart)->build(
                 $this->monthRows($data['current'], $data['previous']),
@@ -113,6 +114,20 @@ class StatisticsController extends Controller
                 $data['current']['label'],
                 $data['previous']['label'],
                 'Stk.',
+            ),
+            // Schulen werden nach UMSATZ gereiht — dort ist die Frage „welche
+            // Schule bringt am meisten", nicht „wie viele Teile".
+            'schoolChart' => (new BarChart)->build(
+                array_map(static fn (array $row) => [
+                    'name' => $row['name'],
+                    'value' => (float) $row['revenue'],
+                    'previous' => (float) $row['previousRevenue'],
+                    'note' => null,
+                    'swatch' => null,
+                ], $data['schoolRanking']),
+                $data['current']['label'],
+                $data['previous']['label'],
+                '€',
             ),
         ]);
     }

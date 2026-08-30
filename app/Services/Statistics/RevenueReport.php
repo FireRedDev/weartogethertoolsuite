@@ -10,15 +10,24 @@ use Illuminate\Support\Collection;
  * Rechnet aus den Shop-Bestellungen die Kennzahlen des Statistik-Moduls —
  * je Schuljahr einmal, plus dasselbe fürs Vorjahr zum Vergleich.
  *
+ * **Woher die Schulen kommen:** aus den PRODUKTKATEGORIEN DES SHOPS, nicht aus
+ * den Onboarding-Anträgen. Die Toolsuite kennt nur die Schulen, die sie selbst
+ * angelegt hat; alles, was vorher von Hand im Shop entstand, fehlte sonst
+ * komplett — genau daran sind die Fenster-Durchschnitte zuvor gescheitert
+ * (kaum Fenster, und die mit 0 €). Ein Onboarding-Antrag wird einer Kategorie
+ * über `woo_category_id` zugeordnet, hilfsweise über den Namen; er liefert
+ * dann die Zusatzangaben, die nur die Toolsuite kennt: Lieferart und die
+ * Bestellfenster-Daten.
+ *
  * Zwei Zuordnungen laufen nebeneinander und beantworten verschiedene Fragen:
  *
  *  - **Nach Schuljahr**: eine Bestellposition zählt in das Schuljahr, in dem
- *    das Bestelldatum liegt. Das ist die Grundlage für Gesamtumsatz,
- *    Monatsverlauf, Ø je Bestellung und die Ranglisten.
+ *    das Bestelldatum liegt. Grundlage für Gesamtumsatz, Monatsverlauf,
+ *    Ø je Bestellung und alle Ranglisten (Produkte, Farben, Schulen).
  *  - **Nach Bestellfenster**: eine Position zählt zum Fenster ihrer Schule,
  *    wenn das Bestelldatum im (bewusst breiter gefassten) Fensterzeitraum
- *    liegt. Das ist die Grundlage für „Ø Umsatz je Bestellfenster". Ein
- *    Fenster gehört zu dem Schuljahr, in dem es endet.
+ *    liegt. Grundlage für „Ø Umsatz je Bestellfenster". Ein Fenster gehört zu
+ *    dem Schuljahr, in dem es endet.
  *
  * Der Fensterzeitraum ist absichtlich größer als im Antrag eingestellt: nach
  * Ablauf wird häufig noch eine Woche verlängert, und Nachzügler bestellen auch
@@ -27,33 +36,28 @@ use Illuminate\Support\Collection;
  */
 class RevenueReport
 {
-    public function __construct(private readonly OrderRepository $repository) {}
+    public function __construct(
+        private readonly OrderRepository $repository,
+        private readonly ProductGrouper $grouper,
+    ) {}
 
     /**
      * @return array<string, mixed>
      */
     public function build(StatisticsFilters $filters): array
     {
-        // Zeitbudget dieses Seitenaufrufs starten. Reicht es nicht für alle
-        // Monate, liefert das Ergebnis `complete = false` und die Seite sagt,
-        // dass sie noch aufgebaut wird — statt minutenlang zu hängen.
         $this->repository->startBudget();
 
         $products = $this->repository->products($filters->fresh);
-        $schools = SchoolOnboarding::query()
-            ->whereNotNull('woo_category_id')
-            ->orderBy('school_name')
-            ->get();
+        $schools = $this->schools($filters->fresh);
 
         $current = $this->aggregate($filters->year, $filters, $products, $schools);
         $previous = $this->aggregate($filters->year->previous(), $filters, $products, $schools);
 
         /*
          * Grundlage der Prognose: die abgeschlossenen Vorjahre, neuestes zuerst.
-         * Das erste ist bereits berechnet. Jedes weitere kostet weitere Abrufe —
-         * die werden nur angestoßen, wenn die eigentliche Auswertung schon
-         * vollständig ist UND noch Zeit übrig ist. Sonst wartet die Seite auf
-         * Daten, die nur die Prognose verfeinern.
+         * Weitere Jahre nur, wenn die eigentliche Auswertung schon vollständig
+         * ist und noch Zeit übrig — sie verfeinern nur die Hochrechnung.
          */
         $history = $previous['year']->isComplete() ? [$previous] : [];
         $extra = (int) config('statistics.forecast.history_years') - 1;
@@ -85,21 +89,79 @@ class RevenueReport
             'current' => $current,
             'previous' => $previous,
             'history' => $history,
-            // Konnten alle Monate geladen werden? Sonst zeigt die Seite an,
-            // dass die Auswertung noch aufgebaut wird.
             'complete' => $current['complete'] && $previous['complete'],
             'loaded' => $current['loaded'] + $previous['loaded'],
             'months' => $current['total'] + $previous['total'],
             'previousAtSamePoint' => $previousAtSamePoint,
             'products' => $this->mergeRanking($current['products'], $previous['products']),
             'colors' => $this->mergeRanking($current['colors'], $previous['colors']),
+            'schoolRanking' => $this->mergeRanking($current['schools'], $previous['schools']),
             'schools' => $schools,
         ];
     }
 
     /**
+     * Die Schulen des Shops: jede Produktkategorie unterhalb der Sammel-
+     * kategorie („Schulen"), angereichert um den passenden Onboarding-Antrag.
+     *
+     * @return Collection<int, array{id: int, name: string, onboarding: ?SchoolOnboarding, deliveryType: string}>
+     */
+    private function schools(bool $fresh): Collection
+    {
+        $categories = $this->repository->categories($fresh);
+
+        // Die Sammelkategorie selbst gehört nicht in die Auswertung; ihre
+        // Kinder sind die Schulen. Findet sie sich nicht (anderer Name, flache
+        // Struktur), gelten alle Kategorien als Kandidaten.
+        $parentName = mb_strtolower((string) config('schoolshop.parent_category_name'));
+        $parentId = null;
+        foreach ($categories as $category) {
+            if (mb_strtolower($category['name']) === $parentName) {
+                $parentId = $category['id'];
+                break;
+            }
+        }
+
+        $onboardings = SchoolOnboarding::query()->orderByDesc('window_end')->get();
+        $byCategory = [];
+        $byName = [];
+        foreach ($onboardings as $onboarding) {
+            if ($onboarding->woo_category_id !== null) {
+                $byCategory[(int) $onboarding->woo_category_id] ??= $onboarding;
+            }
+            $byName[mb_strtolower(trim((string) $onboarding->school_name))] ??= $onboarding;
+        }
+
+        $schools = collect();
+        foreach ($categories as $category) {
+            if ($parentId !== null && $category['parent'] !== $parentId) {
+                continue;
+            }
+            if ($parentId !== null && $category['id'] === $parentId) {
+                continue;
+            }
+
+            $onboarding = $byCategory[$category['id']]
+                ?? $byName[mb_strtolower(trim($category['name']))]
+                ?? null;
+
+            $schools->put($category['id'], [
+                'id' => $category['id'],
+                'name' => $category['name'],
+                'onboarding' => $onboarding,
+                // Ohne Antrag ist die Lieferart unbekannt; solche Schulen
+                // zählen in die Umsatzrangliste, aber in keinen Fenster-
+                // Durchschnitt (dafür fehlen die Fensterdaten).
+                'deliveryType' => $onboarding?->delivery_type ?? 'unbekannt',
+            ]);
+        }
+
+        return $schools;
+    }
+
+    /**
      * @param  array<int, array{name: string, categories: list<int>}>  $products
-     * @param  Collection<int, SchoolOnboarding>  $schools
+     * @param  Collection<int, array{id: int, name: string, onboarding: ?SchoolOnboarding, deliveryType: string}>  $schools
      * @return array<string, mixed>
      */
     private function aggregate(SchoolYear $year, StatisticsFilters $filters, array $products, Collection $schools): array
@@ -107,7 +169,6 @@ class RevenueReport
         $fetch = $this->repository->orders($year, $filters->statuses, $filters->fetchPadding(), $filters->fresh);
         $orders = $fetch['orders'];
 
-        $categoryToSchool = $this->categoryToSchool($schools);
         $windows = $this->windows($year, $filters, $schools);
         $inScope = $this->schoolsInScope($filters, $schools);
 
@@ -116,9 +177,10 @@ class RevenueReport
         $orderIds = [];
         $unassigned = 0.0;
         $months = $this->emptyMonths($year);
-        $days = [];          // Tagesumsatz für den Vorjahresvergleich zum Stichtag
+        $days = [];
         $productTotals = [];
         $colorTotals = [];
+        $schoolTotals = [];
         $windowRevenue = array_fill_keys(array_keys($windows), 0.0);
 
         foreach ($orders as $order) {
@@ -127,26 +189,32 @@ class RevenueReport
             $inYear = $year->contains($date);
 
             foreach ($order['items'] as $item) {
-                $school = $this->schoolFor($item['product_id'], $products, $categoryToSchool);
+                $categoryId = $this->categoryFor($item['product_id'], $products, $schools);
+                $school = $categoryId === null ? null : $schools->get($categoryId);
 
                 // Fensterzuordnung läuft unabhängig vom Schuljahr, weil ein
                 // Fenster über den Jahreswechsel hinausreichen kann.
-                if ($school !== null && isset($windows[$school->id]) && $windows[$school->id]['contains']($date)) {
-                    $windowRevenue[$school->id] += $item['revenue'];
+                if ($categoryId !== null && isset($windows[$categoryId]) && $windows[$categoryId]['contains']($date)) {
+                    $windowRevenue[$categoryId] += $item['revenue'];
                 }
 
                 if (! $inYear) {
                     continue;
                 }
-                if ($inScope !== null && ($school === null || ! isset($inScope[$school->id]))) {
+                if ($inScope !== null && ($categoryId === null || ! isset($inScope[$categoryId]))) {
                     continue;
                 }
 
                 $revenue += $item['revenue'];
                 $quantity += $item['quantity'];
                 $orderIds[$order['id']] = true;
+
                 if ($school === null) {
                     $unassigned += $item['revenue'];
+                } else {
+                    $schoolTotals[$school['name']] ??= ['name' => $school['name'], 'revenue' => 0.0, 'quantity' => 0];
+                    $schoolTotals[$school['name']]['revenue'] += $item['revenue'];
+                    $schoolTotals[$school['name']]['quantity'] += $item['quantity'];
                 }
 
                 $monthKey = $date->format('Y-m');
@@ -156,7 +224,7 @@ class RevenueReport
                 $dayKey = (int) $year->start()->diffInDays($date);
                 $days[$dayKey] = ($days[$dayKey] ?? 0.0) + $item['revenue'];
 
-                $productName = $this->productLabel($item, $school);
+                $productName = $this->grouper->group($item['name'], $school['name'] ?? null);
                 $productTotals[$productName] ??= ['name' => $productName, 'revenue' => 0.0, 'quantity' => 0];
                 $productTotals[$productName]['revenue'] += $item['revenue'];
                 $productTotals[$productName]['quantity'] += $item['quantity'];
@@ -168,8 +236,6 @@ class RevenueReport
             }
         }
 
-        $collective = $this->windowSummary($windows, $windowRevenue, 'collective');
-        $ondemand = $this->windowSummary($windows, $windowRevenue, 'ondemand');
         $orderCount = count($orderIds);
 
         return [
@@ -185,57 +251,64 @@ class RevenueReport
             'unassigned' => round($unassigned, 2),
             'months' => array_values($months),
             'days' => $days,
-            'collective' => $collective,
-            'ondemand' => $ondemand,
+            'collective' => $this->windowSummary($windows, $windowRevenue, 'collective'),
+            'ondemand' => $this->windowSummary($windows, $windowRevenue, 'ondemand'),
+            'schoolsWithoutWindow' => $this->schoolsWithoutWindow($filters, $schools),
             'products' => $this->sortRanking($productTotals),
             'colors' => $this->sortRanking($colorTotals),
+            'schools' => $this->sortRanking($schoolTotals, byRevenue: true),
         ];
     }
 
     /**
-     * Auswertungszeitraum je Schule.
+     * Auswertungszeitraum je Schule — nur für Schulen mit Onboarding-Antrag,
+     * denn nur dort stehen die Bestellfenster-Daten.
      *
-     * @param  Collection<int, SchoolOnboarding>  $schools
-     * @return array<int, array{school: SchoolOnboarding, type: string, from: Carbon, to: Carbon, contains: callable}>
+     * @param  Collection<int, array{id: int, name: string, onboarding: ?SchoolOnboarding, deliveryType: string}>  $schools
+     * @return array<int, array{school: array<string, mixed>, type: string, from: Carbon, to: Carbon, contains: callable}>
      */
     private function windows(SchoolYear $year, StatisticsFilters $filters, Collection $schools): array
     {
         $windows = [];
         $inScope = $this->schoolsInScope($filters, $schools);
 
-        foreach ($schools as $school) {
-            if ($inScope !== null && ! isset($inScope[$school->id])) {
+        foreach ($schools as $categoryId => $school) {
+            if ($inScope !== null && ! isset($inScope[$categoryId])) {
+                continue;
+            }
+            $onboarding = $school['onboarding'];
+            if ($onboarding === null) {
                 continue;
             }
 
-            if ($school->delivery_type === 'ondemand') {
+            if ($onboarding->delivery_type === 'ondemand') {
                 // On-Demand hat kein Bestellfenster — gewertet wird das ganze
                 // Schuljahr, frühestens ab Anlage des Antrags.
-                $created = $school->created_at ? Carbon::parse($school->created_at)->startOfDay() : $year->start();
+                $created = $onboarding->created_at ? Carbon::parse($onboarding->created_at)->startOfDay() : $year->start();
                 if ($created->gt($year->end())) {
                     continue;
                 }
                 $from = $created->gt($year->start()) ? $created : $year->start();
                 $to = $year->end();
-            } elseif ($school->delivery_type === 'collective') {
-                if ($school->window_end === null) {
+            } elseif ($onboarding->delivery_type === 'collective') {
+                if ($onboarding->window_end === null) {
                     continue;
                 }
                 // Ein Fenster gehört zu dem Schuljahr, in dem es endet.
-                if (! $year->contains($school->window_end)) {
+                if (! $year->contains($onboarding->window_end)) {
                     continue;
                 }
-                $start = $school->window_start ?? $school->window_end;
+                $start = $onboarding->window_start ?? $onboarding->window_end;
                 $from = Carbon::parse($start)->startOfDay()->subDays($filters->paddingBefore);
-                $to = Carbon::parse($school->window_end)->endOfDay()->addDays($filters->paddingAfter);
+                $to = Carbon::parse($onboarding->window_end)->endOfDay()->addDays($filters->paddingAfter);
             } else {
                 // Listenbestellung: kein Webshop, kein Umsatz zuzuordnen.
                 continue;
             }
 
-            $windows[$school->id] = [
+            $windows[$categoryId] = [
                 'school' => $school,
-                'type' => $school->delivery_type,
+                'type' => $onboarding->delivery_type,
                 'from' => $from,
                 'to' => $to,
                 'contains' => static fn (Carbon $date) => $date->betweenIncluded($from, $to),
@@ -246,7 +319,24 @@ class RevenueReport
     }
 
     /**
-     * @param  array<int, array{school: SchoolOnboarding, type: string, from: Carbon, to: Carbon, contains: callable}>  $windows
+     * Wie viele Schulen mit Umsatz haben keine Fensterdaten? Damit lässt sich
+     * auf der Seite erklären, warum die Durchschnitte auf weniger Schulen
+     * beruhen als die Umsatzrangliste.
+     *
+     * @param  Collection<int, array{id: int, name: string, onboarding: ?SchoolOnboarding, deliveryType: string}>  $schools
+     */
+    private function schoolsWithoutWindow(StatisticsFilters $filters, Collection $schools): int
+    {
+        $inScope = $this->schoolsInScope($filters, $schools);
+
+        return $schools
+            ->filter(fn ($school, $categoryId) => ($inScope === null || isset($inScope[$categoryId]))
+                && $school['onboarding'] === null)
+            ->count();
+    }
+
+    /**
+     * @param  array<int, array{school: array<string, mixed>, type: string, from: Carbon, to: Carbon, contains: callable}>  $windows
      * @param  array<int, float>  $revenue
      * @return array{count: int, revenue: float, avg: ?float, list: list<array{name: string, revenue: float, from: string, to: string}>}
      */
@@ -261,7 +351,7 @@ class RevenueReport
             $value = round($revenue[$id] ?? 0.0, 2);
             $total += $value;
             $list[] = [
-                'name' => $window['school']->school_name,
+                'name' => $window['school']['name'],
                 'revenue' => $value,
                 'from' => $window['from']->format('d.m.Y'),
                 'to' => $window['to']->format('d.m.Y'),
@@ -280,39 +370,18 @@ class RevenueReport
     }
 
     /**
-     * Produktname ohne Schulnamen und Druckzusätze, damit die Rangliste
-     * schulübergreifend zusammenfasst („BG Korneuburg Schulhoodie" und
-     * „HAK Wien STICK-Schulhoodie" werden beide zu „Schulhoodie").
-     *
-     * @param  array{name: string, product_id: int}  $item
-     */
-    private function productLabel(array $item, ?SchoolOnboarding $school): string
-    {
-        $name = $item['name'];
-        if ($school !== null && $school->school_name !== '') {
-            $name = str_ireplace($school->school_name, '', $name);
-        }
-        foreach (config('statistics.product_name_noise') as $noise) {
-            $name = str_ireplace($noise, '', $name);
-        }
-        // Variantenzusatz der API abschneiden („Schulhoodie - Blau, M")
-        $name = preg_replace('/\s+-\s+[^-]*$/u', '', $name) ?? $name;
-        $name = trim(preg_replace('/\s{2,}/u', ' ', $name) ?? $name);
-
-        return $name !== '' ? $name : ($item['name'] !== '' ? $item['name'] : 'Produkt #'.$item['product_id']);
-    }
-
-    /**
      * @param  array<string, array{name: string, revenue: float, quantity: int}>  $totals
      * @return list<array{name: string, revenue: float, quantity: int}>
      */
-    private function sortRanking(array $totals): array
+    private function sortRanking(array $totals, bool $byRevenue = false): array
     {
         $list = array_map(
             static fn (array $row) => ['name' => $row['name'], 'revenue' => round($row['revenue'], 2), 'quantity' => $row['quantity']],
             array_values($totals),
         );
-        usort($list, static fn ($a, $b) => [$b['quantity'], $b['revenue']] <=> [$a['quantity'], $a['revenue']]);
+        usort($list, $byRevenue
+            ? static fn ($a, $b) => [$b['revenue'], $b['quantity']] <=> [$a['revenue'], $a['quantity']]
+            : static fn ($a, $b) => [$b['quantity'], $b['revenue']] <=> [$a['quantity'], $a['revenue']]);
 
         return $list;
     }
@@ -363,10 +432,10 @@ class RevenueReport
     }
 
     /**
-     * Welche Schulen darf die Auswertung sehen? `null` = keine Einschränkung
-     * (dann zählen auch Bestellungen ohne Schulzuordnung mit).
+     * Welche Schulen (Kategorie-IDs) darf die Auswertung sehen? `null` = keine
+     * Einschränkung (dann zählen auch Bestellungen ohne Schulzuordnung mit).
      *
-     * @param  Collection<int, SchoolOnboarding>  $schools
+     * @param  Collection<int, array{id: int, name: string, onboarding: ?SchoolOnboarding, deliveryType: string}>  $schools
      * @return array<int, true>|null
      */
     private function schoolsInScope(StatisticsFilters $filters, Collection $schools): ?array
@@ -376,42 +445,30 @@ class RevenueReport
         }
 
         $scope = [];
-        foreach ($schools as $school) {
-            if ($filters->schoolId !== null && $school->id !== $filters->schoolId) {
+        foreach ($schools as $categoryId => $school) {
+            if ($filters->schoolId !== null && $categoryId !== $filters->schoolId) {
                 continue;
             }
-            if ($filters->deliveryType !== 'all' && $school->delivery_type !== $filters->deliveryType) {
+            if ($filters->deliveryType !== 'all' && $school['deliveryType'] !== $filters->deliveryType) {
                 continue;
             }
-            $scope[$school->id] = true;
+            $scope[$categoryId] = true;
         }
 
         return $scope;
     }
 
     /**
-     * @param  Collection<int, SchoolOnboarding>  $schools
-     * @return array<int, SchoolOnboarding>
-     */
-    private function categoryToSchool(Collection $schools): array
-    {
-        $map = [];
-        foreach ($schools as $school) {
-            $map[(int) $school->woo_category_id] = $school;
-        }
-
-        return $map;
-    }
-
-    /**
+     * Kategorie (= Schule) einer Bestellposition.
+     *
      * @param  array<int, array{name: string, categories: list<int>}>  $products
-     * @param  array<int, SchoolOnboarding>  $categoryToSchool
+     * @param  Collection<int, array<string, mixed>>  $schools
      */
-    private function schoolFor(int $productId, array $products, array $categoryToSchool): ?SchoolOnboarding
+    private function categoryFor(int $productId, array $products, Collection $schools): ?int
     {
         foreach ($products[$productId]['categories'] ?? [] as $categoryId) {
-            if (isset($categoryToSchool[$categoryId])) {
-                return $categoryToSchool[$categoryId];
+            if ($schools->has($categoryId)) {
+                return $categoryId;
             }
         }
 

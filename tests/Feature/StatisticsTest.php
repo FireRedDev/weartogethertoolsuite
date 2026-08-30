@@ -90,11 +90,11 @@ class StatisticsTest extends TestCase
         $data = app(RevenueReport::class)->build($this->filters());
 
         // 2025/26: Sammelbestellung 3 × 59,90 + 2 × 39,90 + 3 × 30,00 = 349,50
-        //          On-Demand 1 × 45,00 = 45,00
-        $this->assertEqualsWithDelta(394.50, $data['current']['revenue'], 0.01);
-        $this->assertSame(4, $data['current']['orders']);
-        $this->assertEqualsWithDelta(98.63, $data['current']['avgPerOrder'], 0.01);
-        $this->assertSame(9, $data['current']['quantity']);
+        //          On-Demand 1 × 45,00, Schule ohne Antrag 4 × 30,00 = 120,00
+        $this->assertEqualsWithDelta(514.50, $data['current']['revenue'], 0.01);
+        $this->assertSame(5, $data['current']['orders']);
+        $this->assertEqualsWithDelta(102.90, $data['current']['avgPerOrder'], 0.01);
+        $this->assertSame(13, $data['current']['quantity']);
 
         // 2024/25 zum Vergleich: 2 × 59,90 = 119,80
         $this->assertEqualsWithDelta(119.80, $data['previous']['revenue'], 0.01);
@@ -174,8 +174,56 @@ class StatisticsTest extends TestCase
         $colors = collect(app(RevenueReport::class)->build($this->filters())['colors'])
             ->keyBy('name');
 
-        $this->assertSame(6, $colors['Blau']['quantity']);       // pa_color (Sammelbestellung)
+        $this->assertSame(10, $colors['Blau']['quantity']);      // pa_color (Sammelbestellung)
         $this->assertSame(1, $colors['Heather Grey']['quantity']); // "Colors" (Printify/On-Demand)
+    }
+
+    public function test_produkt_rangliste_geht_nach_produktart_nicht_nach_produktname(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+
+        $ranking = collect(app(RevenueReport::class)->build($this->filters())['products'])->keyBy('name');
+
+        // „BG Musterstadt Schulshirt" (2 + 3 Stk.) und „VS Handschuhsheim
+        // T-Shirt bedruckt" (4 Stk.) sind dieselbe Produktart — EINE Zeile.
+        $this->assertTrue($ranking->has('Schulshirt'));
+        $this->assertSame(9, $ranking['Schulshirt']['quantity']);
+        $this->assertFalse($ranking->has('T-Shirt bedruckt'));
+        $this->assertFalse($ranking->has('VS Handschuhsheim T-Shirt bedruckt'));
+    }
+
+    // ------------------------------------------------------------ Schulranking
+
+    public function test_schul_rangliste_kommt_aus_den_shop_kategorien(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+
+        $ranking = collect(app(RevenueReport::class)->build($this->filters())['schoolRanking'])->keyBy('name');
+
+        // Schule MIT Antrag
+        $this->assertTrue($ranking->has('BG Musterstadt'));
+        // Schule OHNE Antrag in der Toolsuite — früher unsichtbar
+        $this->assertTrue($ranking->has('VS Handschuhsheim'));
+        $this->assertEqualsWithDelta(120.00, $ranking['VS Handschuhsheim']['revenue'], 0.01);
+        // Kategorie außerhalb von „Schulen" ist keine Schule
+        $this->assertFalse($ranking->has('Zubehör'));
+    }
+
+    public function test_schulen_ohne_antrag_zaehlen_in_den_umsatz_aber_nicht_in_die_fenster(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+
+        $current = app(RevenueReport::class)->build($this->filters())['current'];
+
+        // Eine Kategorie ohne Antrag ist bekannt …
+        $this->assertSame(1, $current['schoolsWithoutWindow']);
+        // … ihr Umsatz zählt in den Gesamtumsatz …
+        $this->assertGreaterThan(0, $current['revenue']);
+        // … aber sie taucht in keinem Fenster-Durchschnitt auf.
+        $this->assertSame(1, $current['collective']['count']);
     }
 
     // ----------------------------------------------------------------- Filter
@@ -516,11 +564,26 @@ class StatisticsTest extends TestCase
     {
         Http::preventStrayRequests();
         Http::fake([
+            // Die Schulen der Auswertung sind die Kinder der Sammelkategorie
+            'shop.example/wp-json/wc/v3/products/categories*' => Http::response([
+                ['id' => 1, 'name' => 'Schulen', 'count' => 0, 'parent' => 0],
+                ['id' => 7, 'name' => 'BG Musterstadt', 'count' => 3, 'parent' => 1],
+                ['id' => 8, 'name' => 'HAK Altstadt', 'count' => 2, 'parent' => 1],
+                ['id' => 9, 'name' => 'BORG Neustadt', 'count' => 1, 'parent' => 1],
+                // Kategorie ohne Antrag in der Toolsuite — muss trotzdem
+                // in der Umsatzrangliste auftauchen
+                ['id' => 12, 'name' => 'VS Handschuhsheim', 'count' => 1, 'parent' => 1],
+                // Keine Schule: hängt nicht unter „Schulen"
+                ['id' => 20, 'name' => 'Zubehör', 'count' => 5, 'parent' => 0],
+            ], 200, ['X-WP-TotalPages' => '1']),
             'shop.example/wp-json/wc/v3/products*' => Http::response([
                 ['id' => 101, 'name' => 'BG Musterstadt Schulhoodie', 'categories' => [['id' => 7]]],
                 ['id' => 102, 'name' => 'BG Musterstadt Schulshirt', 'categories' => [['id' => 7]]],
                 ['id' => 103, 'name' => 'HAK Altstadt STICK-Schulhoodie', 'categories' => [['id' => 8]]],
                 ['id' => 104, 'name' => 'BORG Neustadt Schulpolo', 'categories' => [['id' => 9]]],
+                // Gleiche Produktart, ganz anderer Produktname — muss in der
+                // Rangliste mit „Schulshirt" zusammenfallen
+                ['id' => 105, 'name' => 'VS Handschuhsheim T-Shirt bedruckt', 'categories' => [['id' => 12]]],
             ], 200, ['X-WP-TotalPages' => '1']),
             // Der Fake muss after/before ehrlich auswerten: die Auswertung
             // ruft monatsweise ab, ein Fake der immer alles zurückgibt würde
@@ -599,6 +662,23 @@ class StatisticsTest extends TestCase
                     'quantity' => 3,
                     'total' => '75.00',
                     'total_tax' => '15.00',
+                    'meta_data' => [
+                        ['key' => 'pa_color', 'display_key' => 'Farbe', 'display_value' => 'Blau'],
+                    ],
+                ]],
+            ],
+            [
+                // Schule OHNE Antrag in der Toolsuite — darf trotzdem in der
+                // Umsatzrangliste stehen (Kategorie kommt aus dem Shop)
+                'id' => 5005,
+                'date_created' => '2026-02-03T08:00:00',
+                'status' => 'completed',
+                'line_items' => [[
+                    'product_id' => 105,
+                    'parent_name' => 'VS Handschuhsheim T-Shirt bedruckt',
+                    'quantity' => 4,
+                    'total' => '100.00',
+                    'total_tax' => '20.00',
                     'meta_data' => [
                         ['key' => 'pa_color', 'display_key' => 'Farbe', 'display_value' => 'Blau'],
                     ],

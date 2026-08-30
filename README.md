@@ -540,9 +540,29 @@ gehören zu dem Bestellfenster, das im Juni endete, nicht zum neuen Jahr.
 - Verkaufte Teile
 
 **Diagramme:** Monatsumsatz (gruppierte Säulen ab September), kumulierter
-Jahresverlauf mit Hochrechnung und Zielmarke, Rangliste der meistverkauften
-Produkte und der beliebtesten Farben. Unter jedem Diagramm steht „Als Tabelle"
-mit allen Zahlen.
+Jahresverlauf mit Hochrechnung und Zielmarke, und drei Ranglisten —
+meistverkaufte Produkte, beliebteste Farben und umsatzstärkste Schulen. Unter
+jedem Diagramm steht „Als Tabelle" mit allen Zahlen.
+
+**Woher die Schulen kommen:** aus den **Produktkategorien des Shops**
+(alles unterhalb von „Schulen"), nicht aus den Onboarding-Anträgen. So
+erscheinen auch Schulen, die von Hand im Shop angelegt wurden oder aus der Zeit
+vor der Toolsuite stammen. Der Antrag liefert nur die Angaben, die es nur dort
+gibt: Lieferart und Bestellfenster-Zeitraum. Deshalb beruhen die beiden
+Fenster-Durchschnitte auf weniger Schulen als die Umsatzrangliste — das ⓘ an
+der Kachel nennt die Zahl.
+
+**Produkte werden nach Produktart gruppiert:** Die Frage ist ja, ob mehr Shirts
+oder mehr Pullover verkauft wurden. Weil im Shop jedes Produkt den Schulnamen
+im Namen trägt, wird der Name nach Stichwörtern durchsucht — alles mit „Hoodie"
+zählt als Schulhoodie, alles mit „Shirt" als Schulshirt. Taucht in der
+Rangliste ein Produkt falsch oder doppelt auf, gehört die Schreibweise in
+`config/statistics.php` unter `product_group_aliases` ergänzt.
+
+**Was die Filter beeinflussen:** Schuljahr, Lieferart, Schule und Bestellstatus
+wirken auf die ganze Seite. Vorlauf/Nachlauf wirken **nur** auf „Ø je
+Sammelbestellfenster" und „Ø je On-Demand-Shop". Der Zielumsatz wirkt **nur**
+auf die Prognose. Im Tool steht das unter „Was die Filter beeinflussen".
 
 **Der Fensterpuffer (wichtig zu verstehen):** Für „Ø je Bestellfenster" wird
 jede Bestellung dem Fenster ihrer Schule zugeordnet. Der Zeitraum wird dabei

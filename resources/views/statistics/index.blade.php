@@ -47,11 +47,6 @@
         $collectiveDelta = $delta($current['collective']['avg'], $previous['collective']['avg']);
         $ondemandDelta = $delta($current['ondemand']['avg'], $previous['ondemand']['avg']);
         $quantityDelta = $delta((float) $current['quantity'], (float) $previous['quantity']);
-
-        // Sammelbestellfenster und On-Demand-Shops in einer Tabelle.
-        $windowRows = collect($current['collective']['list'])->map(fn ($r) => $r + ['type' => 'Sammelbestellfenster'])
-            ->concat(collect($current['ondemand']['list'])->map(fn ($r) => $r + ['type' => 'On-Demand']))
-            ->sortByDesc('revenue')->values();
     @endphp
 
         <div class="card">
@@ -59,10 +54,10 @@
                 <span class="hint">Vergleich: {{ $previous['label'] }}</span>
                 @if ($current['unassigned'] > 0)
                     <x-info label="Was heißt „ohne Schulzuordnung“?">
-                        {{ $euro($current['unassigned']) }} des Umsatzes stammen aus Produkten, die zu keiner
-                        Schul-Kategorie gehören (allgemeine Shop-Artikel oder Schulen, deren Antrag in der Toolsuite
-                        fehlt). Sie zählen in den Gesamtumsatz, aber in keine Fenster-Auswertung. Sobald du nach
-                        Lieferart oder Schule filterst, fallen sie heraus.
+                        {{ $euro($current['unassigned']) }} des Umsatzes stammen aus Produkten, die in keiner
+                        Schul-Kategorie unterhalb von „{{ config('schoolshop.parent_category_name') }}" liegen —
+                        typischerweise allgemeine Shop-Artikel. Sie zählen in den Gesamtumsatz, erscheinen aber in
+                        keiner Rangliste. Sobald du nach Lieferart oder Schule filterst, fallen sie heraus.
                     </x-info>
                 @endif
             </h2>
@@ -103,11 +98,18 @@
                 <div class="kpi">
                     <div class="label">Ø je Sammelbestellfenster
                         <x-info label="Wie wird das gerechnet?">
-                            Alle Bestellungen, die im (gepufferten) Zeitraum eines Sammelbestellfensters liegen,
-                            geteilt durch die Anzahl der Fenster, die in diesem Schuljahr geendet haben.
-                            Aktuell: {{ $current['collective']['count'] }}
-                            {{ $current['collective']['count'] === 1 ? 'Fenster' : 'Fenster' }},
-                            zusammen {{ $euro($current['collective']['revenue']) }}.
+                            Alle Bestellungen im (gepufferten) Zeitraum eines Sammelbestellfensters, geteilt durch die
+                            Anzahl der Fenster, die in diesem Schuljahr geendet haben. Aktuell
+                            {{ $current['collective']['count'] }} Fenster, zusammen
+                            {{ $euro($current['collective']['revenue']) }}.<br><br>
+                            Gezählt werden nur Schulen mit <strong>Bestellfenster-Daten im Antrag</strong> — nur dort
+                            ist bekannt, wann das Fenster lief.
+                            @if ($current['schoolsWithoutWindow'] > 0)
+                                {{ $current['schoolsWithoutWindow'] }} Schul-Kategorien im Shop haben keinen Antrag in
+                                der Toolsuite; ihr Umsatz steht in der Rangliste ganz unten, fließt aber in diesen
+                                Durchschnitt nicht ein.
+                            @endif
+                            <br><br>Nur diese Kachel reagiert auf Vorlauf/Nachlauf.
                         </x-info>
                     </div>
                     <div class="value">{{ $euro($current['collective']['avg']) }}</div>
@@ -123,7 +125,8 @@
                             einzeln verschickt. Gewertet wird deshalb je <strong>On-Demand-Schule und Schuljahr</strong>:
                             der gesamte Umsatz dieser Schule im Schuljahr, geteilt durch die Anzahl der Schulen, die im
                             Schuljahr schon angelegt waren. Aktuell: {{ $current['ondemand']['count'] }},
-                            zusammen {{ $euro($current['ondemand']['revenue']) }}.
+                            zusammen {{ $euro($current['ondemand']['revenue']) }}. Auch hier zählen nur Schulen mit
+                            Antrag in der Toolsuite — nur dort ist die Lieferart hinterlegt.
                         </x-info>
                     </div>
                     <div class="value">{{ $euro($current['ondemand']['avg']) }}</div>
@@ -194,10 +197,18 @@
                 <div class="kpi">
                     <div class="label">Zielumsatz
                         @if ($forecast['targetIsDefault'])
-                            <span class="hint">(Vorjahr)</span>
+                            <x-info label="Woher kommt dieses Ziel?">
+                                Es wurde kein eigenes Ziel eingetragen, deshalb gilt der <strong>tatsächlich
+                                erreichte Umsatz von {{ $previous['label'] }}</strong>
+                                ({{ $euro($forecast['previousTotal']) }}) als Ziel — also: mindestens so gut werden
+                                wie im Vorjahr. Ein eigenes Ziel lässt sich oben in der Filterzeile eintragen.
+                            </x-info>
                         @endif
                     </div>
                     <div class="value">{{ $euro($forecast['target']) }}</div>
+                    @if ($forecast['targetIsDefault'])
+                        <div class="delta flat">= Umsatz {{ $previous['label'] }} (kein eigenes Ziel eingetragen)</div>
+                    @endif
                     @if ($forecast['gapToTarget'] !== null)
                         <div class="delta {{ $forecast['gapToTarget'] >= 0 ? 'up' : 'down' }}">
                             Hochrechnung {{ $forecast['gapToTarget'] >= 0 ? 'über' : 'unter' }} Ziel:
@@ -251,10 +262,13 @@
         <div class="card">
             <x-chart.bars :chart="$productChart" title="Meistverkaufte Produkte">
                 <x-info label="Wie werden Produkte zusammengefasst?">
-                    Nach Produktart über alle Schulen hinweg: Der Schulname und Druckzusätze fallen aus dem
-                    Produktnamen, „BG Korneuburg Schulhoodie" und „HAK Wien STICK-Schulhoodie" landen also beide
-                    unter „Schulhoodie". Sortiert nach <strong>Stückzahl</strong>; der Umsatz steht in der Tabelle.
-                    On-Demand-Produkte heißen bei Printify teils anders und erscheinen dann als eigener Eintrag.
+                    Nach <strong>Produktart</strong> über alle Schulen hinweg — die Frage ist ja, ob mehr Shirts oder
+                    mehr Pullover verkauft wurden. Im Shop heißt jedes Produkt anders (der Schulname steckt im Namen),
+                    deshalb wird der Produktname nach Stichwörtern durchsucht: alles mit „Schulshirt" oder „Shirt"
+                    zählt als Schulshirt, alles mit „Hoodie" als Schulhoodie und so weiter. Sortiert nach
+                    <strong>Stückzahl</strong>; der Umsatz steht in der Tabelle.<br><br>
+                    Taucht ein Produkt falsch oder doppelt auf, fehlt die Schreibweise in
+                    <code>statistics.product_group_aliases</code>.
                 </x-info>
 
                 <x-slot:table>
@@ -315,30 +329,36 @@
         </div>
 
         <div class="card">
-            <h2>Bestellfenster im Detail
-                <x-info label="Welcher Zeitraum gilt je Schule?">
-                    Der angezeigte Zeitraum enthält bereits den Puffer aus der Filterzeile
-                    ({{ $filters->paddingBefore }} Tage vorher, {{ $filters->paddingAfter }} Tage nachher). Er ist
-                    deshalb länger als das im Antrag eingestellte Bestellfenster.
+            <x-chart.bars :chart="$schoolChart" title="Umsatzstärkste Schulen"
+                          emptyText="Für diesen Zeitraum ist keiner Schule Umsatz zugeordnet.">
+                <x-info label="Wie wird der Umsatz einer Schule ermittelt?">
+                    Über die <strong>Produktkategorie der Schule im Shop</strong>: alles, was im Schuljahr aus dieser
+                    Kategorie bestellt wurde. Das gilt unabhängig davon, ob es zur Schule einen Antrag in der
+                    Toolsuite gibt — auch von Hand angelegte Schulen erscheinen hier. Gereiht wird nach Umsatz;
+                    Stückzahlen stehen in der Tabelle.
                 </x-info>
-            </h2>
 
-            <div class="tablewrap">
-                <table class="data">
-                    <thead><tr><th>Schule</th><th>Art</th><th>Gewerteter Zeitraum</th><th>Umsatz</th></tr></thead>
-                    <tbody>
-                        @forelse ($windowRows as $row)
-                            <tr>
-                                <td>{{ $row['name'] }}</td>
-                                <td>{{ $row['type'] }}</td>
-                                <td>{{ $row['from'] }} – {{ $row['to'] }}</td>
-                                <td>{{ $euro($row['revenue']) }}</td>
-                            </tr>
-                        @empty
-                            <tr><td colspan="4">Im Schuljahr {{ $current['label'] }} endete kein Bestellfenster und es war kein On-Demand-Shop aktiv.</td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
+                <x-slot:table>
+                    <div class="tablewrap">
+                        <table class="data">
+                            <thead><tr><th>Schule</th><th>Umsatz {{ $current['label'] }}</th><th>Teile {{ $current['label'] }}</th><th>Umsatz {{ $previous['label'] }}</th><th>Teile {{ $previous['label'] }}</th></tr></thead>
+                            <tbody>
+                                @forelse ($schoolRanking as $row)
+                                    <tr>
+                                        <td>{{ $row['name'] }}</td>
+                                        <td>{{ $euro($row['revenue']) }}</td>
+                                        <td>{{ $stk($row['quantity']) }}</td>
+                                        <td>{{ $euro($row['previousRevenue']) }}</td>
+                                        <td>{{ $stk($row['previousQuantity']) }}</td>
+                                    </tr>
+                                @empty
+                                    <tr><td colspan="5">Keine Umsätze im gewählten Zeitraum.</td></tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </x-slot:table>
+            </x-chart.bars>
+        </div>
     </div>
 @endsection

@@ -27,7 +27,14 @@
                 </div>
 
                 <div>
-                    <label for="lieferart">Lieferart</label>
+                    <label for="lieferart">Lieferart
+                        <x-info label="Woher kennt die Auswertung die Lieferart?">
+                            Aus dem Onboarding-Antrag der Schule. Schulen, die im Shop bestehen, aber keinen Antrag in
+                            der Toolsuite haben (händisch angelegt oder aus der Zeit davor), haben keine hinterlegte
+                            Lieferart — sie zählen bei „Alle" mit, fallen aber heraus, sobald hier
+                            Sammelbestellfenster oder On-Demand gewählt wird.
+                        </x-info>
+                    </label>
                     <select id="lieferart" name="lieferart">
                         @foreach (App\Services\Statistics\StatisticsFilters::DELIVERY_TYPES as $key => $label)
                             <option value="{{ $key }}" @selected($key === $filters->deliveryType)>{{ $label }}</option>
@@ -36,11 +43,17 @@
                 </div>
 
                 <div>
-                    <label for="schule">Schule</label>
+                    <label for="schule">Schule
+                        <x-info label="Welche Schulen stehen zur Auswahl?">
+                            Alle Produktkategorien unterhalb von
+                            „{{ config('schoolshop.parent_category_name') }}" im Shop — unabhängig davon, ob es dazu
+                            einen Antrag in der Toolsuite gibt.
+                        </x-info>
+                    </label>
                     <select id="schule" name="schule">
                         <option value="">Alle Schulen</option>
-                        @foreach ($schools ?? [] as $school)
-                            <option value="{{ $school->id }}" @selected($school->id === $filters->schoolId)>{{ $school->school_name }}</option>
+                        @foreach ($schools ?? [] as $categoryId => $school)
+                            <option value="{{ $categoryId }}" @selected($categoryId === $filters->schoolId)>{{ $school['name'] }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -68,8 +81,10 @@
                 <div>
                     <label for="ziel">Zielumsatz (€)
                         <x-info label="Wofür der Zielumsatz?">
-                            Die Zielmarke im Verlaufsdiagramm und die Restrechnung darunter. Leer gelassen gilt
-                            automatisch der <strong>Gesamtumsatz des Vorjahres</strong> als Ziel.
+                            Dein Umsatzziel für das ganze Schuljahr — es setzt die Zielmarke im Verlaufsdiagramm und
+                            die Restrechnung darunter. Bleibt das Feld leer, wird der <strong>tatsächlich erreichte
+                            Umsatz des Vorjahres</strong> als Ziel angenommen (also: mindestens so gut wie letztes
+                            Jahr). Betrifft nur die Prognose, keine anderen Zahlen.
                         </x-info>
                     </label>
                     <input type="number" id="ziel" name="ziel" min="0" step="100" placeholder="{{ $forecast['previousTotal'] ?? '' }}" value="{{ $filters->target }}">
@@ -92,6 +107,20 @@
                     </div>
                 </div>
             </details>
+
+            <x-explain title="Was die Filter beeinflussen">
+                <p>Die Filterzeile gilt für die <strong>ganze Seite</strong> — jede Kennzahl, jedes Diagramm und
+                    jede Rangliste zeigt denselben Ausschnitt. Zwei Filter wirken jedoch nur an einer Stelle:</p>
+                <ul>
+                    <li><strong>Schuljahr, Lieferart, Schule, Bestellstatus</strong> — wirken auf alles: Kennzahlen,
+                        Monatsverlauf, Prognose und alle drei Ranglisten.</li>
+                    <li><strong>Vorlauf/Nachlauf</strong> — wirken <em>ausschließlich</em> auf „Ø je
+                        Sammelbestellfenster" und „Ø je On-Demand-Shop". Gesamtumsatz, Monatsverlauf und die
+                        Ranglisten ändern sich dadurch nicht, weil dort das Bestelldatum zählt und nicht das Fenster.</li>
+                    <li><strong>Zielumsatz</strong> — wirkt <em>ausschließlich</em> auf die Prognose (Zielmarke,
+                        Zielerreichung, nötiger Umsatz je Restmonat).</li>
+                </ul>
+            </x-explain>
 
             <div style="margin-top:0.9rem;">
                 <button class="btn" type="submit">Auswerten</button>

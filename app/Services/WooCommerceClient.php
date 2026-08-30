@@ -34,6 +34,9 @@ class WooCommerceClient
                 'id' => (int) $category['id'],
                 'name' => html_entity_decode((string) $category['name'], ENT_QUOTES | ENT_HTML5),
                 'count' => (int) ($category['count'] ?? 0),
+                // Übergeordnete Kategorie — die Statistik erkennt daran, welche
+                // Kategorien Schulen sind (Kinder von „Schulen").
+                'parent' => (int) ($category['parent'] ?? 0),
             ];
         }
 

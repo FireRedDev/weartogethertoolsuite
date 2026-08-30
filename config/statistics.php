@@ -160,9 +160,29 @@ return [
     ],
 
     /*
-     * Zusätze, die aus dem Produktnamen fallen, damit die Rangliste Produkte
-     * schulübergreifend zusammenfasst. Der Schulname wird ohnehin entfernt
-     * (Produkte heißen „{Schule} {Produkt}"); hier stehen nur allgemeine Reste.
+     * Produktarten für die Rangline „meistverkaufte Produkte".
+     *
+     * Gefragt ist, ob mehr Schulshirts oder mehr Schulpullover verkauft wurden.
+     * Im Shop heißt jedes Produkt anders (der Schulname steckt im Namen), also
+     * wird der Positionsname nach Suchbegriffen durchsucht.
+     *
+     * Die Begriffe aus `schoolshop.catalog` (name_suffix) gelten automatisch —
+     * hier stehen nur ZUSÄTZLICHE Schreibweisen, die im Shop vorkommen, aber
+     * nicht im Katalog. Groß-/Kleinschreibung egal; der längste passende
+     * Begriff gewinnt, damit „Schulpullover Kids" nicht bei „Schulpullover"
+     * landet.
+     *
+     * Taucht in der Rangliste ein Produkt doppelt oder falsch benannt auf,
+     * gehört die dort gezeigte Schreibweise hier ergänzt.
      */
-    'product_name_noise' => ['STICK-', '+ Backprint', '+ Frontprint', 'Backprint', 'Frontprint'],
+    'product_group_aliases' => [
+        'Schulhoodie' => ['schulhoodie', 'stick-hoodie', 'kapuzenpullover', 'hoodie'],
+        'Schulzoodie' => ['zoodie', 'zip-hoodie', 'zipper'],
+        'Schuljacke' => ['softshell', 'jacke'],
+        'Schulsweater' => ['sweater', 'sweatshirt'],
+        'Schulshirt' => ['t-shirt', 'tshirt', 'shirt'],
+        'Schulpolo' => ['polo'],
+        'Schultasche' => ['tasche', 'beutel', 'turnsack', 'rucksack'],
+        'Mütze' => ['mütze', 'beanie', 'haube'],
+    ],
 ];
