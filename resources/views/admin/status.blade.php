@@ -7,20 +7,20 @@
         <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
             <div>
                 <h1>Admin-Informationen</h1>
-                <p class="lead">Live-Status aller API-Anbindungen, Webhooks und Schnittstellen — bei jedem Aufruf dieser
-                    Seite neu geprüft.</p>
+                <p class="lead">Bei jedem Aufruf dieser Seite neu geprüft.</p>
             </div>
             <a class="btn secondary" href="{{ route('admin.status') }}">↻ Erneut prüfen</a>
         </div>
 
-        <div class="alert ok" style="margin-top:0.5rem;">
-            Wechselt eine konfigurierte Schnittstelle von OK auf fehlgeschlagen, schickt die Toolsuite
-            <strong>einmalig</strong> eine Benachrichtigung — aber ausschließlich über die WordPress-REST-API
-            (<code>wp_mail()</code> auf der WordPress-Seite). Die Toolsuite selbst hat keinen Mailer und verschickt nie
-            direkt E-Mails. Das erfordert ein kleines mu-Plugin auf der WordPress-Seite —
-            siehe <code>wordpress-mu-plugin/weartogether-notify.php</code> im Repository. Ist es nicht installiert,
-            funktioniert alles andere trotzdem; die E-Mail fällt dann einfach aus (unten je Zeile ersichtlich).
-        </div>
+        <x-explain title="Was passiert, wenn eine Schnittstelle ausfällt?">
+            <p>Wechselt eine konfigurierte Schnittstelle von OK auf fehlgeschlagen, schickt die Toolsuite
+                <strong>einmalig</strong> eine Benachrichtigung — aber ausschließlich über die WordPress-REST-API
+                (<code>wp_mail()</code> auf der WordPress-Seite). Die Toolsuite selbst hat keinen Mailer und
+                verschickt nie direkt E-Mails.</p>
+            <p>Dafür braucht es ein kleines mu-Plugin auf der WordPress-Seite, siehe
+                <code>wordpress-mu-plugin/weartogether-notify.php</code> im Repository. Fehlt es, funktioniert alles
+                andere trotzdem — nur die E-Mail fällt aus (unten je Zeile ersichtlich).</p>
+        </x-explain>
 
         <div class="tablewrap" style="margin-top:1rem;">
             <table class="data">
@@ -57,8 +57,12 @@
         </div>
 
         <p class="hint" style="margin-top:0.75rem;">
-            Der FluentForms-Webhook empfängt nur (kein aktiver Verbindungstest möglich) — jeder Aufruf steht unten
-            in der Webhook-Diagnose. Er löst nie automatisch eine Benachrichtigung aus.
+            Der FluentForms-Webhook lässt sich nicht aktiv testen
+            <x-info label="Warum nicht?">
+                Er empfängt nur — die Toolsuite kann ihn nicht von sich aus auslösen. Statt eines Verbindungstests
+                zeigt die Webhook-Diagnose unten jeden eingegangenen Aufruf. Eine Benachrichtigung löst er nie aus,
+                sonst käme bei jedem Aufruf mit falschem Secret eine E-Mail.
+            </x-info>
         </p>
     </div>
 
@@ -71,7 +75,12 @@
         <div class="tablewrap">
             <table class="data">
                 <tbody>
-                    <tr><th style="width:240px;">Version</th><td>v{{ trim(@file_get_contents(base_path('VERSION')) ?: '?') }} <span class="hint">— steht auch in der Navigationsleiste; stimmt sie nicht mit dem letzten Push überein, wurde noch nicht deployt</span></td></tr>
+                    <tr><th style="width:240px;">Version</th><td>v{{ trim(@file_get_contents(base_path('VERSION')) ?: '?') }}
+                        <x-info label="Wozu die Versionsnummer?">
+                            Steht auch in der Navigationsleiste. Stimmt sie nicht mit dem letzten Push überein,
+                            wurde noch nicht deployt.
+                        </x-info>
+                    </td></tr>
                     <tr><th>Shop-Adresse</th><td><code>{{ config('ordersuite.woocommerce.store_url') ?: '— nicht gesetzt' }}</code></td></tr>
                     <tr><th>Webhook-Secret</th><td>{{ config('schoolshop.webhook_secret') ? '✓ gesetzt' : '✖ fehlt' }}</td></tr>
                     <tr><th>Zugangsschutz (TOOL_PASSWORD)</th><td>{{ config('ordersuite.password') !== '' ? '✓ aktiv' : '— kein Login nötig' }}</td></tr>
@@ -83,15 +92,21 @@
     </div>
 
     <div class="card">
-        <h2>Datensicherung</h2>
-        <p class="lead">Datenbank (alle Anträge samt Konfiguration und Protokollen) und die hochgeladenen Dateien
-            (Schullogos, Mockups) als ZIP. Die Zugangsdaten aus der <code>.env</code> sind bewusst <strong>nicht</strong> enthalten.</p>
+        <h2>Datensicherung
+            <x-info label="Was enthält die Sicherung?">
+                Die Datenbank (alle Anträge samt Konfiguration und Protokollen) und die hochgeladenen Dateien
+                (Schullogos, Mockups) als ZIP. Die Zugangsdaten aus der <code>.env</code> sind bewusst
+                <strong>nicht</strong> enthalten.
+            </x-info>
+        </h2>
         <form method="post" action="{{ route('admin.backup') }}">
             @csrf
             <button class="btn" type="submit">Sicherung herunterladen</button>
         </form>
-        <p class="hint" style="margin-top:0.5rem;">Automatisch nächtlich per Cron:
-            <code>30 3 * * * cd {{ base_path() }} && php artisan backup:create</code> — die letzten fünf bleiben unter
-            <code>storage/app/backups</code> liegen.</p>
+        <x-explain title="Automatisch sichern (Cron)">
+            <p><code>30 3 * * * cd {{ base_path() }} && php artisan backup:create</code></p>
+            <p>Die letzten fünf Sicherungen bleiben unter <code>storage/app/backups</code> liegen, ältere werden
+                automatisch entfernt.</p>
+        </x-explain>
     </div>
 @endsection

@@ -5,7 +5,12 @@
 @section('content')
     <div class="card" style="max-width:560px;">
         <h1>Schule manuell anlegen</h1>
-        <p class="lead">Für Anfragen, die nicht über das Formular kamen. Alle Details werden danach im Konfigurator gepflegt.</p>
+        <p class="lead">Für Anfragen, die nicht über das Formular kamen.
+            <x-info label="Und danach?">
+                Hier reichen Name und Lieferart — alle weiteren Angaben (Produkte, Preise, Farben, Bestellfenster,
+                Logo) werden anschließend im Konfigurator gepflegt.
+            </x-info>
+        </p>
 
         @if ($errors->any())
             @foreach ($errors->all() as $error)

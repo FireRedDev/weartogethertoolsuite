@@ -18,7 +18,7 @@
                 <form method="post" action="{{ route('schools.duplicate', $onboarding) }}"
                       onsubmit="return confirm('Neuen Antrag für dieselbe Schule anlegen?\n\nProdukte, Preise, Farben und Logos werden übernommen. Bestellfenster, Klassenliste und Mockups beginnen neu.');">
                     @csrf
-                    <button class="btn secondary" type="submit" title="Für das nächste Schuljahr: Konfiguration übernehmen">Neues Bestellfenster (Folgejahr)</button>
+                    <button class="btn secondary" type="submit">Neues Bestellfenster (Folgejahr)</button>
                 </form>
                 <form method="post" action="{{ route('schools.destroy', $onboarding) }}"
                       onsubmit="return confirm('Diesen Antrag wirklich löschen? Bereits im Shop Angelegtes bleibt bestehen und müsste dort separat entfernt werden.');">
@@ -42,7 +42,12 @@
             @if ($orderStats)
                 <div class="stat">
                     <div class="value" style="color:var(--ok);">{{ $orderStats['orders'] }}</div>
-                    <div class="label">Bestellungen bisher</div>
+                    <div class="label">Bestellungen bisher
+                        <x-info label="Woher kommen die Zahlen?">
+                            Live aus dem Shop: alle Bestellungen in der Produktkategorie dieser Schule innerhalb des
+                            Bestellzeitraums. Alle 15 Minuten aktualisiert.
+                        </x-info>
+                    </div>
                 </div>
                 <div class="stat"><div class="value">{{ $orderStats['items'] }}</div><div class="label">Teile bisher</div></div>
             @endif
@@ -54,17 +59,15 @@
             <div class="stat"><div class="value">{{ count($onboarding->enabledProducts()) }}</div><div class="label">aktive Produkte</div></div>
             <div class="stat"><div class="value">{{ $onboarding->woo_category_id ? '✓' : '—' }}</div><div class="label">Shop angelegt</div></div>
         </div>
-        @if ($orderStats)
-            <p class="hint">Bestellzahlen live aus dem Shop (Kategorie der Schule, Bestellzeitraum) — alle 15 Minuten aktualisiert.</p>
-        @endif
-
         {{-- Nächster Schritt, je nach Stand --}}
         @if ($onboarding->woo_category_id)
             <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem;">
-                <a class="btn secondary" href="{{ route('shop.form', ['onboarding' => $onboarding->id]) }}">
-                    Auftragsdokumente erzeugen
-                    <span class="hint" style="color:inherit;">(Kategorie und Zeitraum vorbefüllt)</span>
-                </a>
+                <a class="btn secondary" href="{{ route('shop.form', ['onboarding' => $onboarding->id]) }}">Auftragsdokumente erzeugen</a>
+                <x-info label="Was passiert dabei?">
+                    Öffnet Modul 1 mit bereits gewählter Schul-Kategorie und dem Bestellzeitraum dieser Schule.
+                    Sobald die Dokumente erzeugt sind, wird das hier vermerkt und die Startseite erinnert nicht
+                    weiter daran.
+                </x-info>
                 @if ($onboarding->documents_exported_at)
                     <span class="hint" style="align-self:center;">zuletzt erzeugt am {{ $onboarding->documents_exported_at->format('d.m.Y H:i') }}</span>
                 @endif
@@ -113,9 +116,16 @@
          mitgespeichert. --}}
     <div class="card">
         <h2>Schullogo &amp; Druck</h2>
-        <p class="lead">Das Logo ist im Formular kein Pflichtfeld — hier lässt es sich nachträglich hochladen und austauschen.
-            Der Upload der Kund:innen gilt automatisch für beide Drucke; pro Druck kann aber eine eigene Datei hinterlegt werden.
-            Druck-Häkchen, Position und Größe werden mit <strong>Speichern</strong> im Konfigurator übernommen.</p>
+        <x-explain title="Wie Logo und Druck zusammenhängen">
+            <p>Das Logo ist im Formular kein Pflichtfeld — hier lässt es sich nachträglich hochladen und austauschen.
+                Der Upload der Kund:innen gilt automatisch für <strong>beide</strong> Drucke; pro Druck kann aber eine
+                eigene Datei hinterlegt werden.</p>
+            <p>Druck-Häkchen, Position und Größe werden mit <strong>Speichern</strong> im Konfigurator übernommen —
+                nicht mit dem Hochladen-Knopf.</p>
+            <p>Erlaubt sind PNG, JPG und WebP bis 5 MB (kein SVG — Printify und die Mockup-Erzeugung brauchen ein
+                Pixelformat). Hochgeladene Logos werden zusätzlich in die WordPress-Mediathek gelegt, weil Printify
+                und Dynamic Mockups die Datei selbst herunterladen müssen.</p>
+        </x-explain>
 
         {{-- Marker: ohne ihn wäre „Häkchen weg" nicht von „Feld nicht mitgeschickt" zu unterscheiden --}}
         <input type="hidden" form="configurator-form" name="print_slots_submitted" value="1">
@@ -192,8 +202,7 @@
             @endforeach
         </div>
 
-        <p class="hint" style="margin-top:0.75rem;">Erlaubt sind PNG, JPG und WebP bis 5 MB (kein SVG — Printify und die Mockup-Erzeugung brauchen ein Pixelformat).
-            Hochgeladene Logos werden zusätzlich in die WordPress-Mediathek gelegt, weil Printify und Dynamic Mockups die Datei selbst herunterladen müssen.</p>
+
     </div>
 
     {{-- Konfigurator --}}
@@ -217,18 +226,20 @@
                     </select>
                 </div>
                 <div>
-                    <label for="status">Status <span class="hint" title="{{ $onboarding->statusDescription() }}">ⓘ</span></label>
+                    <label for="status">Status
+                        <x-info label="Was bedeuten die Status?">
+                            <strong>{{ $onboarding->statusLabel() }}:</strong> {{ $onboarding->statusDescription() }}
+                            @foreach ($statusActions as $target)
+                                <br><br>→ <strong>{{ $target['label'] }}</strong> {{ $target['hint'] }}
+                            @endforeach
+                        </x-info>
+                    </label>
                     <select id="status" name="status" style="width:100%;padding:0.6rem 0.75rem;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;">
                         @foreach ($statusOptions as $key => $label)
                             <option value="{{ $key }}" {{ old('status', $onboarding->status) === $key ? 'selected' : '' }}>{{ $label }}</option>
                         @endforeach
                     </select>
-                    <p class="hint" style="margin-top:0.25rem;">{{ $onboarding->statusDescription() }}</p>
-                    @foreach ($statusActions as $target)
-                        <p class="hint" style="margin:0.15rem 0 0;">
-                            → <strong>{{ $target['label'] }}</strong> {{ $target['hint'] }}
-                        </p>
-                    @endforeach
+
                 </div>
                 @php($isOndemandInitial = old('delivery_type', $onboarding->delivery_type) === 'ondemand')
                 <div id="window_start_field" style="{{ $isOndemandInitial ? 'display:none;' : '' }}">
@@ -242,10 +253,22 @@
             </div>
 
             <div id="class_list_field" style="{{ $isOndemandInitial ? 'display:none;' : '' }}">
-                <label for="class_list" style="margin-top:1rem;">Klassenliste <span class="hint">(kommagetrennt — wird zum Attribut „Klasse")</span></label>
+                <label for="class_list" style="margin-top:1rem;">Klassenliste
+                    <x-info label="Wie wird die Klassenliste verwendet?">
+                        Kommagetrennt eintragen. Daraus entsteht im Shop das Auswahlfeld „Klasse" — danach wird
+                        später die Lieferung sortiert. Tippfehler landen ungeprüft im Shop.
+                    </x-info>
+                </label>
                 <textarea id="class_list" name="class_list" rows="2">{{ old('class_list', $onboarding->class_list) }}</textarea>
             </div>
-            <p class="hint" id="ondemand_window_hint" style="{{ $isOndemandInitial ? '' : 'display:none;' }}">On-Demand: Bestellfenster und Klassenliste entfallen — Produkte werden laufend einzeln an die Privatadresse der Kund:innen verschickt.</p>
+            <p class="hint" id="ondemand_window_hint" style="{{ $isOndemandInitial ? '' : 'display:none;' }}">
+                On-Demand: Bestellfenster und Klassenliste entfallen
+                <x-info label="Warum entfallen sie?">
+                    On-Demand-Produkte werden laufend einzeln an die Privatadresse der Kund:innen verschickt — es gibt
+                    also keinen Sammeltermin und keine Klasse als Lieferziel. Im Schule-Eintrag hinterlegt das Tool
+                    stattdessen ein durchgehend offenes Fenster.
+                </x-info>
+            </p>
 
             {{-- Automatische Nachfrist für Sammelbestellfenster --}}
             <div id="auto_extend_field" style="{{ $isOndemandInitial ? 'display:none;' : '' }}margin-top:0.75rem;">
@@ -254,8 +277,12 @@
                     <span>Nach Ablauf automatisch um
                         <input type="number" name="auto_extend_days" min="1" max="60" value="{{ old('auto_extend_days', $onboarding->auto_extend_days) }}"
                                style="width:64px;margin:0;display:inline-block;padding:0.2rem 0.35rem;"> Tage verlängern
-                        <span class="hint">— einmalig, und erst wenn das Fenster tatsächlich abgelaufen ist. Nachzügler können dann noch bestellen;
-                        endgültig geschlossen wird weiterhin über „Bestellfenster schließen".</span>
+                        <x-info label="Wie funktioniert die Nachfrist?">
+                            Greift <strong>einmalig</strong> und erst, wenn das Fenster tatsächlich abgelaufen ist —
+                            nicht vorher. Nachzügler können dann noch bestellen; endgültig geschlossen wird weiterhin
+                            bewusst über „Bestellfenster schließen". Ein von Hand geändertes Enddatum gibt die
+                            Nachfrist wieder frei.
+                        </x-info>
                     </span>
                 </label>
                 @if ($onboarding->auto_extended_at)
@@ -271,11 +298,17 @@
             @php($hasNonEuProvider = collect($printifyEconomics ?? [])->contains(fn ($i) => $i['country'] !== null && ! $i['is_eu']))
             <h2 style="margin-top:1rem;">Produkte & Preise</h2>
             @if ($isOndemand)
-                <p class="hint">On-Demand: Blueprint-ID und Print-Provider-ID pro Produkt eintragen — mit dem 🔍-Button direkt hier im Konfigurator suchen (siehe auch Spaltenkopf-Hinweis ⓘ).
-                    Die Spalten Einkauf, Versand und Marge kommen live aus dem Printify-Katalog (24 h gecacht) und beziehen sich auf genau die Varianten, die auch angelegt werden.
-                    Der Verkaufspreis wird beim Anlegen automatisch gegen Produktionskosten + Versand + {{ (int) round(config('schoolshop.printify.min_margin') * 100) }}% Marge geprüft.
-                    Angelegt werden nur Varianten in den oben gewählten Farben und Größen — sonst greift das Printify-Limit von {{ config('schoolshop.printify.max_variants') }} Varianten pro Produkt,
-                    und die Vorschaubilder zeigen Farben, die die Schule gar nicht bestellt.</p>
+                <x-explain title="Was bei On-Demand zu beachten ist">
+                    <p>Blueprint-ID und Print-Provider-ID pro Produkt eintragen — mit dem 🔍-Button lässt sich direkt
+                        hier im Printify-Katalog suchen.</p>
+                    <p>Die Spalten <strong>Einkauf</strong>, <strong>Versand</strong> und <strong>Marge</strong>
+                        kommen live aus dem Printify-Katalog (24 h gecacht) und beziehen sich auf genau die Varianten,
+                        die auch angelegt werden. Der Verkaufspreis wird beim Anlegen gegen Produktionskosten +
+                        Versand + {{ (int) round(config('schoolshop.printify.min_margin') * 100) }}% Marge geprüft.</p>
+                    <p>Angelegt werden nur Varianten in den oben gewählten Farben und Größen. Sonst greift das
+                        Printify-Limit von {{ config('schoolshop.printify.max_variants') }} Varianten pro Produkt, und
+                        die Vorschaubilder zeigen Farben, die die Schule gar nicht bestellt.</p>
+                </x-explain>
                 @if ($hasNonEuProvider)
                     <div class="alert warn">⚠ Mindestens ein Produkt hat aktuell keinen EU-Provider hinterlegt — außerhalb der EU sind Versandkosten und Lieferzeit nach Österreich in der Regel höher (siehe Region/Versand-Spalte unten). Die Marge wird trotzdem korrekt gegen die tatsächlichen Versandkosten geprüft.</div>
                 @endif
@@ -286,12 +319,42 @@
                         <tr>
                             <th></th><th>Produkt</th><th>Preis (€)</th><th>Aufpreis Indiv. (€)</th><th>Größen</th><th>Farben</th>
                             @if ($isOndemand)
-                                <th title="IDs herausfinden: (1) 🔍-Button in dieser Zeile — sucht direkt im Printify-Katalog. (2) Per SSH am Server: php artisan printify:check --blueprints=SUCHBEGRIFF. (3) Direkt auf printify.com im Produktkatalog nachsehen.">Printify Blueprint-ID ⓘ</th>
-                                <th title="IDs herausfinden: (1) 🔍-Button in dieser Zeile (braucht eine bereits eingetragene Blueprint-ID). (2) Per SSH am Server: php artisan printify:check --providers=BLUEPRINT_ID. (3) Direkt auf printify.com beim Produkt nachsehen.">Provider-ID ⓘ</th>
+                                <th>Blueprint-ID
+                                    <x-info label="Wie finde ich die Blueprint-ID?">
+                                        Drei Wege: der 🔍-Button in dieser Zeile sucht direkt im Printify-Katalog;
+                                        am Server <code>php artisan printify:check --blueprints=SUCHBEGRIFF</code>;
+                                        oder direkt auf printify.com im Produktkatalog nachsehen.
+                                    </x-info>
+                                </th>
+                                <th>Provider-ID
+                                    <x-info label="Wie finde ich die Provider-ID?">
+                                        Der 🔍-Button in dieser Zeile (braucht eine bereits eingetragene
+                                        Blueprint-ID); am Server
+                                        <code>php artisan printify:check --providers=BLUEPRINT_ID</code>; oder direkt
+                                        auf printify.com beim Produkt.
+                                    </x-info>
+                                </th>
                                 <th>Region</th>
-                                <th title="Einkaufspreis bei Printify (Produktionskosten je Stück, ohne Versand). Bei mehreren Größen/Farben die Spanne — für die Margenprüfung zählt der höchste Wert.">Einkauf (€) ⓘ</th>
-                                <th title="Versandkosten des ersten Artikels nach Österreich, laut Versandprofil des Print-Providers.">Versand (€) ⓘ</th>
-                                <th title="Marge = (Verkaufspreis − Einkauf − Versand) ÷ (Einkauf + Versand). Rot, wenn sie unter der Mindestmarge liegt — dann verweigert die Shop-Anlage das Produkt.">Marge ⓘ</th>
+                                <th>Einkauf (€)
+                                    <x-info label="Was ist der Einkaufspreis?">
+                                        Produktionskosten je Stück bei Printify, ohne Versand. Bei mehreren
+                                        Größen/Farben die Spanne — für die Margenprüfung zählt der höchste Wert.
+                                    </x-info>
+                                </th>
+                                <th>Versand (€)
+                                    <x-info label="Welcher Versandpreis?">
+                                        Der erste Artikel einer Sendung nach Österreich, laut Versandprofil des
+                                        Print-Providers. Ein Profil, das Österreich ausdrücklich nennt, gilt vor dem
+                                        Sammelprofil „Rest der Welt".
+                                    </x-info>
+                                </th>
+                                <th>Marge
+                                    <x-info label="Wie wird die Marge gerechnet?">
+                                        (Verkaufspreis − Einkauf − Versand) ÷ (Einkauf + Versand). Rot bedeutet:
+                                        unter der Mindestmarge — dann verweigert die Shop-Anlage das Produkt und
+                                        nennt den nötigen Mindestpreis.
+                                    </x-info>
+                                </th>
                             @endif
                         </tr>
                     </thead>
@@ -311,20 +374,21 @@
                                 @if ($isOndemand)
                                     <td style="white-space:nowrap;">
                                         <input type="text" id="bp-{{ $product['key'] }}" name="products[{{ $product['key'] }}][printify_blueprint_id]" value="{{ $product['printify_blueprint_id'] ?? '' }}" style="width:80px;margin:0;display:inline-block;vertical-align:middle;" placeholder="z. B. 6">
-                                        <button type="button" class="btn secondary" style="padding:0.2rem 0.45rem;font-size:0.75rem;margin-left:0.2rem;vertical-align:middle;" onclick="openPrintifySearch('blueprint', 'bp-{{ $product['key'] }}')" title="Blueprint suchen">🔍</button>
+                                        <button type="button" class="btn secondary" style="padding:0.2rem 0.45rem;font-size:0.75rem;margin-left:0.2rem;vertical-align:middle;" onclick="openPrintifySearch('blueprint', 'bp-{{ $product['key'] }}')" aria-label="Blueprint suchen">🔍</button>
                                     </td>
                                     <td style="white-space:nowrap;">
                                         <input type="text" id="pv-{{ $product['key'] }}" name="products[{{ $product['key'] }}][printify_provider_id]" value="{{ $product['printify_provider_id'] ?? '' }}" style="width:70px;margin:0;display:inline-block;vertical-align:middle;" placeholder="z. B. 27">
-                                        <button type="button" class="btn secondary" style="padding:0.2rem 0.45rem;font-size:0.75rem;margin-left:0.2rem;vertical-align:middle;" onclick="openPrintifySearch('provider', 'pv-{{ $product['key'] }}', 'bp-{{ $product['key'] }}')" title="Provider suchen (braucht Blueprint-ID)">🔍</button>
+                                        <button type="button" class="btn secondary" style="padding:0.2rem 0.45rem;font-size:0.75rem;margin-left:0.2rem;vertical-align:middle;" onclick="openPrintifySearch('provider', 'pv-{{ $product['key'] }}', 'bp-{{ $product['key'] }}')" aria-label="Provider suchen (braucht Blueprint-ID)">🔍</button>
                                     </td>
                                 @php($info = $printifyEconomics[$product['key']] ?? null)
                                     <td style="white-space:nowrap;">
                                         @if ($info === null)
                                             <span class="hint">—</span>
                                         @else
-                                            <span title="Print-Provider: {{ $info['provider_title'] }}">
+                                            <span>
                                                 {{ $info['country'] ? ($info['is_eu'] ? '🇪🇺 '.$info['country'] : '🌍 '.$info['country']) : '?' }}
                                             </span>
+                                            <x-info label="Print-Provider">{{ $info['provider_title'] }}</x-info>
                                             @if ($info['country'] !== null && ! $info['is_eu'])
                                                 <br><span class="hint" style="color:var(--error);">außerhalb EU</span>
                                             @endif
@@ -334,15 +398,23 @@
                                         @if ($info === null || $info['cost_max_eur'] === null)
                                             <span class="hint">—</span>
                                         @else
-                                            <span title="Gilt für die {{ $info['variant_selected'] ?: $info['variant_total'] }} tatsächlich angelegten Varianten (von {{ $info['variant_total'] }} im Katalog).">
+                                            <span>
                                                 @if ($info['cost_min_eur'] !== null && $info['cost_min_eur'] < $info['cost_max_eur'])
                                                     {{ number_format($info['cost_min_eur'], 2, ',', '') }}–{{ number_format($info['cost_max_eur'], 2, ',', '') }}
                                                 @else
                                                     {{ number_format($info['cost_max_eur'], 2, ',', '') }}
                                                 @endif
                                             </span>
+                                            <x-info label="Worauf bezieht sich der Preis?">
+                                                Auf die {{ $info['variant_selected'] ?: $info['variant_total'] }}
+                                                tatsächlich angelegten Varianten (von {{ $info['variant_total'] }} im Katalog).
+                                            </x-info>
                                             @if ($info['missing_colors'] !== [])
-                                                <br><span class="hint" style="color:var(--error);" title="Verfügbar bei diesem Provider: {{ implode(', ', $info['available_colors']) ?: '—' }}">Farbe fehlt: {{ implode(', ', $info['missing_colors']) }}</span>
+                                                <br><span class="hint" style="color:var(--error);">Farbe fehlt: {{ implode(', ', $info['missing_colors']) }}</span>
+                                                <x-info label="Welche Farben gibt es?">
+                                                    Verfügbar bei diesem Provider:
+                                                    {{ implode(', ', $info['available_colors']) ?: '—' }}
+                                                </x-info>
                                             @endif
                                         @endif
                                     </td>
@@ -355,9 +427,11 @@
                                                 : (count($info['shipping_countries']) > 12
                                                     ? implode(', ', array_slice($info['shipping_countries'], 0, 12)).' … ('.count($info['shipping_countries']).' Länder)'
                                                     : implode(', ', $info['shipping_countries'])))
-                                            <span title="Versand von {{ $info['country'] ?? 'unbekannt' }} nach {{ $shipTo ?: 'unbekannt' }}. Angegeben ist der erste Artikel einer Sendung.">
-                                                {{ number_format($info['shipping_eur'], 2, ',', '') }}
-                                            </span>
+                                            {{ number_format($info['shipping_eur'], 2, ',', '') }}
+                                            <x-info label="Von wo nach wo?">
+                                                Versand von {{ $info['country'] ?? 'unbekannt' }} nach
+                                                {{ $shipTo ?: 'unbekannt' }}. Angegeben ist der erste Artikel einer Sendung.
+                                            </x-info>
                                             @if ($info['shipping_is_fallback'])
                                                 <br><span class="hint" style="color:var(--error);">kein Profil für AT — Ersatzwert</span>
                                             @endif
@@ -384,14 +458,22 @@
             <h2 style="margin-top:1.25rem;">Produktfotos (Mockups) <span class="hint">optional</span></h2>
             <label style="font-weight:400;display:flex;gap:0.5rem;align-items:flex-start;">
                 <input type="checkbox" name="mockups_enabled" value="1" style="margin-top:0.25rem;" {{ old('mockups_enabled', $onboarding->mockups_enabled) ? 'checked' : '' }}>
-                <span>Beim Anlegen automatisch Produktfotos erzeugen und als Produktbild + Galerie setzen —
-                    1–2 Model-Fotos (bevorzugt eine Frau und ein Mann, wechselnd je Schule) plus Detailansichten in den
-                    gewählten Farben, jeweils mit dem Schullogo an der gewählten Position.</span>
+                <span>Beim Anlegen automatisch Produktfotos erzeugen
+                    <x-info label="Was wird erzeugt?">
+                        1–2 Model-Fotos (bevorzugt eine Frau und ein Mann, wechselnd je Schule) plus Detailansichten
+                        in den gewählten Farben, jeweils mit dem Schullogo an der gewählten Position. Sie werden als
+                        Produktbild und Galerie gesetzt.
+                    </x-info>
+                </span>
             </label>
-            <p class="hint">Logo-Position und -Größe kommen aus dem <strong>Frontprint</strong> (Bereich „Schullogo &amp; Druck" oben).
-                Gilt für Sammelbestellfenster-Produkte (On-Demand: Printify erzeugt eigene Produktbilder).
-                Vorlagen je Produkt werden einmalig in <code>config/schoolshop.php</code> (<code>mockups.templates</code>) hinterlegt —
-                nachschlagen mit <code>php artisan mockups:check</code>. Produkte ohne Vorlagen werden übersprungen.</p>
+            <x-explain title="Voraussetzungen für Mockups">
+                <p>Logo-Position und -Größe kommen aus dem <strong>Frontprint</strong> (Bereich „Schullogo &amp; Druck"
+                    oben). Gilt für Sammelbestellfenster-Produkte — bei On-Demand erzeugt Printify eigene
+                    Produktbilder.</p>
+                <p>Die Vorlagen je Produkt werden einmalig in <code>config/schoolshop.php</code>
+                    (<code>mockups.templates</code>) hinterlegt, nachschlagen mit
+                    <code>php artisan mockups:check</code>. Produkte ohne Vorlage werden übersprungen.</p>
+            </x-explain>
 
             <label for="notes" style="margin-top:1rem;">Interne Notizen</label>
             <textarea id="notes" name="notes" rows="2">{{ old('notes', $onboarding->notes) }}</textarea>
@@ -412,11 +494,11 @@
             @if ($isOndemand)
                 <td style="white-space:nowrap;">
                     <input type="text" id="bp-__KEY__" name="products[__KEY__][printify_blueprint_id]" style="width:80px;margin:0;display:inline-block;vertical-align:middle;" placeholder="z. B. 6">
-                    <button type="button" class="btn secondary" style="padding:0.2rem 0.45rem;font-size:0.75rem;margin-left:0.2rem;vertical-align:middle;" onclick="openPrintifySearch('blueprint', 'bp-__KEY__')" title="Blueprint suchen">🔍</button>
+                    <button type="button" class="btn secondary" style="padding:0.2rem 0.45rem;font-size:0.75rem;margin-left:0.2rem;vertical-align:middle;" onclick="openPrintifySearch('blueprint', 'bp-__KEY__')" aria-label="Blueprint suchen">🔍</button>
                 </td>
                 <td style="white-space:nowrap;">
                     <input type="text" id="pv-__KEY__" name="products[__KEY__][printify_provider_id]" style="width:70px;margin:0;display:inline-block;vertical-align:middle;" placeholder="z. B. 27">
-                    <button type="button" class="btn secondary" style="padding:0.2rem 0.45rem;font-size:0.75rem;margin-left:0.2rem;vertical-align:middle;" onclick="openPrintifySearch('provider', 'pv-__KEY__', 'bp-__KEY__')" title="Provider suchen (braucht Blueprint-ID)">🔍</button>
+                    <button type="button" class="btn secondary" style="padding:0.2rem 0.45rem;font-size:0.75rem;margin-left:0.2rem;vertical-align:middle;" onclick="openPrintifySearch('provider', 'pv-__KEY__', 'bp-__KEY__')" aria-label="Provider suchen (braucht Blueprint-ID)">🔍</button>
                 </td>
                 <td class="hint" colspan="4">Kosten/Marge nach dem Speichern sichtbar</td>
             @endif
@@ -440,7 +522,14 @@
     {{-- Shop-Anlage --}}
     <div class="card">
         <h2>Shop-Anlage</h2>
-        <p class="lead">Legt Produktkategorie, Produkte mit Variationen (Individualisierung Ja/Nein), Individualisierungs-Eingabefeld und den Schule-Eintrag (CPT) an. {{ $onboarding->delivery_type === 'ondemand' ? 'On-Demand: Versandklasse „'.config('schoolshop.shipping_class_ondemand').'" wird gesetzt; Printify-Anlage siehe README (Beta).' : 'Sammelbestellfenster: kostenloser Versand.' }}</p>
+        <x-explain title="Was dabei im Shop entsteht">
+            <p>Produktkategorie, Produkte mit Variationen (Individualisierung Ja/Nein), das
+                Individualisierungs-Eingabefeld und der Schule-Eintrag (CPT).</p>
+            <p>{{ $onboarding->delivery_type === 'ondemand'
+                ? 'On-Demand: die Versandklasse „'.config('schoolshop.shipping_class_ondemand').'" wird gesetzt, die Produkte entstehen in Printify und werden von dort in den Shop published.'
+                : 'Sammelbestellfenster: die Produkte entstehen direkt in WooCommerce, ohne Versandklasse (kostenloser Versand).' }}</p>
+            <p>Der Vorgang ist wiederholbar: bereits Angelegtes wird anhand der gespeicherten IDs übersprungen.</p>
+        </x-explain>
 
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
             <form method="post" action="{{ route('schools.preview', $onboarding) }}">
@@ -507,9 +596,13 @@
     {{-- Präsentationsblatt --}}
     @php($sheetSlots = ['back' => ['Mockup Rückenansicht', 'oben rechts — Person von hinten mit Backprint'], 'front' => ['Mockup Vorderansicht', 'unten links — Person mit Frontprint'], 'detail' => ['Detailaufnahme (optional)', 'für den Kreis; ohne Upload wird die Vorderansicht herangezoomt']])
     <div class="card" id="praesentationsblatt">
-        <h2>Präsentationsblatt <span class="hint">A4, wie die bisherige InDesign-Vorlage</span></h2>
-        <p class="lead">Schulname, Produkte, Farben, Bestellzeitraum, QR-Code und Adresse kommen automatisch aus diesem
-            Antrag — hochzuladen sind nur die beiden Mockups.</p>
+        <h2>Präsentationsblatt <span class="hint">A4</span>
+            <x-info label="Was steht auf dem Blatt?">
+                Schulname, Produkte, Farben, Bestellzeitraum, QR-Code und die Adresse der Bestellseite kommen
+                automatisch aus diesem Antrag — hochzuladen sind nur die beiden Mockups. Das Ergebnis entspricht
+                der bisherigen InDesign-Vorlage.
+            </x-info>
+        </h2>
 
         @if ($sheetMissing !== [])
             <div class="alert warn">⚠ Noch nicht erzeugbar. Es fehlt: {{ implode(', ', $sheetMissing) }}.</div>
@@ -639,8 +732,12 @@
             @method('PUT')
 
             <h3 style="font-size:1rem;margin-bottom:0.4rem;">Produktzeilen</h3>
-            <p class="hint" style="margin-top:0;">Vorbelegt aus dem Konfigurator (maximal {{ config('presentation_sheet.products.max_products') }} Zeilen — mehr passt neben dem Foto nicht).
-                Die Zeile „1 Produkt = 1 Baum" kommt automatisch dazu.</p>
+            <p class="hint" style="margin-top:0;">Vorbelegt aus dem Konfigurator
+                <x-info label="Wie viele Zeilen passen?">
+                    Maximal {{ config('presentation_sheet.products.max_products') }} Produktzeilen — mehr passt neben
+                    dem Foto nicht. Die Zeile „1 Produkt = 1 Baum" kommt automatisch dazu.
+                </x-info>
+            </p>
             <div class="tablewrap">
                 <table class="data">
                     <thead><tr><th>Bezeichnung</th><th>Untertitel</th><th>Icon</th></tr></thead>
@@ -688,7 +785,7 @@
             @endif
             <form method="post" action="{{ route('schools.check-page', $onboarding) }}">
                 @csrf
-                <button class="btn secondary" type="submit" title="Ruft die Adresse ab, auf die der QR-Code zeigt">Bestellseite prüfen</button>
+                <button class="btn secondary" type="submit">Bestellseite prüfen</button>
             </form>
         </div>
 
@@ -703,9 +800,12 @@
 
     {{-- E-Mail an die Schule --}}
     <div class="card">
-        <h2>E-Mail an die Schule <span class="hint">(Vorlage zum Kopieren)</span></h2>
-        <p class="lead">Startet das Bestellfenster bei der Schule: Link, Zeitraum, Produktliste.
-            Das Präsentationsblatt oben herunterladen und anhängen.</p>
+        <h2>E-Mail an die Schule <span class="hint">Vorlage zum Kopieren</span>
+            <x-info label="Wofür ist diese E-Mail?">
+                Damit startet das Bestellfenster bei der Schule: Link zur Bestellseite, Zeitraum und Produktliste.
+                Das Präsentationsblatt oben herunterladen und anhängen.
+            </x-info>
+        </h2>
         <p class="lead">Betreff: <strong>{{ $schoolMailSubject }}</strong></p>
         <textarea id="schoolmail" rows="16" readonly style="font-family:ui-monospace,monospace;font-size:0.85rem;">{{ $schoolMailBody }}</textarea>
         <button class="btn secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('schoolmail').value).then(() => this.textContent = '✓ Kopiert')">In Zwischenablage kopieren</button>
@@ -716,7 +816,12 @@
     {{-- Bestellemail (nur Sammelbestellfenster) --}}
     @if ($emailBody !== null)
         <div class="card">
-            <h2>Bestellemail an die Druckerei <span class="hint">(Vorlage zum Kopieren)</span></h2>
+            <h2>Bestellemail an die Druckerei <span class="hint">Vorlage zum Kopieren</span>
+                <x-info label="Wann wird sie verschickt?">
+                    Nach dem Schließen des Bestellfensters, zusammen mit den Auftragsdokumenten. Enthält die
+                    Lieferanten-Artikelnummern in der von der Druckerei erwarteten Form.
+                </x-info>
+            </h2>
             <p class="lead">Betreff: <strong>{{ $emailSubject }}</strong></p>
             <textarea id="emailbody" rows="18" readonly style="font-family:ui-monospace,monospace;font-size:0.85rem;">{{ $emailBody }}</textarea>
             <button class="btn secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('emailbody').value).then(() => this.textContent = '✓ Kopiert')">In Zwischenablage kopieren</button>

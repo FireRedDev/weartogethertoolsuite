@@ -24,6 +24,22 @@ Dieses Repository enthält direkt im Root die Laravel-Anwendung (kein
 Unterordner) — das ist die Voraussetzung für RunCloud Git/Atomic Deployment,
 siehe unten.
 
+## Hilfe im Tool: ⓘ und ausklappbare Banner
+
+Damit die Seiten nicht in Erklärtext untergehen, steht die Hilfe dort, wo sie
+gebraucht wird — nicht dauerhaft auf dem Schirm:
+
+- **ⓘ** neben einer Überschrift, Tabellenspalte oder Schaltfläche: antippen
+  (oder anklicken) öffnet einen kurzen Erklärkasten. Erneutes Antippen, ein
+  Tipp daneben oder `Esc` schließt ihn wieder. Funktioniert ausdrücklich auch
+  am Telefon — die früheren Mouseover-Tooltips taten das nicht.
+- **▸ Ausklappbare Banner** (z. B. „Wie Logo und Druck zusammenhängen", „Was
+  bei On-Demand zu beachten ist") enthalten die längeren Erklärungen und sind
+  standardmäßig zugeklappt.
+- Die **Startseite** bleibt bewusst ausführlich: dort steht, was die Toolsuite
+  ist, was jedes Modul kann und wie der Ablauf einer Schule von der Anfrage bis
+  zu den Auftragsdokumenten aussieht.
+
 ## Stack
 
 - PHP ≥ 8.3, Laravel 13
@@ -250,7 +266,7 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
    neben den beiden Feldern, sucht live im Printify-Katalog — kein SSH/Terminal
    nötig), alternativ am Server mit `php artisan printify:check
    --blueprints=… / --providers=…` oder direkt auf printify.com nachsehen
-   (Tooltip an den Spaltenköpfen fasst das zusammen). Ablauf:
+   (das ⓘ an den Spaltenköpfen fasst das zusammen). Ablauf:
    „Im Shop anlegen" prüft automatisch die Marge (Verkaufspreis ≥
    (Produktionskosten + Versand) × 1,10, sonst Abbruch mit Rechnung) und
    published → einige Minuten warten, bis Printify die Shop-Produkte erstellt
@@ -289,7 +305,7 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
    **Kostenübersicht im Konfigurator:** Je On-Demand-Produkt zeigt die Tabelle
    Region des Print-Providers, **Einkaufspreis** (Produktionskosten je Stück,
    als Spanne über die angelegten Varianten), **Versand** (erster Artikel nach
-   Österreich — Tooltip nennt Herkunfts- und Zielländer des Versandprofils)
+   Österreich — das ⓘ nennt Herkunfts- und Zielländer des Versandprofils)
    und die **Marge**. Rot bedeutet: unter der Mindestmarge, die Shop-Anlage
    würde das Produkt ablehnen; daneben steht der nötige Mindestpreis. Die
    Werte kommen live aus dem Printify-Katalog und sind 24 h gecacht.

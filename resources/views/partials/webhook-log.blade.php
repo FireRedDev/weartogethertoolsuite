@@ -6,19 +6,25 @@
 
     Erwartet: $webhookLogs
 --}}
-<h2>Webhook-Diagnose <span class="hint">FluentForms-Eingang</span></h2>
-<p class="lead">Hier erscheint <strong>jeder</strong> Aufruf der Webhook-URL (auch Browser-Tests und Aufrufe mit
-    falschem Secret) — noch bevor irgendetwas geprüft wird. Damit lässt sich zweifelsfrei sehen, ob FluentForms
-    die App wirklich erreicht.</p>
-<p class="hint">Webhook-URL: <code>{{ url('/webhooks/fluentforms/'.(config('schoolshop.webhook_secret') ? '<SECRET>' : '')) }}</code>
-    — dieselbe Adresse im Browser öffnen ist ein gültiger Test und muss hier auftauchen.</p>
+<h2>Webhook-Diagnose <span class="hint">FluentForms-Eingang</span>
+    <x-info label="Wozu die Webhook-Diagnose?">
+        Hier erscheint <strong>jeder</strong> Aufruf der Webhook-URL — auch Browser-Tests und Aufrufe mit falschem
+        Secret, noch bevor irgendetwas geprüft wird. Damit lässt sich zweifelsfrei sehen, ob FluentForms die App
+        überhaupt erreicht.<br><br>
+        Webhook-URL: <code>{{ url('/webhooks/fluentforms/'.(config('schoolshop.webhook_secret') ? '<SECRET>' : '')) }}</code><br>
+        Dieselbe Adresse im Browser zu öffnen ist ein gültiger Test und muss hier auftauchen.
+    </x-info>
+</h2>
 
 @if ($webhookLogs->isEmpty())
     <div class="alert warn">
-        Noch <strong>kein einziger</strong> Aufruf registriert. Wenn nach einer Formular-Einsendung hier nichts
-        erscheint (und auch der Browser-Test der URL nichts einträgt), erreicht die Anfrage die App gar nicht —
-        dann liegt es an SSL/Netzwerk zwischen dem WordPress-Server und dieser Domain, an einer vorgelagerten
-        Basic-Auth (RunCloud) oder daran, dass der FluentForms-Webhook nicht wirklich auslöst.
+        Noch <strong>kein einziger</strong> Aufruf registriert.
+        <x-info label="Woran kann das liegen?">
+            Erscheint nach einer Formular-Einsendung hier nichts — und trägt auch der Browser-Test der URL nichts
+            ein —, erreicht die Anfrage die App gar nicht. Mögliche Ursachen: SSL oder Netzwerk zwischen dem
+            WordPress-Server und dieser Domain, eine vorgelagerte Basic-Auth (RunCloud), oder der
+            FluentForms-Webhook löst gar nicht aus.
+        </x-info>
     </div>
 @else
     <div class="tablewrap">

@@ -45,6 +45,12 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 - **Bestellseite prüfen**: ruft die Adresse ab, auf die der QR-Code zeigt, und meldet 404, Fehler oder fehlende Produkte
 - **Datensicherung**: Datenbank und Uploads als ZIP — im Admin-Bereich herunterladbar oder per `php artisan backup:create` (Cron, die letzten fünf bleiben liegen). Die `.env` ist bewusst nicht enthalten
 
+### Bedienung: weniger Dauertext, Erklärungen auf Abruf
+- **Erklärungen sind jetzt am Telefon bedienbar**: die bisherigen `title="…"`-Tooltips zeigt ein Touchgerät nie an (kein Mouseover). Ersetzt durch ein antippbares Info-Symbol (ⓘ) — antippen öffnet den Kasten, erneut antippen, ein Tipp daneben oder Esc schließt ihn. Der Kasten wird waagrecht ins Bild geschoben, damit er auf schmalen Schirmen nicht abgeschnitten wird
+- **Deutlich weniger Dauertext auf allen Seiten außer der Startseite**: lange Erklärblöcke stecken in ausklappbaren Bannern („Wie Logo und Druck zusammenhängen", „Was bei On-Demand zu beachten ist", „Voraussetzungen für Mockups", „Was dabei im Shop entsteht", „Was passiert, wenn eine Schnittstelle ausfällt?", „Automatisch sichern (Cron)"), kurze Hinweise hinter dem Info-Symbol an der jeweiligen Überschrift, Spalte oder Schaltfläche
+- Die Startseite bleibt bewusst ausführlich — dort steht weiterhin offen, was die Toolsuite ist, was jedes Modul kann und wie der Ablauf einer Schule aussieht
+- Neue Blade-Komponenten `<x-info>` und `<x-explain>` für beides; reine Symbolschaltflächen (🔍) haben jetzt `aria-label` statt `title`
+
 ### Präsentationsblatt (neu)
 - Je Bestellfenster erzeugt das Tool das A4-Präsentationsblatt automatisch — deckungsgleich mit der bisherigen InDesign-Vorlage (größte Abweichung 2,6 pt bei der Überschrift, alles übrige unter 0,4 pt)
 - Eingabe sind nur die beiden Mockups; Schulname, Produktzeilen, Farben, Bestellzeitraum, QR-Code und Adresse kommen aus dem Onboarding-Datensatz

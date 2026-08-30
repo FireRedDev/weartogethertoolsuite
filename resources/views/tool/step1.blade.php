@@ -11,7 +11,7 @@
 
     <div class="card">
         <h1>Weg 1: Direkt aus dem Shop laden <span class="hint">(empfohlen)</span></h1>
-        <p class="lead">Bestellungen werden über die Shop-Schnittstelle geladen — Schule auswählen, fertig. Kein Plugin-Export mehr nötig.</p>
+        <p class="lead">Schule auswählen, fertig — kein Plugin-Export mehr nötig.</p>
         @if ($apiConfigured)
             <a class="btn" href="{{ route('shop.form') }}">Aus dem Shop laden</a>
         @else

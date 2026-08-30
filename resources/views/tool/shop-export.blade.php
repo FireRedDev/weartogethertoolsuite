@@ -11,7 +11,12 @@
 
     <div class="card">
         <h1>Direkt aus dem Shop laden</h1>
-        <p class="lead">Lädt die Bestellungen über die Shop-Schnittstelle — mit denselben Einstellungen wie der bisherige Plugin-Export (Status „In Bearbeitung", „In Wartestellung", „Abgeschlossen"; eine Zeile pro Bestellposition; neueste Bestellungen zuerst).</p>
+        <x-explain title="Wie dieser Abruf sich zum Plugin-Export verhält">
+            <p>Die Bestellungen kommen über die Shop-Schnittstelle, mit denselben Einstellungen wie der bisherige
+                Plugin-Export: Status „In Bearbeitung", „In Wartestellung" und „Abgeschlossen", eine Zeile pro
+                Bestellposition, neueste Bestellungen zuerst.</p>
+            <p>Das Ergebnis ist zellgenau identisch zum Plugin-Export — der Umweg über die Datei entfällt.</p>
+        </x-explain>
 
         @if ($apiError !== null)
             <div class="alert error">

@@ -103,6 +103,44 @@
         .alert.ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: var(--ok); }
         /* Neutral: weder Problem noch Erfolgsmeldung — z. B. offene Punkte ohne Dringlichkeit */
         .alert.info { background: #f8fafc; border: 1px solid var(--line); color: var(--ink); }
+
+        /*
+         * Info-Symbol mit antippbarer Erklärung. Ersetzt title="…"-Tooltips,
+         * die auf Telefonen nicht erscheinen (kein Mouseover).
+         */
+        .info { position: relative; display: inline-block; vertical-align: baseline; }
+        .info-toggle {
+            width: 1.15rem; height: 1.15rem; padding: 0; border-radius: 50%;
+            border: 1px solid var(--line); background: #eef2f7; color: var(--muted);
+            font: 700 0.72rem/1 ui-serif, Georgia, serif; cursor: pointer;
+            vertical-align: middle; flex: none;
+        }
+        .info-toggle:hover, .info-toggle[aria-expanded="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+        .info-box {
+            position: absolute; z-index: 40; left: 0; top: calc(100% + 0.35rem);
+            width: max-content; max-width: min(22rem, 78vw);
+            background: var(--ink); color: #f1f5f9;
+            font-size: 0.82rem; font-weight: 400; font-style: normal; line-height: 1.45;
+            text-align: left; white-space: normal;
+            padding: 0.55rem 0.7rem; border-radius: 8px; box-shadow: 0 6px 20px rgba(15, 23, 42, 0.28);
+        }
+        .info-box code { background: rgba(255,255,255,0.14); color: #fff; }
+        .info-box a { color: var(--accent); }
+
+        /* Ausklappbarer Erklärblock für längere Texte */
+        .explain { margin: 0 0 0.85rem; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
+        .explain > summary {
+            cursor: pointer; padding: 0.5rem 0.75rem; font-size: 0.85rem; font-weight: 600;
+            color: var(--muted); list-style: none;
+        }
+        .explain > summary::-webkit-details-marker { display: none; }
+        .explain > summary::before { content: "▸ "; display: inline-block; width: 1em; }
+        .explain[open] > summary { color: var(--ink); border-bottom: 1px solid var(--line); }
+        .explain[open] > summary::before { content: "▾ "; }
+        .explain-body { padding: 0.6rem 0.75rem; font-size: 0.88rem; color: var(--muted); line-height: 1.55; }
+        .explain-body > :first-child { margin-top: 0; }
+        .explain-body > :last-child { margin-bottom: 0; }
+        .explain-body ul, .explain-body ol { margin: 0.3rem 0 0.5rem; padding-left: 1.1rem; }
         details.warnrows { margin-top: 0.4rem; font-size: 0.85rem; }
         details.warnrows summary { cursor: pointer; }
         .stats { display: flex; gap: 1rem; flex-wrap: wrap; margin: 0.5rem 0 1rem; }
@@ -196,5 +234,49 @@
     </nav>
     Wear Together Order Suite — Nachfolger der Wear Together Toolsuite
 </footer>
+
+<script>
+    // Info-Symbole: Tippen/Klicken öffnet die Erklärung, ein zweites schließt
+    // sie. Bewusst kein Mouseover — auf dem Telefon gibt es keines.
+    (function () {
+        function closeAll(except) {
+            document.querySelectorAll('.info-toggle[aria-expanded="true"]').forEach(function (btn) {
+                if (btn === except) return;
+                btn.setAttribute('aria-expanded', 'false');
+                const box = btn.nextElementSibling;
+                if (box) box.hidden = true;
+            });
+        }
+
+        document.addEventListener('click', function (event) {
+            const toggle = event.target.closest('.info-toggle');
+            if (! toggle) { closeAll(null); return; }
+
+            event.preventDefault();
+            const box = toggle.nextElementSibling;
+            const open = toggle.getAttribute('aria-expanded') === 'true';
+            closeAll(toggle);
+            toggle.setAttribute('aria-expanded', open ? 'false' : 'true');
+            if (! box) return;
+            box.hidden = open;
+            if (open) return;
+
+            // Waagrecht ins Bild schieben. Auf schmalen Schirmen ragt der Kasten
+            // sonst links oder rechts hinaus — je nachdem, wo das Symbol steht.
+            box.style.left = '0px';
+            const margin = 8;
+            const width = document.documentElement.clientWidth;
+            const rect = box.getBoundingClientRect();
+            let shift = 0;
+            if (rect.right > width - margin) shift = width - margin - rect.right;
+            if (rect.left + shift < margin) shift = margin - rect.left;
+            box.style.left = shift + 'px';
+        });
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') closeAll(null);
+        });
+    })();
+</script>
 </body>
 </html>

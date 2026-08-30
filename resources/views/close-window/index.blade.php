@@ -4,10 +4,13 @@
 
 @section('content')
     <div class="card">
-        <h1>Bestellfenster schließen</h1>
-        <p class="lead">Schule auswählen — alle zugehörigen Shop-Produkte werden auf <strong>privat</strong> gesetzt
-            (für Kund:innen nicht mehr sichtbar oder bestellbar) und im Schule-Eintrag wird
-            <strong>„Bestellfenster offen" auf NEIN</strong> gestellt.</p>
+        <h1>Bestellfenster schließen
+            <x-info label="Was passiert beim Schließen?">
+                Alle Shop-Produkte der Schule werden auf <strong>privat</strong> gesetzt — für Kund:innen nicht mehr
+                sichtbar oder bestellbar — und im Schule-Eintrag wird <strong>„Bestellfenster offen" auf NEIN</strong>
+                gestellt. Bereits private Produkte werden übersprungen, mehrfaches Ausführen schadet also nicht.
+            </x-info>
+        </h1>
 
         @if (session('closedSchool'))
             <div class="alert ok">✓ Bestellfenster für <strong>{{ session('closedSchool') }}</strong> geschlossen.</div>
@@ -69,9 +72,14 @@
 
     {{-- Umkehrung: ein bereits geschlossenes Fenster wieder aufmachen --}}
     <div class="card">
-        <h2>Bestellfenster wieder öffnen</h2>
-        <p class="lead">Wenn eine Schule nachträglich verlängern möchte: Produkte wieder öffentlich schalten,
-            „Bestellfenster offen" auf {{ config('schoolshop.pods.bestellfenster_offen_open') }} stellen und ein neues Enddatum setzen.</p>
+        <h2>Bestellfenster wieder öffnen
+            <x-info label="Wann braucht man das?">
+                Wenn eine Schule nachträglich verlängern möchte: Produkte werden wieder öffentlich geschaltet,
+                „Bestellfenster offen" steht danach auf {{ config('schoolshop.pods.bestellfenster_offen_open') }},
+                und das neue Enddatum geht auch in den Schule-Eintrag. Die automatische Nachfrist ist danach
+                wieder frei.
+            </x-info>
+        </h2>
 
         @if (session('reopenedSchool'))
             <div class="alert ok">✓ Bestellfenster für <strong>{{ session('reopenedSchool') }}</strong> wieder geöffnet.</div>
