@@ -49,6 +49,21 @@
             </div>
         @endif
 
+        @if (! $complete)
+            {{-- Der Abruf lädt monatsweise und speichert jeden fertigen Monat.
+                 Reicht die Zeit eines Aufrufs nicht, macht der nächste dort
+                 weiter — deshalb hier nur ein Hinweis, keine Fehlermeldung. --}}
+            <div class="alert warn" style="margin-top:1rem;">
+                ⏳ <strong>Die Auswertung wird gerade aufgebaut</strong> —
+                {{ $loadedMonths }} von {{ $totalMonths }} Monaten sind geladen. Die Zahlen unten sind deshalb noch
+                unvollständig. Der Shop wird monatsweise abgefragt und jeder fertige Monat gespeichert; einfach
+                gleich noch einmal laden, dann geht es dort weiter.
+                <div style="margin-top:0.5rem;">
+                    <a class="btn" href="{{ route('statistics.index', $filters->query()) }}">Weiterladen</a>
+                </div>
+            </div>
+        @endif
+
         {{-- Eine Filterzeile für die ganze Seite: alle Diagramme zeigen denselben Ausschnitt. --}}
         <form method="get" action="{{ route('statistics.index') }}" style="margin-top:1rem;">
             <div class="filters">

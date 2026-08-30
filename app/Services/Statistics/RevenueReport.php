@@ -34,6 +34,11 @@ class RevenueReport
      */
     public function build(StatisticsFilters $filters): array
     {
+        // Zeitbudget dieses Seitenaufrufs starten. Reicht es nicht für alle
+        // Monate, liefert das Ergebnis `complete = false` und die Seite sagt,
+        // dass sie noch aufgebaut wird — statt minutenlang zu hängen.
+        $this->repository->startBudget();
+
         $products = $this->repository->products($filters->fresh);
         $schools = SchoolOnboarding::query()
             ->whereNotNull('woo_category_id')
@@ -43,17 +48,28 @@ class RevenueReport
         $current = $this->aggregate($filters->year, $filters, $products, $schools);
         $previous = $this->aggregate($filters->year->previous(), $filters, $products, $schools);
 
-        // Grundlage der Prognose: die abgeschlossenen Vorjahre, neuestes zuerst.
-        // Das erste ist bereits berechnet, jedes weitere kostet einen Abruf —
-        // deshalb bewusst gedeckelt (config statistics.forecast.history_years).
+        /*
+         * Grundlage der Prognose: die abgeschlossenen Vorjahre, neuestes zuerst.
+         * Das erste ist bereits berechnet. Jedes weitere kostet weitere Abrufe —
+         * die werden nur angestoßen, wenn die eigentliche Auswertung schon
+         * vollständig ist UND noch Zeit übrig ist. Sonst wartet die Seite auf
+         * Daten, die nur die Prognose verfeinern.
+         */
         $history = $previous['year']->isComplete() ? [$previous] : [];
         $extra = (int) config('statistics.forecast.history_years') - 1;
         for ($i = 1; $i <= max(0, $extra); $i++) {
+            if (! $current['complete'] || ! $previous['complete'] || $this->repository->budgetLeft() <= 0) {
+                break;
+            }
             $olderYear = new SchoolYear($filters->year->startYear - 1 - $i);
             if (! $olderYear->isComplete()) {
                 break;
             }
-            $history[] = $this->aggregate($olderYear, $filters, $products, $schools);
+            $older = $this->aggregate($olderYear, $filters, $products, $schools);
+            if (! $older['complete']) {
+                break;
+            }
+            $history[] = $older;
         }
 
         // Vergleichbarer Zwischenstand: Vorjahr bis zum selben Tag im Schuljahr.
@@ -69,6 +85,11 @@ class RevenueReport
             'current' => $current,
             'previous' => $previous,
             'history' => $history,
+            // Konnten alle Monate geladen werden? Sonst zeigt die Seite an,
+            // dass die Auswertung noch aufgebaut wird.
+            'complete' => $current['complete'] && $previous['complete'],
+            'loaded' => $current['loaded'] + $previous['loaded'],
+            'months' => $current['total'] + $previous['total'],
             'previousAtSamePoint' => $previousAtSamePoint,
             'products' => $this->mergeRanking($current['products'], $previous['products']),
             'colors' => $this->mergeRanking($current['colors'], $previous['colors']),
@@ -83,7 +104,8 @@ class RevenueReport
      */
     private function aggregate(SchoolYear $year, StatisticsFilters $filters, array $products, Collection $schools): array
     {
-        $orders = $this->repository->orders($year, $filters->statuses, $filters->fetchPadding(), $filters->fresh);
+        $fetch = $this->repository->orders($year, $filters->statuses, $filters->fetchPadding(), $filters->fresh);
+        $orders = $fetch['orders'];
 
         $categoryToSchool = $this->categoryToSchool($schools);
         $windows = $this->windows($year, $filters, $schools);
@@ -153,6 +175,9 @@ class RevenueReport
         return [
             'year' => $year,
             'label' => $year->label(),
+            'complete' => $fetch['complete'],
+            'loaded' => $fetch['loaded'],
+            'total' => $fetch['total'],
             'revenue' => round($revenue, 2),
             'quantity' => $quantity,
             'orders' => $orderCount,

@@ -564,9 +564,19 @@ Gesamtumsatz des Vorjahres.
 Puffertage, Bestellstatus und Zielumsatz. Alles steht in der Adresszeile — eine
 Auswertung lässt sich als Lesezeichen speichern und weitergeben.
 
-**Geschwindigkeit:** Ein Bestellabruf je Schuljahr (nicht einer je Schule).
-Abgeschlossene Schuljahre werden 24 Stunden zwischengespeichert, das laufende
-30 Minuten; „↻ Daten neu laden" erzwingt einen frischen Abruf.
+**Geschwindigkeit und der erste Aufruf:** Abgerufen wird **monatsweise**, und
+jeder fertige Monat wird gespeichert (vergangene Monate 24 Stunden, der
+laufende 30 Minuten). Beim allerersten Aufruf — oder nach „↻ Daten neu laden" —
+kann das Budget eines Seitenaufrufs (20 Sekunden) nicht für alle Monate
+reichen. Dann steht oben „Die Auswertung wird gerade aufgebaut, X von Y Monaten
+geladen" mit einem Knopf **Weiterladen**: einfach draufklicken, der nächste
+Aufruf macht dort weiter. Nach ein bis zwei Durchgängen ist alles da und die
+Seite lädt sofort.
+
+Das ist bewusst so gebaut: würde die Seite alles am Stück holen, liefe ein
+Aufruf bei einem gut gefüllten Shop minutenlang, liefe in den Zeitablauf des
+Webservers und würde dabei eine PHP-Arbeitskraft blockieren — davon hat der
+Server nur eine Handvoll.
 
 ## Admin-Informationen
 

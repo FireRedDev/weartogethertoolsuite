@@ -103,4 +103,18 @@ class WooCommerceApiException extends \RuntimeException
             'Möglicherweise zeigt der Shop gerade eine Wartungsseite oder ein Plugin stört die Schnittstelle. Bitte prüfen, ob der Shop im Browser normal lädt.',
         );
     }
+
+    /**
+     * Notbremse beim Blättern: lieber eine erklärte Meldung als ein Prozess,
+     * der endlos weiterlädt und die Anwendung lahmlegt.
+     */
+    public static function tooManyPages(string $details): self
+    {
+        return new self(
+            'Der Abruf beim Shop wurde abgebrochen, weil er ungewöhnlich viele Seiten geliefert hat.',
+            $details,
+            'Bitte den Zeitraum kleiner wählen. Bleibt es dabei, liefert der Shop vermutlich den Seitenzähler '
+            .'(X-WP-TotalPages) nicht mit — das verursacht ein Caching-Plugin oder ein vorgelagerter Proxy.',
+        );
+    }
 }

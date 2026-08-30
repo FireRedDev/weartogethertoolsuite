@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\WooCommerceApiException;
 use App\Models\SchoolOnboarding;
 use App\Services\Statistics\RevenueForecast;
 use App\Services\Statistics\RevenueReport;
 use App\Services\Statistics\SchoolYear;
 use App\Services\Statistics\StatisticsFilters;
+use App\Services\WooCommerceClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -86,12 +88,12 @@ class StatisticsTest extends TestCase
 
         $data = app(RevenueReport::class)->build($this->filters());
 
-        // 2025/26: Sammelbestellung 3 × 59,90 + 2 × 39,90 = 259,50
+        // 2025/26: Sammelbestellung 3 × 59,90 + 2 × 39,90 + 3 × 30,00 = 349,50
         //          On-Demand 1 × 45,00 = 45,00
-        $this->assertEqualsWithDelta(304.50, $data['current']['revenue'], 0.01);
-        $this->assertSame(3, $data['current']['orders']);
-        $this->assertEqualsWithDelta(101.50, $data['current']['avgPerOrder'], 0.01);
-        $this->assertSame(6, $data['current']['quantity']);
+        $this->assertEqualsWithDelta(394.50, $data['current']['revenue'], 0.01);
+        $this->assertSame(4, $data['current']['orders']);
+        $this->assertEqualsWithDelta(98.63, $data['current']['avgPerOrder'], 0.01);
+        $this->assertSame(9, $data['current']['quantity']);
 
         // 2024/25 zum Vergleich: 2 × 59,90 = 119,80
         $this->assertEqualsWithDelta(119.80, $data['previous']['revenue'], 0.01);
@@ -106,7 +108,7 @@ class StatisticsTest extends TestCase
 
         // Genau ein Sammelbestellfenster endet in 2025/26 (BG Musterstadt)
         $this->assertSame(1, $data['current']['collective']['count']);
-        $this->assertEqualsWithDelta(259.50, $data['current']['collective']['avg'], 0.01);
+        $this->assertEqualsWithDelta(349.50, $data['current']['collective']['avg'], 0.01);
 
         // Genau ein On-Demand-Shop ist aktiv
         $this->assertSame(1, $data['current']['ondemand']['count']);
@@ -123,8 +125,9 @@ class StatisticsTest extends TestCase
         $withPadding = app(RevenueReport::class)->build($this->filters());
         $withoutPadding = app(RevenueReport::class)->build($this->filters(['vorlauf' => 0, 'nachlauf' => 0]));
 
-        $this->assertEqualsWithDelta(259.50, $withPadding['current']['collective']['revenue'], 0.01);
-        $this->assertEqualsWithDelta(179.70, $withoutPadding['current']['collective']['revenue'], 0.01);
+        $this->assertEqualsWithDelta(349.50, $withPadding['current']['collective']['revenue'], 0.01);
+        // Ohne Puffer fehlt der Dezember-Nachzügler (79,80)
+        $this->assertEqualsWithDelta(269.70, $withoutPadding['current']['collective']['revenue'], 0.01);
     }
 
     public function test_monatsverlauf_folgt_dem_schuljahr(): void
@@ -170,7 +173,7 @@ class StatisticsTest extends TestCase
         $colors = collect(app(RevenueReport::class)->build($this->filters())['colors'])
             ->keyBy('name');
 
-        $this->assertSame(3, $colors['Blau']['quantity']);       // pa_color (Sammelbestellung)
+        $this->assertSame(6, $colors['Blau']['quantity']);       // pa_color (Sammelbestellung)
         $this->assertSame(1, $colors['Heather Grey']['quantity']); // "Colors" (Printify/On-Demand)
     }
 
@@ -248,6 +251,89 @@ class StatisticsTest extends TestCase
         $this->assertFalse($forecast['possible']);
         $this->assertNull($forecast['projection']);
         $this->assertStringContainsString('Vergleichsdaten', $forecast['reason']);
+    }
+
+    // ------------------------------------------------- Schutz vor Dauerläufern
+
+    /**
+     * Der Auslöser des Ausfalls: ohne Obergrenze blättert der Client endlos
+     * weiter, sobald der Shop den Seitenzähler nicht mitschickt und jede Seite
+     * voll ist. Der PHP-Prozess hängt dann für immer.
+     */
+    public function test_endloses_blaettern_wird_abgebrochen_statt_haengen_zu_bleiben(): void
+    {
+        config(['ordersuite.woocommerce.max_pages' => 3, 'ordersuite.woocommerce.per_page' => 2]);
+
+        Http::preventStrayRequests();
+        Http::fake([
+            // Immer volle Seiten, KEIN X-WP-TotalPages — genau das Muster, das
+            // ein Caching-Plugin oder Proxy erzeugt.
+            'shop.example/wp-json/wc/v3/orders*' => Http::response([
+                ['id' => 1, 'date_created' => '2025-10-01T10:00:00', 'line_items' => []],
+                ['id' => 2, 'date_created' => '2025-10-02T10:00:00', 'line_items' => []],
+            ], 200),
+        ]);
+
+        $this->expectException(WooCommerceApiException::class);
+        app(WooCommerceClient::class)->ordersForStatistics(['completed'], '2025-09-30T23:59:59', '2025-11-01T00:00:00');
+    }
+
+    public function test_jeder_monat_wird_einzeln_gecacht_und_nicht_erneut_geholt(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+
+        app(RevenueReport::class)->build($this->filters());
+        $first = count(Http::recorded());
+
+        // Zweiter Aufruf: alles aus dem Zwischenspeicher, keine einzige
+        // Shop-Anfrage mehr.
+        app(RevenueReport::class)->build($this->filters());
+
+        $this->assertGreaterThan(0, $first);
+        $this->assertSame($first, count(Http::recorded()), 'Der zweite Aufruf hätte keine Shop-Anfrage stellen dürfen.');
+    }
+
+    public function test_reicht_die_zeit_nicht_kommt_ein_teilergebnis_statt_eines_haengers(): void
+    {
+        config(['statistics.budget_seconds' => 0]);
+        $this->makeSchools();
+        $this->fakeShop();
+
+        $data = app(RevenueReport::class)->build($this->filters());
+
+        $this->assertFalse($data['complete']);
+        $this->assertSame(0, $data['current']['loaded']);
+        $this->assertGreaterThan(0, $data['months']);
+    }
+
+    public function test_die_seite_sagt_wenn_die_auswertung_noch_aufgebaut_wird(): void
+    {
+        config(['statistics.budget_seconds' => 0]);
+        $this->makeSchools();
+        $this->fakeShop();
+
+        $response = $this->get(route('statistics.index'));
+
+        $response->assertOk();
+        $response->assertSee('Die Auswertung wird gerade aufgebaut', false);
+        $response->assertSee('Weiterladen');
+    }
+
+    /**
+     * Monatsweiser Abruf darf an der Monatsgrenze nichts verlieren und nichts
+     * doppelt zählen — die API behandelt after/before ausschließend.
+     */
+    public function test_bestellung_exakt_um_mitternacht_zaehlt_genau_einmal(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+
+        $data = app(RevenueReport::class)->build($this->filters());
+        $months = array_values($data['current']['months']);
+
+        // Die Mitternachtsbestellung (01.11.2025, 3 × 30 € brutto) liegt im November
+        $this->assertEqualsWithDelta(90.0, $months[2]['revenue'], 0.01);
     }
 
     // -------------------------------------------------------------------- Seite
@@ -358,20 +444,36 @@ class StatisticsTest extends TestCase
                 ['id' => 103, 'name' => 'HAK Altstadt STICK-Schulhoodie', 'categories' => [['id' => 8]]],
                 ['id' => 104, 'name' => 'BORG Neustadt Schulpolo', 'categories' => [['id' => 9]]],
             ], 200, ['X-WP-TotalPages' => '1']),
+            // Der Fake muss after/before ehrlich auswerten: die Auswertung
+            // ruft monatsweise ab, ein Fake der immer alles zurückgibt würde
+            // jede Bestellung zwölfmal zählen.
             'shop.example/wp-json/wc/v3/orders*' => function ($request) {
-                $after = substr((string) $request->data()['after'], 0, 10);
-
-                return Http::response($this->ordersBetween($after), 200, ['X-WP-TotalPages' => '1']);
+                return Http::response(
+                    $this->ordersBetween((string) $request->data()['after'], (string) $request->data()['before']),
+                    200,
+                    ['X-WP-TotalPages' => '1'],
+                );
             },
         ]);
     }
 
     /**
-     * Simulierte Bestellungen. Der Abruf grenzt serverseitig ein — hier wird
-     * anhand des `after`-Parameters entschieden, welches Schuljahr geliefert
-     * wird (die Fakes kennen kein echtes Datumsfilter).
+     * Simulierte Bestellungen, gefiltert wie die echte API: `after` und
+     * `before` sind ausschließende Zeitpunkte.
      */
-    private function ordersBetween(string $after): array
+    private function ordersBetween(string $after, string $before): array
+    {
+        $all = $this->allOrders();
+
+        return array_values(array_filter($all, static function (array $order) use ($after, $before) {
+            $date = $order['date_created'];
+
+            return $date > $after && $date < $before;
+        }));
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function allOrders(): array
     {
         $orders2025 = [
             [
@@ -403,6 +505,24 @@ class StatisticsTest extends TestCase
                     'total_tax' => '13.30',
                     'meta_data' => [
                         ['key' => 'pa_color', 'display_key' => 'Farbe', 'display_value' => 'Weiß'],
+                    ],
+                ]],
+            ],
+            [
+                // Genau um Mitternacht des Monatsersten — Grenzfall des
+                // monatsweisen Abrufs: darf weder verloren gehen noch doppelt
+                // gezählt werden.
+                'id' => 5004,
+                'date_created' => '2025-11-01T00:00:00',
+                'status' => 'completed',
+                'line_items' => [[
+                    'product_id' => 102,
+                    'parent_name' => 'BG Musterstadt Schulshirt',
+                    'quantity' => 3,
+                    'total' => '75.00',
+                    'total_tax' => '15.00',
+                    'meta_data' => [
+                        ['key' => 'pa_color', 'display_key' => 'Farbe', 'display_value' => 'Blau'],
                     ],
                 ]],
             ],
@@ -442,11 +562,7 @@ class StatisticsTest extends TestCase
             ],
         ];
 
-        return match (true) {
-            $after >= '2025-01-01' => $orders2025,
-            $after >= '2024-01-01' => $orders2024,
-            default => [],
-        };
+        return array_merge($orders2025, $orders2024);
     }
 
     /**

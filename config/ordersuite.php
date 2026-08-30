@@ -76,6 +76,15 @@ return [
         'timeout_seconds' => 30,
         'per_page' => 100,
 
+        /*
+         * Notbremse beim Blättern. Ohne sie läuft die Schleife in
+         * WooCommerceClient::fetchAllPages() endlos, sobald ein Caching-Plugin
+         * oder Proxy den Header X-WP-TotalPages entfernt — der PHP-Prozess
+         * hängt dann für immer und nach wenigen Aufrufen antwortet die ganze
+         * Anwendung nicht mehr. 200 Seiten à 100 = 20.000 Einträge.
+         */
+        'max_pages' => 200,
+
         // Bestellstatus wie im Plugin vorausgewählt
         'default_statuses' => ['processing', 'on-hold', 'completed'],
         'statuses' => [

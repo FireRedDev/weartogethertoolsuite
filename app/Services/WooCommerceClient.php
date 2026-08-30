@@ -102,19 +102,29 @@ class WooCommerceClient
     /**
      * Bestellungen eines Zeitraums für die Auswertung (mit Bestelldatum).
      *
+     * `$after` und `$before` sind vollständige Zeitpunkte im Format
+     * `Y-m-d\TH:i:s` und werden von der API **ausschließend** behandelt. Die
+     * Statistik ruft monatsweise ab und setzt die Grenzen deshalb bewusst auf
+     * die letzte Sekunde des Vormonats bzw. den ersten Augenblick des
+     * Folgemonats — sonst fiele eine Bestellung, die genau um Mitternacht des
+     * Monatsersten eingeht, in jedem Monat durchs Raster.
+     *
      * @param  list<string>  $statuses
      * @return list<array<string, mixed>>
      */
-    public function ordersForStatistics(array $statuses, string $dateFrom, string $dateTo): array
+    public function ordersForStatistics(array $statuses, string $after, string $before): array
     {
+        // Kürzerer Zeitablauf als sonst: die Statistik ruft viele Monate
+        // nacheinander ab, eine einzelne hängende Anfrage darf nicht das ganze
+        // Zeitbudget der Seite verbrauchen.
         return $this->fetchAllPages('orders', [
             'status' => implode(',', $statuses),
             'orderby' => 'id',
             'order' => 'asc',
             '_fields' => self::STATISTICS_ORDER_FIELDS,
-            'after' => $dateFrom.'T00:00:00',
-            'before' => $dateTo.'T23:59:59',
-        ]);
+            'after' => $after,
+            'before' => $before,
+        ], (int) config('statistics.request_timeout_seconds'));
     }
 
     /**
@@ -173,12 +183,13 @@ class WooCommerceClient
     /**
      * @return list<array<string, mixed>>
      */
-    private function fetchAllPages(string $endpoint, array $query): array
+    private function fetchAllPages(string $endpoint, array $query, ?int $timeout = null): array
     {
         $perPage = (int) config('ordersuite.woocommerce.per_page');
+        $maxPages = (int) config('ordersuite.woocommerce.max_pages');
         $results = [];
         for ($page = 1; ; $page++) {
-            $response = $this->request($endpoint, $query + ['per_page' => (string) $perPage, 'page' => (string) $page]);
+            $response = $this->request($endpoint, $query + ['per_page' => (string) $perPage, 'page' => (string) $page], $timeout);
             $batch = $response->json();
             if (! is_array($batch)) {
                 throw WooCommerceApiException::unexpectedResponse(
@@ -190,20 +201,39 @@ class WooCommerceClient
             if (count($batch) < $perPage || ($totalPages > 0 && $page >= $totalPages)) {
                 return $results;
             }
+
+            /*
+             * Notbremse. Ohne sie läuft diese Schleife ewig, sobald ein
+             * Caching-Plugin oder Proxy den Header X-WP-TotalPages entfernt und
+             * jede Seite volle 100 Einträge liefert — der PHP-Prozess hängt
+             * dann für immer, und nach ein paar Aufrufen ist keine Arbeitskraft
+             * mehr frei: die ganze Anwendung antwortet nicht mehr.
+             */
+            if ($page >= $maxPages) {
+                throw WooCommerceApiException::tooManyPages(sprintf(
+                    'GET %s: nach %d Seiten à %d Einträgen abgebrochen (X-WP-TotalPages: %s). '
+                    .'Entweder ist die Abfrage zu groß, oder der Shop liefert den Seitenzähler nicht mit.',
+                    $endpoint,
+                    $page,
+                    $perPage,
+                    $response->header('X-WP-TotalPages') ?: 'fehlt',
+                ));
+            }
         }
     }
 
-    private function request(string $endpoint, array $query): Response
+    private function request(string $endpoint, array $query, ?int $timeout = null): Response
     {
         if (! $this->isConfigured()) {
             throw WooCommerceApiException::notConfigured();
         }
         $config = config('ordersuite.woocommerce');
         $url = rtrim($config['store_url'], '/')."/wp-json/wc/v3/{$endpoint}";
+        $timeout = $timeout ?: (int) $config['timeout_seconds'];
 
         try {
             $response = Http::withBasicAuth($config['consumer_key'], $config['consumer_secret'])
-                ->timeout((int) $config['timeout_seconds'])
+                ->timeout($timeout)
                 ->acceptJson()
                 ->get($url, $query);
 
@@ -216,7 +246,7 @@ class WooCommerceClient
                 && str_starts_with($url, 'https://')
                 && str_contains($response->body(), 'woocommerce_rest_cannot_view')
             ) {
-                $response = Http::timeout((int) $config['timeout_seconds'])
+                $response = Http::timeout($timeout)
                     ->acceptJson()
                     ->get($url, $query + [
                         'consumer_key' => $config['consumer_key'],

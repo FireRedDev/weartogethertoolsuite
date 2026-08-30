@@ -31,11 +31,25 @@ class StatisticsController extends Controller
     ): View {
         $filters = StatisticsFilters::fromRequest($request);
 
+        /*
+         * Harte Obergrenze für diesen Seitenaufruf. Der Abruf hat zwar sein
+         * eigenes Zeitbudget (config statistics.budget_seconds), aber dieser
+         * Riegel greift auch, wenn eine einzelne Shop-Anfrage hängt: lieber ein
+         * abgebrochener Aufruf als eine PHP-Arbeitskraft, die minutenlang
+         * belegt bleibt — davon hat der Server nur eine Handvoll.
+         */
+        if (function_exists('set_time_limit')) {
+            @set_time_limit((int) config('statistics.budget_seconds') + 40);
+        }
+
         if (! $client->isConfigured()) {
             return view('statistics.index', [
                 'filters' => $filters,
                 'years' => SchoolYear::recent(),
                 'schools' => collect(),
+                'complete' => true,
+                'loadedMonths' => 0,
+                'totalMonths' => 0,
                 'error' => 'Die Verbindung zum Shop ist nicht eingerichtet (WC_STORE_URL / WC_CONSUMER_KEY / WC_CONSUMER_SECRET). '
                     .'Ohne Shop-Zugang gibt es keine Bestelldaten zum Auswerten.',
                 'technical' => null,
@@ -49,6 +63,9 @@ class StatisticsController extends Controller
                 'filters' => $filters,
                 'years' => SchoolYear::recent(),
                 'schools' => collect(),
+                'complete' => true,
+                'loadedMonths' => 0,
+                'totalMonths' => 0,
                 'error' => $e->userMessage().($e->hint() ? ' '.$e->hint() : ''),
                 'technical' => $e->getMessage(),
             ]);
@@ -62,6 +79,9 @@ class StatisticsController extends Controller
             'schools' => $data['schools'],
             'error' => null,
             'technical' => null,
+            'complete' => $data['complete'],
+            'loadedMonths' => $data['loaded'],
+            'totalMonths' => $data['months'],
             'current' => $data['current'],
             'previous' => $data['previous'],
             'previousAtSamePoint' => $data['previousAtSamePoint'],

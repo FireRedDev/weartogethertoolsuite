@@ -50,7 +50,31 @@ return [
     'cache' => [
         'current_minutes' => 30,
         'past_hours' => 24,
+        'products_hours' => 6,
     ],
+
+    /*
+     * Zeitbudget für die Shop-Abrufe EINES Seitenaufrufs, in Sekunden.
+     *
+     * Abgerufen wird monatsweise und jeder fertige Monat wird gespeichert.
+     * Ist das Budget aufgebraucht, bricht die Seite den Rest ab und zeigt an,
+     * wie viele Monate schon geladen sind; der nächste Aufruf macht dort
+     * weiter. Das ist der Schutz davor, dass ein Seitenaufruf minutenlang
+     * läuft, in den Zeitablauf des Webservers rennt und dabei eine PHP-
+     * Arbeitskraft blockiert — passiert das mehrfach, antwortet die gesamte
+     * Anwendung nicht mehr.
+     *
+     * Muss deutlich unter dem PHP-/nginx-Zeitablauf liegen (typisch 60 s).
+     */
+    'budget_seconds' => 20,
+
+    /*
+     * Zeitablauf einer EINZELNEN Shop-Anfrage der Statistik. Bewusst kürzer als
+     * der allgemeine Wert (ordersuite.woocommerce.timeout_seconds = 30): hier
+     * laufen viele Anfragen nacheinander, eine hängende darf nicht das ganze
+     * Budget aufbrauchen.
+     */
+    'request_timeout_seconds' => 12,
 
     // Wie viele Plätze die Ranglisten zeigen
     'ranking_limit' => 10,
