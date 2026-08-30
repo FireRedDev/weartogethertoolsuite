@@ -5,10 +5,11 @@ Orientierung für Code-Änderungen. Für tiefe Details der Report-Logik: `AGENTI
 ## Was das ist
 Laravel-13-App (PHP ≥ 8.3, SQLite), Web-Nachfolger einer Python/Tkinter-Toolsuite. Direkt im Repo-Root (kein Unterordner) wegen RunCloud Atomic Deployment. Deutschsprachige UI. CSS/JS inline in Blade-Views (kein Node-Build). Login per gemeinsamem `TOOL_PASSWORD` (Middleware `ToolAuth`; leer = kein Login).
 
-Drei Module, verlinkt von der Startseite (`/` → `HomeController`):
+Vier Module, verlinkt von der Startseite (`/` → `HomeController`):
 1. **Auftragsdokumente** (`/auftragsdokumente`, `tool.*`/`shop.*`/`job.*`) — Bestell-Export → 3 Excel-Reports + Verteil-PDF. Kern-Logik in `app/Services/*` (nicht `SchoolShop/`). **Zellgenau identisch zum Legacy-Python-Tool — abgesichert durch Golden-File-Tests (`tests/Feature/GoldenFileTest.php`). Diese Logik/Defaults (`config/ordersuite.php`) NICHT verändern, ohne die Golden-Files bewusst neu zu erzeugen.**
 2. **Schul-Onboarding** (`/schulen`, `schools.*`) — FluentForms-Webhook → Konfigurator → Shop-Anlage (WooCommerce + Pods-CPT „schule" + optional Printify).
 3. **Bestellfenster schließen** (`/bestellfenster-schliessen`, `close-window.*`) — Produkte einer Schule auf privat setzen + CPT „Bestellfenster offen" = NEIN.
+4. **Statistiken** (`/statistiken`, `statistics.*`) — Umsatzauswertung nach österreichischem Schuljahr mit Vorjahresvergleich, Ranglisten und Prognose. Kern in `app/Services/Statistics/`, siehe unten.
 
 Dazu im Schul-Antrag ein **Präsentationsblatt** (A4-PDF je Bestellfenster, siehe unten) und ein Diagnose-Bereich **Admin-Informationen** (`/admin-informationen`, `admin.*`) — Live-Status aller API-Anbindungen, siehe unten.
 
@@ -48,6 +49,13 @@ php artisan sheet:background export.png         # Grafiker-Export -> Hintergrund
   - `SheetImages` — GD: Fotos „cover" auf die Fensterrechtecke zuschneiden (X/Y/Zoom je Bild), Detailkreis rund maskieren, QR-Code erzeugen.
   - Layout: `config/presentation_sheet.php` — alle Koordinaten in pt, 1:1 aus der InDesign-Vorlage vermessen.
   - `php artisan sheet:background <datei.png>` — Grafik-Export (Bildplätze magenta) → Hintergrund mit transparenten Fenstern.
+- **`app/Services/Statistics/`** — Modul 4:
+  - `SchoolYear` — Wertobjekt für das österreichische Schuljahr (fester Stichtag 1.9. bis 31.8., **Sommerferien zählen ans ablaufende Jahr**). `months()` liefert das 12er-Raster ab September, `elapsedShare()`, `isComplete()`, `recent()`.
+  - `OrderRepository` — genau EIN Bestellabruf je Schuljahr (nicht einer je Schule), normalisiert auf Datum + Positionen (Produkt, Menge, Umsatz, Farbe). Abgeschlossene Schuljahre 24 h gecacht, das laufende 30 min. Der Abruf greift um `fetchPadding()` Tage über den Jahresrand hinaus, weil Fenster über den Jahreswechsel reichen können.
+  - `RevenueReport` — die Auswertung. **Zwei Zuordnungen laufen nebeneinander:** nach Schuljahr (Bestelldatum → Gesamtumsatz, Monate, Ranglisten, Ø je Bestellung) und nach Bestellfenster (Position → Fenster der Schule → Ø je Fenster; ein Fenster gehört zu dem Schuljahr, in dem es *endet*). Zuordnung Position→Schule läuft über Produkt→Kategorie→`woo_category_id`.
+  - `RevenueForecast` — Hochrechnung über den gemittelten **Saisonverlauf** der Vorjahre (nicht linear!), plus Zielumsatz (Standard = Vorjahresumsatz).
+  - `StatisticsFilters` — Filter aus der Adresszeile (Schuljahr, Lieferart, Schule, Puffer, Status, Ziel), damit die Seite als Lesezeichen taugt.
+  - `Charts/{ColumnChart,BarChart,LineChart,Shapes,Palette}` — Geometrie in PHP, die Blade-Komponenten `<x-chart.columns|bars|lines>` zeichnen nur.
 - **`app/Services/IntegrationStatusChecker`** — prüft live alle API-Clients (`testConnection()`-Methode je Client) + `WordPressAdminNotifier` (E-Mail-Alarm **nur** über einen WordPress-REST-Endpunkt, siehe Gotchas). Model `IntegrationStatus` speichert den letzten Stand pro Schnittstelle (verhindert Mehrfach-Benachrichtigung).
 
 ## Wichtige Gotchas (teuer erkauft — bitte beachten)
@@ -70,6 +78,10 @@ php artisan sheet:background export.png         # Grafiker-Export -> Hintergrund
 - **Blade: `@php(...)` und `@php … @endphp` nie in derselben Datei mischen.** Blades Regex für den Blockform-`@php` greift vom ersten inline `@php(` bis zum nächsten `@endphp` und verschluckt alles dazwischen — die Vorlage kompiliert dann still falsch. Gilt auch für ein `@php(` in einem Blade-Kommentar.
 - **dompdf setzt Text tiefer als angefragt** (`factor × Schriftgröße − offset`, gemessen in `presentation_sheet.text_top_correction`). Die `top`-Werte in der Config sind Buchstaben-Oberkanten wie in InDesign; `PresentationSheetTest` rechnet zurück und prüft gegen die Vorlagenkoordinaten.
 - **dompdf liest nur innerhalb des Projektverzeichnisses** (chroot). Erzeugte Bilder müssen deshalb unter `storage/app/public` liegen, nicht in `/tmp`.
+- **Statistik-Fensterpuffer ist Absicht, kein Schätzfehler:** Der Auswertungszeitraum je Sammelbestellfenster ist breiter als im Antrag eingestellt (Standard 7 Tage davor, 21 danach, in der Filterzeile änderbar). Grund: die automatische Nachfrist verlängert oft um eine Woche, und Nachzügler bestellen auch danach. Da nie zwei Fenster derselben Schule aneinander liegen, kann der Puffer keine fremden Bestellungen einsammeln. Auf der Seite per ⓘ erklärt — beim Ändern der Defaults den Erklärtext mitziehen.
+- **Diagramm-Farben sind geprüft, nicht gewählt:** Blau `#2a78d6` / Orange `#eb6834` (`Charts\Palette`) sind gegen Farbsehschwäche validiert (ΔE 24,7 protan auf weißem Grund, Zielwert ≥ 8) und liegen über 3:1 Kontrast. Wer sie ändert, muss neu prüfen. Jedes Diagramm hat zusätzlich Legende **und** Tabellenansicht, damit Farbe nie der einzige Informationsträger ist. Beschriftungen tragen immer Textfarben (`.chart-tick`/`.chart-value`), nie die Serienfarbe.
+- **Diagramme schrumpfen auf dem Telefon nicht mit**, sondern scrollen waagrecht im eigenen Kasten (`.chart-scroll` + `min-width` am SVG) — bei 390 px wäre die Beschriftung sonst 6 px groß. Die Seite selbst darf nie waagrecht scrollen.
+- **Einfaches Anführungszeichen in `label="…"`/`title="…"` bricht die Seite:** das Attribut endet dort vorzeitig, Blade erkennt die Komponente nicht mehr und die Vorlage wirft einen Syntaxfehler („unexpected endif"). In deutschen Texten gehören ohnehin `„` und `“` hinein; `HelpUiTest` prüft das.
 - **`Http::fake()` in Tests überschreibt eine bereits registrierte URL NICHT** (erste Registrierung gewinnt) — für Tests, die denselben Endpunkt über mehrere Aufrufe hinweg unterschiedlich antworten lassen müssen (z. B. Status-Wechsel OK→Fehler→OK), `Http::fake(['url' => Http::sequence()->push(...)->push(...)])` verwenden, nicht `Http::fake()` mehrfach mit derselben URL aufrufen.
 
 ## Deployment & Versionsnummer

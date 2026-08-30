@@ -90,6 +90,16 @@
             <span class="btn" style="margin-top:0.5rem;">Zum Bestellfenster-Schließen</span>
         </a>
 
+        <a href="{{ route('statistics.index') }}" class="card home-link-card">
+            <h2>📈 Statistiken</h2>
+            <p class="lead">Umsatzauswertung nach österreichischem Schuljahr (September bis August, Sommerferien
+                zählen ans ablaufende Jahr), immer im Vergleich zum Vorjahr: Gesamtumsatz und Monatsverlauf,
+                Ø Umsatz je Bestellung, je Sammelbestellfenster und je On-Demand-Shop, dazu die Ranglisten der
+                meistverkauften Produkte und beliebtesten Farben. Eine Hochrechnung auf den Jahresumsatz aus dem
+                Saisonverlauf der Vorjahre zeigt, ob der Zielumsatz erreicht wird.</p>
+            <span class="btn" style="margin-top:0.5rem;">Zu den Statistiken</span>
+        </a>
+
         <a href="{{ route('admin.status') }}" class="card home-link-card">
             <h2>🛠 Admin-Informationen</h2>
             <p class="lead">Prüfstand für alle Schnittstellen: WooCommerce, WordPress, Printify, Dynamic Mockups und der

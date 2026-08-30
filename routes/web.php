@@ -9,6 +9,7 @@ use App\Http\Controllers\OrderToolController;
 use App\Http\Controllers\PresentationSheetController;
 use App\Http\Controllers\SchoolOnboardingController;
 use App\Http\Controllers\ShopExportController;
+use App\Http\Controllers\StatisticsController;
 use App\Http\Middleware\ToolAuth;
 use Illuminate\Support\Facades\Route;
 
@@ -68,6 +69,9 @@ Route::middleware(ToolAuth::class)->group(function () {
     Route::get('/bestellfenster-schliessen', [CloseOrderWindowController::class, 'index'])->name('close-window.index');
     Route::post('/bestellfenster-schliessen/{onboarding}', [CloseOrderWindowController::class, 'close'])->name('close-window.close');
     Route::post('/bestellfenster-oeffnen/{onboarding}', [CloseOrderWindowController::class, 'reopen'])->name('close-window.reopen');
+
+    // Modul 4: Statistiken (Umsatzauswertung nach Schuljahr)
+    Route::get('/statistiken', [StatisticsController::class, 'index'])->name('statistics.index');
 
     // Admin-Informationen: Live-Status aller Schnittstellen
     Route::get('/admin-informationen', [AdminStatusController::class, 'index'])->name('admin.status');

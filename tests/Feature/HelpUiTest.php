@@ -73,6 +73,47 @@ class HelpUiTest extends TestCase
         $response->assertSee('class="lead"', false);
     }
 
+    /**
+     * Ein einfaches Anführungszeichen im Wert von label="…" oder title="…"
+     * beendet das Attribut vorzeitig — Blade erkennt die Komponente dann nicht
+     * mehr und die Seite bricht mit einem Syntaxfehler ab. In deutschen Texten
+     * gehören ohnehin die typografischen Zeichen „ und “ hinein.
+     */
+    public function test_erklaertexte_enthalten_keine_einfachen_anfuehrungszeichen_im_attribut(): void
+    {
+        foreach (glob(resource_path('views').'/{,*/,*/*/}*.blade.php', GLOB_BRACE) as $view) {
+            // Blade-Kommentare erwähnen die Schreibweise teils absichtlich.
+            $source = preg_replace('/\{\{--.*?--\}\}/s', '', file_get_contents($view)) ?? '';
+
+            foreach (explode("\n", $source) as $number => $line) {
+                if (! preg_match_all('/\b(?:label|title)="/', $line, $matches, PREG_OFFSET_CAPTURE)) {
+                    continue;
+                }
+                foreach ($matches[0] as [$needle, $offset]) {
+                    // Nur echte Attribute prüfen — in CSS-Kommentaren steht die
+                    // Schreibweise absichtlich als Text.
+                    if (! preg_match('/<[a-zA-Z][^>]*$/', substr($line, 0, $offset))) {
+                        continue;
+                    }
+
+                    $rest = substr($line, $offset + strlen($needle));
+                    $end = strpos($rest, '"');
+                    if ($end === false) {
+                        continue;
+                    }
+                    $following = substr($rest, $end + 1, 1);
+                    // Nach dem schließenden Zeichen darf nur Leerraum, > oder / stehen.
+                    $this->assertTrue(
+                        $following === '' || str_contains(" \t\r\n>/", $following),
+                        basename($view).' Zeile '.($number + 1)
+                            .': Das Attribut endet zu früh — im Wert steckt ein einfaches Anführungszeichen. '
+                            .'Bitte „ und “ verwenden.',
+                    );
+                }
+            }
+        }
+    }
+
     public function test_erklaertexte_verwenden_keine_title_tooltips_mehr(): void
     {
         $views = [
@@ -81,12 +122,14 @@ class HelpUiTest extends TestCase
             resource_path('views/admin/status.blade.php'),
             resource_path('views/close-window/index.blade.php'),
             resource_path('views/partials/webhook-log.blade.php'),
+            resource_path('views/statistics/index.blade.php'),
         ];
 
         foreach ($views as $view) {
             foreach (file($view) as $number => $line) {
-                // <x-explain title="…"> ist die Überschrift des Ausklappblocks, kein Tooltip.
-                if (str_contains($line, 'x-explain')) {
+                // In Blade-Komponenten (<x-explain title="…">, <x-chart.bars title="…">)
+                // ist title ein Parameter, kein HTML-Tooltip.
+                if (str_contains($line, '<x-')) {
                     continue;
                 }
 

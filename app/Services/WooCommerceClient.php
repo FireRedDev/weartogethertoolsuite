@@ -62,10 +62,60 @@ class WooCommerceClient
     }
 
     /**
+     * Alle Produkte mit ihren Kategorien — Grundlage der Statistik, um eine
+     * Bestellposition ihrer Schule zuzuordnen, ohne je Schule einzeln
+     * abzufragen (bei 40 Schulen sonst 40 Abrufe pro Auswertung).
+     *
+     * @return array<int, array{name: string, categories: list<int>}>
+     */
+    public function allProducts(): array
+    {
+        $products = [];
+        foreach ($this->fetchAllPages('products', ['status' => 'any', '_fields' => 'id,name,categories']) as $product) {
+            $name = isset($product['name']) && is_string($product['name'])
+                ? html_entity_decode($product['name'], ENT_QUOTES | ENT_HTML5)
+                : '';
+            $products[(int) $product['id']] = [
+                'name' => $name,
+                'categories' => array_map(
+                    static fn ($category) => (int) ($category['id'] ?? 0),
+                    is_array($product['categories'] ?? null) ? $product['categories'] : [],
+                ),
+            ];
+        }
+
+        return $products;
+    }
+
+    /**
      * Nur die Felder, die für den Export gebraucht werden — hält die
      * Antworten klein und den Abruf schnell.
      */
     private const ORDER_FIELDS = 'id,total,customer_note,billing,meta_data,line_items';
+
+    /**
+     * Für die Statistik zusätzlich das Bestelldatum, dafür ohne Adress- und
+     * Notizfelder. Positionsbeträge stehen in den `line_items`.
+     */
+    private const STATISTICS_ORDER_FIELDS = 'id,date_created,status,line_items';
+
+    /**
+     * Bestellungen eines Zeitraums für die Auswertung (mit Bestelldatum).
+     *
+     * @param  list<string>  $statuses
+     * @return list<array<string, mixed>>
+     */
+    public function ordersForStatistics(array $statuses, string $dateFrom, string $dateTo): array
+    {
+        return $this->fetchAllPages('orders', [
+            'status' => implode(',', $statuses),
+            'orderby' => 'id',
+            'order' => 'asc',
+            '_fields' => self::STATISTICS_ORDER_FIELDS,
+            'after' => $dateFrom.'T00:00:00',
+            'before' => $dateTo.'T23:59:59',
+        ]);
+    }
 
     /**
      * Bestellungen mit den gewünschten Status, sortiert nach Order-ID absteigend

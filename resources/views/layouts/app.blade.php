@@ -141,6 +141,50 @@
         .explain-body > :first-child { margin-top: 0; }
         .explain-body > :last-child { margin-bottom: 0; }
         .explain-body ul, .explain-body ol { margin: 0.3rem 0 0.5rem; padding-left: 1.1rem; }
+        /*
+         * Diagramme (Inline-SVG, kein Node-Build). Beschriftungen tragen immer
+         * Textfarben — Farbe gehört den Datenflächen, sonst wird ein heller
+         * Serienton als Text unlesbar.
+         */
+        .chart { margin: 0 0 1.25rem; }
+        .chart figcaption { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.35rem; }
+        /*
+         * Auf schmalen Schirmen wird das Diagramm nicht mitgeschrumpft (die
+         * Beschriftung wäre bei 390 px nur noch 6 px groß), sondern scrollt
+         * waagrecht im eigenen Kasten. Die Seite selbst scrollt nie waagrecht.
+         */
+        .chart-scroll { overflow-x: auto; }
+        .chart svg { display: block; width: 100%; min-width: 620px; height: auto; }
+        .chart-grid { stroke: var(--line); stroke-width: 1; }
+        .chart-target { stroke: var(--ink); stroke-width: 1.5; }
+        .chart-targetlabel { fill: var(--ink); font-size: 11px; font-weight: 600; font-family: inherit; }
+        .chart-tick { fill: var(--muted); font-size: 11px; font-family: inherit; font-variant-numeric: tabular-nums; }
+        .chart-rowlabel { fill: var(--ink); font-size: 12px; font-family: inherit; }
+        .chart-value { fill: var(--ink); font-size: 11px; font-weight: 600; font-family: inherit; }
+        .chart-swatch { stroke: var(--line); stroke-width: 1; }
+        .chart-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; font-size: 0.82rem; color: var(--muted); margin-bottom: 0.4rem; }
+        .chart-legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+        .chart-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+        .chart-legend i.dashed { height: 3px; border-radius: 0; background-image: linear-gradient(90deg, currentColor 0 3px, transparent 3px 6px); }
+        details.explain.chart-table { margin-top: 0.5rem; }
+        details.explain.chart-table table.data { font-size: 0.8rem; }
+
+        /* Kennzahl-Kacheln der Statistik */
+        .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 0.85rem; margin: 0.25rem 0 1.25rem; }
+        .kpi { border: 1px solid var(--line); border-radius: 10px; padding: 0.85rem 1rem; background: var(--card); }
+        .kpi .label { color: var(--muted); font-size: 0.8rem; display: flex; align-items: center; gap: 0.25rem; }
+        .kpi .value { font-size: 1.45rem; font-weight: 700; line-height: 1.2; margin-top: 0.15rem; }
+        .kpi .value.hero { font-size: 1.85rem; }
+        .kpi .delta { font-size: 0.8rem; margin-top: 0.15rem; }
+        .kpi .delta.up { color: var(--ok); }
+        .kpi .delta.down { color: var(--error); }
+        .kpi .delta.flat { color: var(--muted); }
+
+        /* Filterzeile über allen Diagrammen — gilt für die ganze Seite */
+        .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem 1rem; align-items: end; }
+        .filters label { font-size: 0.82rem; margin-bottom: 0.2rem; }
+        .filters select, .filters input { width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; margin: 0; }
+
         details.warnrows { margin-top: 0.4rem; font-size: 0.85rem; }
         details.warnrows summary { cursor: pointer; }
         .stats { display: flex; gap: 1rem; flex-wrap: wrap; margin: 0.5rem 0 1rem; }
@@ -202,6 +246,7 @@
         @php($isTool = request()->routeIs('tool.*', 'shop.*', 'job.*'))
         @php($isSchools = request()->routeIs('schools.*'))
         @php($isClose = request()->routeIs('close-window.*'))
+        @php($isStats = request()->routeIs('statistics.*'))
         @php($isAdmin = request()->routeIs('admin.*'))
         <a href="{{ route('home') }}" style="color:{{ request()->routeIs('home') ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Startseite</a>
         <span style="color:#475569;">|</span>
@@ -210,6 +255,8 @@
         <a href="{{ route('schools.index') }}" style="color:{{ $isSchools ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Schul-Onboarding</a>
         <span style="color:#475569;">|</span>
         <a href="{{ route('close-window.index') }}" style="color:{{ $isClose ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Bestellfenster schließen</a>
+        <span style="color:#475569;">|</span>
+        <a href="{{ route('statistics.index') }}" style="color:{{ $isStats ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Statistiken</a>
         {{-- Deutlich abgesetzt: das ist der Prüfstand, nicht ein weiteres Modul --}}
         <a href="{{ route('admin.status') }}" title="Schnittstellen und Webhook prüfen"
            style="margin-left:0.5rem;padding:0.25rem 0.7rem;border:1px solid {{ $isAdmin ? '#ffbb00' : '#475569' }};border-radius:999px;color:{{ $isAdmin ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">🛠 Admin-Informationen</a>
@@ -230,6 +277,7 @@
         <a href="{{ route('tool.index') }}">Auftragsdokumente</a><span>·</span>
         <a href="{{ route('schools.index') }}">Schul-Onboarding</a><span>·</span>
         <a href="{{ route('close-window.index') }}">Bestellfenster schließen</a><span>·</span>
+        <a href="{{ route('statistics.index') }}">Statistiken</a><span>·</span>
         <a href="{{ route('admin.status') }}"><strong>Admin-Informationen</strong> (Schnittstellen &amp; Webhook prüfen)</a>
     </nav>
     Wear Together Order Suite — Nachfolger der Wear Together Toolsuite

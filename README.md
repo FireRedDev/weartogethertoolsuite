@@ -1,8 +1,10 @@
 # Wear Together Order Suite
 
 Web-Nachfolger der Wear Together Toolsuite (Python/Tkinter). Die Startseite
-(`/`) verlinkt zu den beiden Modulen: **Auftragsdokumente** (Modul 1) und
-**Schul-Onboarding** (Modul 2).
+(`/`) zeigt, was gerade zu tun ist, und verlinkt die vier Module:
+**Auftragsdokumente** (Modul 1), **Schul-Onboarding** (Modul 2),
+**Bestellfenster schließen** (Modul 3) und **Statistiken** (Modul 4). Dazu die
+**Admin-Informationen** als Prüfstand für alle Schnittstellen.
 
 Modul 1 verwandelt den Bestell-Export aus dem Wear-Together-Shop in einem
 geführten 3-Schritte-Flow in vier fertige Auftragsdokumente:
@@ -514,6 +516,57 @@ schließen" die Schule auswählen und schließen. Das erledigt in einem Schritt:
 Angeboten werden nur Schulen, für die bereits ein Shop angelegt wurde. Jeder
 Schritt wird protokolliert; Fehler werden verständlich erklärt. Nutzt dieselben
 Zugänge wie Modul 2 (`WC_RW_*`, `WP_APP_*`).
+
+## Modul 4: Statistiken
+
+Aufruf: **Statistiken** in der Navigationsleiste (`/statistiken`).
+
+Ausgewertet werden die echten Bestellungen aus dem WooCommerce-Shop, immer
+nach **österreichischem Schuljahr** und immer im Vergleich zum Vorjahr.
+
+**Was „Schuljahr" hier heißt:** 1. September bis 31. August. Die Sommerferien
+zählen damit ans *ablaufende* Schuljahr — Nachzügler- und Ferienbestellungen
+gehören zu dem Bestellfenster, das im Juni endete, nicht zum neuen Jahr.
+
+**Kennzahlen** (jede mit Vorjahresvergleich):
+
+- Gesamtumsatz im Schuljahr, und beim laufenden Jahr zusätzlich der
+  Vorjahresumsatz **zum selben Tag im Schuljahr** — sonst stünde ein halbes
+  Jahr gegen ein volles.
+- Ø Umsatz je Bestellung
+- Ø Umsatz je Sammelbestellfenster
+- Ø Umsatz je On-Demand-Shop (dort gibt es kein Fenster — gerechnet wird je
+  On-Demand-Schule und Schuljahr)
+- Verkaufte Teile
+
+**Diagramme:** Monatsumsatz (gruppierte Säulen ab September), kumulierter
+Jahresverlauf mit Hochrechnung und Zielmarke, Rangliste der meistverkauften
+Produkte und der beliebtesten Farben. Unter jedem Diagramm steht „Als Tabelle"
+mit allen Zahlen.
+
+**Der Fensterpuffer (wichtig zu verstehen):** Für „Ø je Bestellfenster" wird
+jede Bestellung dem Fenster ihrer Schule zugeordnet. Der Zeitraum wird dabei
+absichtlich **breiter** genommen als im Antrag eingestellt — Standard 7 Tage
+davor und 21 danach, in der Filterzeile änderbar. Grund: nach Ablauf wird ein
+Fenster oft noch um eine Woche verlängert (automatische Nachfrist), und
+Nachzügler bestellen auch danach. Da nie mehrere Bestellfenster derselben
+Schule direkt aneinander liegen, kann der Puffer keine fremden Bestellungen
+einsammeln. Das ⓘ neben dem Feld erklärt das auch im Tool.
+
+**Prognose:** Nicht linear hochgerechnet, sondern über den gemittelten
+*Saisonverlauf* der abgeschlossenen Vorjahre — ein Schuljahr verläuft stark
+ungleichmäßig, die meisten Bestellfenster liegen im Herbst und im Frühjahr.
+Der Umsatz bis heute wird durch den nach diesem Muster erwarteten Anteil
+geteilt. Der **Zielumsatz** ist frei einstellbar; ohne Eingabe gilt der
+Gesamtumsatz des Vorjahres.
+
+**Filter für die ganze Seite:** Schuljahr, Lieferart, einzelne Schule,
+Puffertage, Bestellstatus und Zielumsatz. Alles steht in der Adresszeile — eine
+Auswertung lässt sich als Lesezeichen speichern und weitergeben.
+
+**Geschwindigkeit:** Ein Bestellabruf je Schuljahr (nicht einer je Schule).
+Abgeschlossene Schuljahre werden 24 Stunden zwischengespeichert, das laufende
+30 Minuten; „↻ Daten neu laden" erzwingt einen frischen Abruf.
 
 ## Admin-Informationen
 
