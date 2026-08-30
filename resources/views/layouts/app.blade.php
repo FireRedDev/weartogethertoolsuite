@@ -169,6 +169,24 @@
         details.explain.chart-table { margin-top: 0.5rem; }
         details.explain.chart-table table.data { font-size: 0.8rem; }
 
+        /* Ladeanzeige der Statistik (Fortschrittsbalken + Spinner) */
+        .loading-block { border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem 1.25rem; background: #f8fafc; }
+        .loading-head { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.8rem; }
+        .loading-title { font-weight: 600; }
+        .spinner {
+            width: 22px; height: 22px; flex: none; border-radius: 50%;
+            border: 3px solid var(--line); border-top-color: var(--accent);
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        /* Wer „weniger Bewegung" eingestellt hat, bekommt einen ruhigen Punkt */
+        @media (prefers-reduced-motion: reduce) {
+            .spinner { animation: none; border-top-color: var(--accent); }
+            .progress-fill { transition: none; }
+        }
+        .progress { height: 10px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.4s ease; }
+
         /* Kennzahl-Kacheln der Statistik */
         .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 0.85rem; margin: 0.25rem 0 1.25rem; }
         .kpi { border: 1px solid var(--line); border-radius: 10px; padding: 0.85rem 1rem; background: var(--card); }

@@ -564,19 +564,30 @@ Gesamtumsatz des Vorjahres.
 Puffertage, Bestellstatus und Zielumsatz. Alles steht in der Adresszeile — eine
 Auswertung lässt sich als Lesezeichen speichern und weitergeben.
 
-**Geschwindigkeit und der erste Aufruf:** Abgerufen wird **monatsweise**, und
-jeder fertige Monat wird gespeichert (vergangene Monate 24 Stunden, der
-laufende 30 Minuten). Beim allerersten Aufruf — oder nach „↻ Daten neu laden" —
-kann das Budget eines Seitenaufrufs (20 Sekunden) nicht für alle Monate
-reichen. Dann steht oben „Die Auswertung wird gerade aufgebaut, X von Y Monaten
-geladen" mit einem Knopf **Weiterladen**: einfach draufklicken, der nächste
-Aufruf macht dort weiter. Nach ein bis zwei Durchgängen ist alles da und die
-Seite lädt sofort.
+**Der erste Aufruf:** Beim allerersten Mal — oder nach „↻ Daten neu laden" —
+sind noch keine Bestelldaten gespeichert. Dann zeigt die Seite eine
+**Ladeanzeige mit Fortschrittsbalken** („12 von 39 Datenpaketen geladen") und
+sonst nichts: keine Zahlen, keine Diagramme. Eine halbe Auswertung wäre
+irreführender als gar keine.
 
-Das ist bewusst so gebaut: würde die Seite alles am Stück holen, liefe ein
-Aufruf bei einem gut gefüllten Shop minutenlang, liefe in den Zeitablauf des
-Webservers und würde dabei eine PHP-Arbeitskraft blockieren — davon hat der
-Server nur eine Handvoll.
+Der Aufbau läuft **von selbst** weiter, es ist kein Klick nötig; die Seite
+aktualisiert sich und öffnet die Auswertung, sobald alles da ist. **Die Seite
+darf dabei auch geschlossen werden** — der Abruf läuft im Hintergrund zu Ende.
+Je nach Datenmenge dauert der erste Aufbau ein bis wenige Minuten, danach ist
+die Auswertung sofort da (vergangene Monate bleiben 24 Stunden gespeichert, der
+laufende 30 Minuten).
+
+Das ist bewusst langsam: Abgerufen wird monatsweise, immer nur ein Durchgang
+gleichzeitig und mit einer kurzen Pause zwischen den Anfragen. Der Webshop
+läuft auf demselben Server und soll für Kund:innen nicht langsamer werden,
+während die Auswertung aufgebaut wird.
+
+**Optional, empfohlen:** ein nächtlicher Cron baut die Daten vorab auf, dann
+ist die Seite schon beim ersten Aufruf des Tages sofort da:
+
+```
+15 4 * * * cd /pfad/zur/app && php artisan statistics:warm --runs=20
+```
 
 ## Admin-Informationen
 

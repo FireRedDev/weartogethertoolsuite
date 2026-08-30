@@ -56,6 +56,14 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 - Ein Bestellabruf je Schuljahr statt einem je Schule; abgeschlossene Schuljahre 24 h gecacht, das laufende 30 Minuten, mit „↻ Daten neu laden". Ist der Shop nicht erreichbar, erscheint eine erklärte Meldung mit kopierbaren Details statt eines 500ers
 - Auf dem Telefon schrumpfen die Diagramme nicht mit, sondern scrollen waagrecht im eigenen Kasten — bei 390 px wäre die Beschriftung sonst 6 px groß
 
+### Statistiken laden jetzt im Hintergrund
+- **Die Seite wartet nicht mehr auf den Shop.** Sie antwortet sofort und zeigt, solange Daten fehlen, eine Ladeanzeige mit **Spinner und Fortschrittsbalken** („12 von 39 Datenpaketen geladen"). Kennzahlen und Diagramme bleiben bis dahin vollständig verborgen — eine halbe Auswertung wäre irreführender als gar keine
+- **Der Aufbau läuft automatisch weiter**, ohne Klick. Die Ladeseite fragt den Fortschritt alle paar Sekunden ab und öffnet die Auswertung selbstständig, sobald alles da ist. Das frühere manuelle „Weiterladen" entfällt
+- **Er läuft auch weiter, wenn die Seite geschlossen wird.** Der Abruf startet erst, nachdem die Antwort beim Browser ist (`ignore_user_abort`), und hängt damit nicht am geöffneten Tab
+- **Rücksicht auf den Webshop**, der auf demselben Server läuft: immer nur ein Durchgang gleichzeitig (Sperre) und eine einstellbare Pause zwischen zwei Shop-Anfragen (`statistics.pause_ms`, Standard 400 ms). Lieber etwas länger aufbauen als den Shop für Kund:innen langsam machen
+- Neuer Befehl `php artisan statistics:warm` — als nächtlicher Cron eingerichtet steht die Auswertung schon beim ersten Aufruf des Tages sofort bereit
+- Fehler beim Aufbau (Shop nicht erreichbar, falscher Schlüssel) erscheinen auf der Ladeseite mit kopierbaren technischen Details, statt still im Hintergrund zu verschwinden
+
 ### Stabilität: Ausfall durch endloses Blättern behoben
 - **Notbremse beim Blättern durch die Shop-API** (`ordersuite.woocommerce.max_pages`, Standard 200 Seiten). Ohne sie lief die Schleife endlos weiter, sobald der Shop den Seitenzähler `X-WP-TotalPages` nicht mitschickt (Caching-Plugin oder vorgelagerter Proxy) und jede Seite voll ist — der PHP-Prozess hing dann dauerhaft, und nach wenigen Aufrufen antwortete die **gesamte Anwendung** nicht mehr. Jetzt bricht der Abruf mit einer erklärten Meldung ab
 - **Statistik lädt monatsweise und speichert jeden fertigen Monat einzeln.** Vorher holte ein Seitenaufruf drei komplette Schuljahre am Stück; bei einem echten Shop läuft das minutenlang, rennt in den Zeitablauf des Webservers und speichert dabei nichts — jeder neue Versuch begann wieder bei null. Jetzt hat jeder Aufruf ein Zeitbudget (Standard 20 Sekunden); reicht es nicht, zeigt die Seite „Die Auswertung wird gerade aufgebaut — X von Y Monaten geladen" samt „Weiterladen". Der nächste Aufruf macht dort weiter, nach ein bis zwei Aufrufen ist alles da und danach sofort verfügbar

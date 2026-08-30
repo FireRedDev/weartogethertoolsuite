@@ -69,6 +69,21 @@ return [
     'budget_seconds' => 20,
 
     /*
+     * Hintergrund-Aufbau (StatisticsWarmer). Der Aufbau läuft, NACHDEM die
+     * Antwort beim Browser ist, und läuft weiter, wenn jemand die Seite
+     * verlässt. Immer nur ein Durchgang gleichzeitig.
+     *
+     * `warm_budget_seconds` — wie lange ein Durchgang höchstens Monate holt.
+     * `pause_ms` — Pause zwischen zwei Shop-Anfragen. Der Webshop läuft auf
+     *   demselben Server und darf durch die Auswertung nicht langsam werden;
+     *   lieber etwas länger aufbauen als den Shop ausbremsen.
+     * `poll_seconds` — wie oft die Ladeseite den Fortschritt abfragt.
+     */
+    'warm_budget_seconds' => 25,
+    'pause_ms' => 400,
+    'poll_seconds' => 3,
+
+    /*
      * Zeitablauf einer EINZELNEN Shop-Anfrage der Statistik. Bewusst kürzer als
      * der allgemeine Wert (ordersuite.woocommerce.timeout_seconds = 30): hier
      * laufen viele Anfragen nacheinander, eine hängende darf nicht das ganze

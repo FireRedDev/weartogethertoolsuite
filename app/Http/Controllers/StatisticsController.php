@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Exceptions\WooCommerceApiException;
 use App\Services\Statistics\Charts\BarChart;
 use App\Services\Statistics\Charts\ColumnChart;
 use App\Services\Statistics\Charts\LineChart;
@@ -10,64 +9,73 @@ use App\Services\Statistics\RevenueForecast;
 use App\Services\Statistics\RevenueReport;
 use App\Services\Statistics\SchoolYear;
 use App\Services\Statistics\StatisticsFilters;
+use App\Services\Statistics\StatisticsWarmer;
 use App\Services\WooCommerceClient;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 /**
  * Modul „Statistiken": Umsatzauswertung nach österreichischem Schuljahr.
  *
- * Anders als die Startseite darf diese Seite auf die WooCommerce-API warten —
- * sie ist der Zweck des Aufrufs. Ist der Shop nicht erreichbar, erscheint eine
- * erklärte Meldung samt technischer Details statt eines 500ers.
+ * **Diese Seite ruft den Shop nie selbst auf.** Sie zeigt entweder die fertige
+ * Auswertung (alle Monate im Zwischenspeicher) oder eine Ladeseite mit
+ * Fortschrittsbalken — Zahlen und Diagramme bleiben verborgen, solange sie
+ * unvollständig wären. Der eigentliche Abruf läuft über StatisticsWarmer,
+ * angestoßen erst NACHDEM die Antwort beim Browser ist: so wartet kein
+ * Seitenaufruf auf den Shop, und der Aufbau wird auch dann fertig, wenn jemand
+ * die Seite verlässt.
  */
 class StatisticsController extends Controller
 {
     public function index(
         Request $request,
         WooCommerceClient $client,
+        StatisticsWarmer $warmer,
         RevenueReport $report,
         RevenueForecast $forecast,
     ): View {
         $filters = StatisticsFilters::fromRequest($request);
 
-        /*
-         * Harte Obergrenze für diesen Seitenaufruf. Der Abruf hat zwar sein
-         * eigenes Zeitbudget (config statistics.budget_seconds), aber dieser
-         * Riegel greift auch, wenn eine einzelne Shop-Anfrage hängt: lieber ein
-         * abgebrochener Aufruf als eine PHP-Arbeitskraft, die minutenlang
-         * belegt bleibt — davon hat der Server nur eine Handvoll.
-         */
-        if (function_exists('set_time_limit')) {
-            @set_time_limit((int) config('statistics.budget_seconds') + 40);
-        }
-
         if (! $client->isConfigured()) {
-            return view('statistics.index', [
+            return view('statistics.unavailable', [
                 'filters' => $filters,
                 'years' => SchoolYear::recent(),
-                'schools' => collect(),
-                'complete' => true,
-                'loadedMonths' => 0,
-                'totalMonths' => 0,
                 'error' => 'Die Verbindung zum Shop ist nicht eingerichtet (WC_STORE_URL / WC_CONSUMER_KEY / WC_CONSUMER_SECRET). '
                     .'Ohne Shop-Zugang gibt es keine Bestelldaten zum Auswerten.',
                 'technical' => null,
             ]);
         }
 
-        try {
-            $data = $report->build($filters);
-        } catch (WooCommerceApiException $e) {
-            return view('statistics.index', [
+        // „↻ Daten neu laden": alles verwerfen und den Aufbau neu starten.
+        if ($filters->fresh) {
+            $warmer->reset($filters);
+        }
+
+        $progress = $warmer->progress($filters);
+
+        if (! $progress['done']) {
+            $this->warmAfterResponse($warmer, $filters, $progress);
+
+            return view('statistics.loading', [
                 'filters' => $filters,
                 'years' => SchoolYear::recent(),
-                'schools' => collect(),
-                'complete' => true,
-                'loadedMonths' => 0,
-                'totalMonths' => 0,
-                'error' => $e->userMessage().($e->hint() ? ' '.$e->hint() : ''),
-                'technical' => $e->getMessage(),
+                'progress' => $progress,
+            ]);
+        }
+
+        $data = $report->build($filters);
+
+        // Sonderfall: ein Monat ist zwischen Prüfung und Auswertung abgelaufen.
+        // Dann lieber wieder die Ladeseite als halbe Zahlen.
+        if (! $data['complete']) {
+            $progress = $warmer->progress($filters);
+            $this->warmAfterResponse($warmer, $filters, $progress);
+
+            return view('statistics.loading', [
+                'filters' => $filters,
+                'years' => SchoolYear::recent(),
+                'progress' => $progress,
             ]);
         }
 
@@ -77,11 +85,6 @@ class StatisticsController extends Controller
             'filters' => $filters,
             'years' => SchoolYear::recent(),
             'schools' => $data['schools'],
-            'error' => null,
-            'technical' => null,
-            'complete' => $data['complete'],
-            'loadedMonths' => $data['loaded'],
-            'totalMonths' => $data['months'],
             'current' => $data['current'],
             'previous' => $data['previous'],
             'previousAtSamePoint' => $data['previousAtSamePoint'],
@@ -112,6 +115,48 @@ class StatisticsController extends Controller
                 'Stk.',
             ),
         ]);
+    }
+
+    /**
+     * Fortschritt des Hintergrund-Aufbaus. Die Ladeseite fragt das im Takt von
+     * `statistics.poll_seconds` ab. Reine Zwischenspeicher-Abfrage — antwortet
+     * immer sofort — und stößt nebenbei den nächsten Durchgang an.
+     */
+    public function progress(Request $request, WooCommerceClient $client, StatisticsWarmer $warmer): JsonResponse
+    {
+        $filters = StatisticsFilters::fromRequest($request);
+
+        if (! $client->isConfigured()) {
+            return response()->json([
+                'done' => false, 'percent' => 0, 'loaded' => 0, 'total' => 0, 'running' => false,
+                'error' => [
+                    'message' => 'Die Verbindung zum Shop ist nicht eingerichtet.',
+                    'technical' => 'WC_STORE_URL / WC_CONSUMER_KEY / WC_CONSUMER_SECRET fehlen.',
+                ],
+            ]);
+        }
+
+        $progress = $warmer->progress($filters);
+        $this->warmAfterResponse($warmer, $filters, $progress);
+
+        return response()->json($progress);
+    }
+
+    /**
+     * Den nächsten Durchgang anstoßen — aber erst, NACHDEM die Antwort beim
+     * Browser ist. Dadurch wartet kein Seitenaufruf auf den Shop, und der
+     * Aufbau läuft weiter, wenn jemand den Tab schließt. Läuft bereits ein
+     * Durchgang, tut der Warmer von sich aus nichts (Sperre).
+     *
+     * @param  array<string, mixed>  $progress
+     */
+    private function warmAfterResponse(StatisticsWarmer $warmer, StatisticsFilters $filters, array $progress): void
+    {
+        if ($progress['done'] || $progress['running'] || $progress['error'] !== null) {
+            return;
+        }
+
+        app()->terminating(static fn () => $warmer->warm($filters));
     }
 
     /**

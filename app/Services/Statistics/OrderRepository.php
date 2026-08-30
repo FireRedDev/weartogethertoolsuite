@@ -137,24 +137,56 @@ class OrderRepository
     }
 
     /**
-     * Ist ein Schuljahr bereits vollständig im Zwischenspeicher? Wird gebraucht,
-     * um zusätzliche Vorjahre für die Prognose nur dann zu holen, wenn die
-     * eigentliche Auswertung schon steht.
+     * Die Monate, die ein Schuljahr braucht — Grundlage für Fortschritts-
+     * anzeige und Hintergrund-Aufbau (StatisticsWarmer).
      *
+     * @return list<array{key: string, after: string, before: string}>
+     */
+    public function monthPlan(SchoolYear $year, int $paddingDays = 0): array
+    {
+        return $this->months(
+            $year->start()->copy()->subDays($paddingDays)->startOfDay(),
+            $year->end()->copy()->addDays($paddingDays)->endOfDay(),
+        );
+    }
+
+    /** @param list<string> $statuses */
+    public function isMonthCached(string $monthKey, array $statuses): bool
+    {
+        return Cache::has($this->cacheKey($monthKey, $statuses));
+    }
+
+    /**
+     * Einen einzelnen Monat holen und ablegen. Der Hintergrund-Aufbau ruft das
+     * Monat für Monat auf, mit Pause dazwischen.
+     *
+     * @param  array{key: string, after: string, before: string}  $month
      * @param  list<string>  $statuses
      */
-    public function isCached(SchoolYear $year, array $statuses, int $paddingDays = 0): bool
+    public function loadMonth(array $month, array $statuses): void
     {
-        $from = $year->start()->copy()->subDays($paddingDays)->startOfDay();
-        $to = $year->end()->copy()->addDays($paddingDays)->endOfDay();
+        $orders = $this->normalize(
+            $this->client->ordersForStatistics($statuses, $month['after'], $month['before']),
+        );
+        Cache::put($this->cacheKey($month['key'], $statuses), $orders, $this->ttl($month['key']));
+    }
 
-        foreach ($this->months($from, $to) as $month) {
-            if (! Cache::has($this->cacheKey($month['key'], $statuses))) {
-                return false;
-            }
+    public function hasProducts(): bool
+    {
+        return Cache::has('statistics.products');
+    }
+
+    /** Alles verwerfen, was zu diesen Monaten gehört — für „Daten neu laden". */
+    public function forget(SchoolYear $year, array $statuses, int $paddingDays = 0): void
+    {
+        foreach ($this->monthPlan($year, $paddingDays) as $month) {
+            Cache::forget($this->cacheKey($month['key'], $statuses));
         }
+    }
 
-        return true;
+    public function forgetProducts(): void
+    {
+        Cache::forget('statistics.products');
     }
 
     /**

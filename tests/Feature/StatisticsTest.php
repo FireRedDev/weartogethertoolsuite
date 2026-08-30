@@ -8,6 +8,7 @@ use App\Services\Statistics\RevenueForecast;
 use App\Services\Statistics\RevenueReport;
 use App\Services\Statistics\SchoolYear;
 use App\Services\Statistics\StatisticsFilters;
+use App\Services\Statistics\StatisticsWarmer;
 use App\Services\WooCommerceClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -307,19 +308,6 @@ class StatisticsTest extends TestCase
         $this->assertGreaterThan(0, $data['months']);
     }
 
-    public function test_die_seite_sagt_wenn_die_auswertung_noch_aufgebaut_wird(): void
-    {
-        config(['statistics.budget_seconds' => 0]);
-        $this->makeSchools();
-        $this->fakeShop();
-
-        $response = $this->get(route('statistics.index'));
-
-        $response->assertOk();
-        $response->assertSee('Die Auswertung wird gerade aufgebaut', false);
-        $response->assertSee('Weiterladen');
-    }
-
     /**
      * Monatsweiser Abruf darf an der Monatsgrenze nichts verlieren und nichts
      * doppelt zählen — die API behandelt after/before ausschließend.
@@ -342,6 +330,7 @@ class StatisticsTest extends TestCase
     {
         $this->makeSchools();
         $this->fakeShop();
+        $this->warmAll();
 
         $response = $this->get(route('statistics.index'));
 
@@ -357,7 +346,7 @@ class StatisticsTest extends TestCase
         $response->assertSee('<svg', false);
     }
 
-    public function test_die_seite_erklaert_den_fensterpuffer_im_info_symbol(): void
+    public function test_solange_daten_fehlen_zeigt_die_seite_nur_die_ladeanzeige(): void
     {
         $this->makeSchools();
         $this->fakeShop();
@@ -365,9 +354,100 @@ class StatisticsTest extends TestCase
         $response = $this->get(route('statistics.index'));
 
         $response->assertOk();
-        $response->assertSee('Warum ein Puffer um das Bestellfenster?', false);
-        $response->assertSee('automatische Nachfrist', false);
-        $response->assertSee('class="info-toggle"', false);
+        $response->assertSee('Die Auswertung wird aufgebaut');
+        $response->assertSee('progress-fill', false);
+        $response->assertSee('class="spinner"', false);
+        // Keine halben Zahlen: gar keine Auswertung, solange nicht alles da ist
+        $response->assertDontSee('Ø Umsatz je Bestellung');
+        $response->assertDontSee('Meistverkaufte Produkte');
+    }
+
+    public function test_fortschritt_kommt_als_json_und_meldet_fertig(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+
+        $first = $this->getJson(route('statistics.progress'));
+        $first->assertOk();
+        $first->assertJsonStructure(['loaded', 'total', 'percent', 'done', 'running', 'error']);
+        $this->assertGreaterThan(0, $first->json('total'));
+
+        $this->warmAll();
+
+        $this->getJson(route('statistics.progress'))
+            ->assertOk()
+            ->assertJson(['done' => true, 'percent' => 100]);
+    }
+
+    /**
+     * Kernanforderung: Der Aufbau hängt nicht am Browser. Der Warmer läuft
+     * eigenständig zu Ende — genauso wie er es nach dem Schließen der Seite
+     * über `app()->terminating()` bzw. den Cron-Befehl tut.
+     */
+    public function test_der_aufbau_laeuft_auch_ohne_geoeffnete_seite_zu_ende(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+        $warmer = app(StatisticsWarmer::class);
+        $filters = $this->filters();
+
+        $this->assertFalse($warmer->progress($filters)['done']);
+
+        $this->artisan('statistics:warm', ['--runs' => 10])->assertSuccessful();
+
+        $this->assertTrue($warmer->progress($filters)['done']);
+    }
+
+    /**
+     * Prüft die Mechanik, die in der Anwendung wirklich greift: der Aufruf der
+     * Seite selbst stößt den Aufbau an — und zwar erst, nachdem die Antwort
+     * raus ist (app()->terminating). Ein paar Aufrufe später ist alles da.
+     */
+    public function test_seitenaufrufe_bauen_die_daten_im_hintergrund_auf(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+        $warmer = app(StatisticsWarmer::class);
+
+        $this->get(route('statistics.index'))->assertOk()->assertSee('Die Auswertung wird aufgebaut');
+
+        // Der Aufbau lief nach der Antwort — beim nächsten Aufruf steht die
+        // Auswertung.
+        $this->assertTrue($warmer->progress($this->filters())['done']);
+        $this->get(route('statistics.index'))->assertOk()->assertSee('Ø Umsatz je Bestellung');
+    }
+
+    public function test_es_laeuft_immer_nur_ein_durchgang_gleichzeitig(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+        $warmer = app(StatisticsWarmer::class);
+
+        // Sperre von außen halten — ein zweiter Durchgang darf nicht loslegen
+        // und dabei den Webshop doppelt belasten.
+        $lock = Cache::lock('statistics.warm.lock', 60);
+        $this->assertTrue($lock->get());
+
+        $result = $warmer->warm($this->filters());
+
+        $this->assertFalse($result['ran']);
+        $this->assertSame(0, $result['fetched']);
+        $lock->release();
+    }
+
+    public function test_shop_fehler_erscheint_auf_der_ladeseite_statt_im_nichts(): void
+    {
+        $this->makeSchools();
+        Http::preventStrayRequests();
+        Http::fake(['shop.example/*' => Http::response('nope', 503)]);
+
+        app(StatisticsWarmer::class)->warm($this->filters());
+
+        $response = $this->get(route('statistics.index'));
+
+        $response->assertOk();
+        $response->assertSee('Technische Details', false);
+        $response->assertSee('Fehler aufgetreten');
     }
 
     public function test_ohne_shop_verbindung_erklaerte_meldung_statt_absturz(): void
@@ -380,19 +460,17 @@ class StatisticsTest extends TestCase
         $response->assertSee('nicht eingerichtet');
     }
 
-    public function test_shop_fehler_wird_erklaert_statt_als_500er(): void
-    {
-        $this->makeSchools();
-        Http::preventStrayRequests();
-        Http::fake(['shop.example/*' => Http::response('nope', 503)]);
-
-        $response = $this->get(route('statistics.index'));
-
-        $response->assertOk();
-        $response->assertSee('Technische Details', false);
-    }
-
     // ------------------------------------------------------------------ Helfer
+
+    /** Alles laden, wie es der Hintergrund-Aufbau bzw. der Cron tut. */
+    private function warmAll(array $query = []): void
+    {
+        $warmer = app(StatisticsWarmer::class);
+        $filters = $this->filters($query);
+        for ($i = 0; $i < 40 && ! $warmer->progress($filters)['done']; $i++) {
+            $warmer->warm($filters);
+        }
+    }
 
     private function filters(array $query = []): StatisticsFilters
     {

@@ -72,6 +72,8 @@ Route::middleware(ToolAuth::class)->group(function () {
 
     // Modul 4: Statistiken (Umsatzauswertung nach Schuljahr)
     Route::get('/statistiken', [StatisticsController::class, 'index'])->name('statistics.index');
+    // Fortschritt des Hintergrund-Aufbaus (die Ladeseite fragt das im Takt ab)
+    Route::get('/statistiken/fortschritt', [StatisticsController::class, 'progress'])->name('statistics.progress');
 
     // Admin-Informationen: Live-Status aller Schnittstellen
     Route::get('/admin-informationen', [AdminStatusController::class, 'index'])->name('admin.status');
