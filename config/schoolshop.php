@@ -144,6 +144,15 @@ return [
         'image_size' => 1500,
 
         /*
+         * Zeitbudget für die Mockups EINES Produkts, in Sekunden. Ein Produkt
+         * kann mehrere Renders auslösen, jeder mit eigenem Zeitablauf — ohne
+         * Budget liefe ein Anlagevorgang mit Mockups länger, als ein
+         * Seitenaufruf dauern darf. Was liegen bleibt, holt ein erneuter Klick
+         * nach; fertige Bilder werden nie doppelt berechnet.
+         */
+        'budget_seconds' => 120,
+
+        /*
          * Vorlagen je Produkt-Key (siehe 'catalog'). Struktur je Eintrag:
          *   ['mockup_uuid' => '…', 'smart_object_uuid' => '…', 'model' => 'female'|'male']   (lifestyle)
          *   ['mockup_uuid' => '…', 'smart_object_uuid' => '…', 'color' => 'burgundy']        (detail)
@@ -165,6 +174,13 @@ return [
     ],
 
     // Übergeordnete Produktkategorie im Shop
+    /*
+     * Zeitablauf der Verbindungstests auf der Admin-Seite, in Sekunden.
+     * Bewusst kurz: Dort laufen fünf Prüfungen nacheinander, und ausgerechnet
+     * die Seite, die man aufruft, WEIL etwas hängt, darf nicht selbst hängen.
+     */
+    'status_timeout_seconds' => 5,
+
     'parent_category_name' => 'Schulen',
 
     // Versandklassen-Slugs

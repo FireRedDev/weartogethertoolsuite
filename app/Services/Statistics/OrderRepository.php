@@ -39,15 +39,27 @@ class OrderRepository
 
     public function __construct(private readonly WooCommerceClient $client) {}
 
-    /** Startet das Zeitbudget neu — einmal je Seitenaufruf. */
-    public function startBudget(): void
+    /** Abweichendes Budget dieses Durchgangs (null = Wert aus der Konfiguration). */
+    private ?float $budgetOverride = null;
+
+    /**
+     * Startet das Zeitbudget neu — einmal je Seitenaufruf.
+     *
+     * `$budgetSeconds = 0` heißt: gar nichts holen. Genau damit arbeitet der
+     * Seitenaufruf. Die Auswertung nutzt dann ausschließlich, was schon im
+     * Zwischenspeicher liegt, und meldet sonst `complete = false`; geholt wird
+     * allein im Hintergrund-Aufbau. Ohne diese Möglichkeit könnte ein
+     * abgelaufener Monat die Seite doch wieder minutenlang an den Shop hängen.
+     */
+    public function startBudget(?float $budgetSeconds = null): void
     {
         $this->startedAt = microtime(true);
+        $this->budgetOverride = $budgetSeconds;
     }
 
     public function budgetLeft(): float
     {
-        $budget = (float) config('statistics.budget_seconds');
+        $budget = $this->budgetOverride ?? (float) config('statistics.budget_seconds');
         if ($this->startedAt === null) {
             return $budget;
         }

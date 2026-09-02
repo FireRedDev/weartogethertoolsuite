@@ -415,8 +415,20 @@ class ShopProvisioner
             // Versuch zahlte sie erneut.
             $rendered = 0;
             $failed = null;
+            $open = 0;
+            // Zeitbudget: Ein Produkt kann mehrere Renders auslösen, jeder mit
+            // eigenem Zeitablauf. Ohne Budget liefe ein Anlagevorgang mit
+            // Mockups länger, als ein Seitenaufruf dauern darf. Was liegen
+            // bleibt, holt ein erneuter Klick nach — die fertigen Bilder sind
+            // ja gesichert.
+            $deadline = microtime(true) + max(10, (int) config('schoolshop.mockups.budget_seconds', 120));
             foreach ($plan as $template) {
                 if (isset($state['images'][$template['label']])) {
+                    continue;
+                }
+                if (microtime(true) >= $deadline) {
+                    $open++;
+
                     continue;
                 }
                 try {
@@ -435,6 +447,13 @@ class ShopProvisioner
                 $log[] = ['step' => "Mockups {$key}", 'ok' => false, 'detail' => 'Rendern fehlgeschlagen (Produkt selbst wurde angelegt): '.$failed];
 
                 continue;
+            }
+            if ($open > 0) {
+                $log[] = ['step' => "Mockups {$key}", 'ok' => true, 'detail' => sprintf(
+                    '%d Bild(er) fertig, %d offen — die Zeit für einen Durchgang war aufgebraucht. '
+                    .'Ein erneuter Klick holt die fehlenden nach; bereits erzeugte werden nicht noch einmal berechnet.',
+                    count($state['images']), $open,
+                )];
             }
             if ($failed !== null) {
                 $log[] = ['step' => "Mockups {$key}", 'ok' => false, 'detail' => sprintf(

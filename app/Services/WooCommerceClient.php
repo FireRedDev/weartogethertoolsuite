@@ -180,7 +180,9 @@ class WooCommerceClient
     /** Verbindungstest: eine minimale Anfrage. */
     public function testConnection(): void
     {
-        $this->request('orders', ['per_page' => '1', '_fields' => 'id']);
+        // Kurzer Zeitablauf: Die Admin-Seite prüft fünf Schnittstellen
+        // nacheinander und darf nicht selbst zur hängenden Seite werden.
+        $this->request('orders', ['per_page' => '1', '_fields' => 'id'], max(2, (int) config('schoolshop.status_timeout_seconds', 5)));
     }
 
     /**

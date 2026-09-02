@@ -37,6 +37,7 @@ class BackupCreator
         $filename = 'ordersuite-sicherung-'.now()->format('Y-m-d-Hi').'.zip';
         $path = storage_path('app/backups/'.$filename);
         File::ensureDirectoryExists(dirname($path));
+        $this->assertEnoughFreeSpace(dirname($path));
 
         $zip = new ZipArchive;
         if ($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
@@ -76,6 +77,62 @@ class BackupCreator
     }
 
     /** Räumt ältere Sicherungen weg, damit die Platte nicht volläuft. */
+    /**
+     * Bricht ab, wenn zu wenig Platz frei ist.
+     *
+     * Eine halb geschriebene Sicherung ist wertlos, und ein vollgelaufener
+     * Datenträger legt die ganze Anwendung lahm — dann lieber vorher mit
+     * klarer Ansage aufhören. Verlangt wird das Doppelte dessen, was die
+     * Quellen belegen (das ZIP entsteht neben ihnen), mindestens aber 50 MB.
+     */
+    private function assertEnoughFreeSpace(string $directory): void
+    {
+        $free = @disk_free_space($directory);
+        if ($free === false) {
+            return; // Nicht ermittelbar — dann eben ohne Prüfung
+        }
+
+        $needed = max(50 * 1024 * 1024, $this->estimatedSize() * 2);
+        if ($free < $needed) {
+            throw new \RuntimeException(sprintf(
+                'Zu wenig freier Speicherplatz für eine Sicherung: %s frei, benötigt werden etwa %s. '
+                .'Bitte alte Sicherungen unter storage/app/backups löschen oder Platz schaffen.',
+                $this->humanBytes((int) $free),
+                $this->humanBytes($needed),
+            ));
+        }
+    }
+
+    private function estimatedSize(): int
+    {
+        $bytes = 0;
+        $database = config('database.connections.sqlite.database');
+        if (is_string($database) && is_file($database)) {
+            $bytes += (int) filesize($database);
+        }
+        $disk = Storage::disk('public');
+        foreach (self::UPLOAD_DIRS as $dir) {
+            if (! $disk->exists($dir)) {
+                continue;
+            }
+            foreach ($disk->allFiles($dir) as $relative) {
+                if (str_contains('/'.$relative, self::SKIP_SEGMENTS[0])) {
+                    continue;
+                }
+                $bytes += (int) $disk->size($relative);
+            }
+        }
+
+        return $bytes;
+    }
+
+    private function humanBytes(int $bytes): string
+    {
+        return $bytes >= 1024 * 1024 * 1024
+            ? round($bytes / 1024 / 1024 / 1024, 1).' GB'
+            : round($bytes / 1024 / 1024).' MB';
+    }
+
     public function pruneOlderThan(int $keep = 5): void
     {
         $dir = storage_path('app/backups');

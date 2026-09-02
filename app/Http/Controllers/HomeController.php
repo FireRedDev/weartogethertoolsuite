@@ -10,10 +10,16 @@ class HomeController extends Controller
 {
     public function index(Dashboard $dashboard, OrderWindowExtender $extender): View
     {
-        // Abgelaufene Sammelbestellfenster verlängern, falls fällig. Gedrosselt
-        // und fehlertolerant — greift auch ohne eingerichteten Cron, blockiert
-        // die Startseite aber nie.
-        $extended = $extender->runDueOpportunistically();
+        // Abgelaufene Sammelbestellfenster verlängern, falls fällig — aber erst
+        // NACH der Antwort. Die Verlängerung schreibt in den Schule-Eintrag,
+        // und ein hängendes WordPress würde die Startseite sonst je fälliger
+        // Schule bis zu einer Minute blockieren. Angezeigt wird das Ergebnis
+        // des vorigen Laufs.
+        $extended = $extender->lastResult();
+        app()->terminating(static function () use ($extender) {
+            @ignore_user_abort(true);
+            $extender->runDueOpportunistically();
+        });
 
         $groups = $dashboard->groups();
 

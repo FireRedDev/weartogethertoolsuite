@@ -27,6 +27,9 @@ class OrderWindowExtender
 {
     private const THROTTLE_KEY = 'order_windows.last_auto_extend';
 
+    /** Ergebnis des letzten Laufs — die Startseite zeigt es beim nächsten Aufruf. */
+    private const RESULT_KEY = 'order_windows.last_result';
+
     public function __construct(private readonly WordPressClient $wordpress) {}
 
     /**
@@ -113,8 +116,26 @@ class OrderWindowExtender
             $log[] = $entry;
         }
         Cache::put(self::THROTTLE_KEY, now()->toIso8601String(), now()->addDay());
+        if ($log !== []) {
+            Cache::put(self::RESULT_KEY, $log, now()->addDay());
+        }
 
         return $log;
+    }
+
+    /**
+     * Was der letzte Lauf verlängert hat. Die Startseite zeigt das an, ohne
+     * selbst auf WordPress zu warten — der Lauf selbst passiert nach der
+     * Antwort.
+     *
+     * @return list<array{step: string, ok: bool, detail: string}>
+     */
+    public function lastResult(): array
+    {
+        $log = Cache::get(self::RESULT_KEY, []);
+        Cache::forget(self::RESULT_KEY);
+
+        return is_array($log) ? $log : [];
     }
 
     /**

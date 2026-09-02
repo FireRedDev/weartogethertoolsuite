@@ -14,6 +14,18 @@ use Illuminate\Support\Facades\Http;
  */
 class DynamicMockupsClient
 {
+    /**
+     * Zeitablauf einer Anfrage. Der Verbindungstest der Admin-Seite setzt ihn
+     * kurz: Dort laufen fünf Prüfungen nacheinander, und ausgerechnet die
+     * Seite, die man aufruft, WEIL etwas hängt, darf nicht selbst hängen.
+     */
+    private int $timeout = 60;
+
+    private static function statusTimeout(): int
+    {
+        return max(2, (int) config('schoolshop.status_timeout_seconds', 5));
+    }
+
     public function isConfigured(): bool
     {
         return (string) config('schoolshop.mockups.api_key') !== '';
@@ -22,6 +34,7 @@ class DynamicMockupsClient
     /** Verbindungstest für den Admin-Status. */
     public function testConnection(): void
     {
+        $this->timeout = self::statusTimeout();
         $this->request('get', '/mockups');
     }
 
@@ -128,7 +141,7 @@ class DynamicMockupsClient
         $base = rtrim((string) config('schoolshop.mockups.base_url'), '/');
         try {
             $pending = Http::withHeaders(['x-api-key' => config('schoolshop.mockups.api_key')])
-                ->timeout(120)->acceptJson();
+                ->timeout($this->timeout)->acceptJson();
             $response = $method === 'get' ? $pending->get($base.$path) : $pending->post($base.$path, $body);
         } catch (ConnectionException $e) {
             throw WooCommerceApiException::unreachable("{$method} {$path}: {$e->getMessage()}");

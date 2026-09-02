@@ -44,9 +44,19 @@ class RevenueReport
     /**
      * @return array<string, mixed>
      */
-    public function build(StatisticsFilters $filters): array
+    public function build(StatisticsFilters $filters, bool $allowFetching = true): array
     {
-        $this->repository->startBudget();
+        // Der SEITENAUFRUF ruft mit `allowFetching: false` auf: Dann arbeitet
+        // die Auswertung nur mit dem, was im Zwischenspeicher liegt, und meldet
+        // sonst `complete = false`. Ohne das könnte ein zwischen
+        // Fortschrittsprüfung und Auswertung abgelaufener Monat die Seite doch
+        // wieder an den Shop hängen — genau das soll die Ladeseite verhindern.
+        // Auf der Konsole und in Tests darf dagegen geholt werden.
+        $this->repository->startBudget($allowFetching ? null : 0.0);
+
+        if (! $allowFetching && (! $this->repository->hasProducts() || ! $this->repository->hasCategories())) {
+            return $this->incomplete($filters);
+        }
 
         $products = $this->repository->products($filters->fresh);
         $schools = $this->schools($filters->fresh);
@@ -97,6 +107,40 @@ class RevenueReport
             'colors' => $this->mergeRanking($current['colors'], $previous['colors']),
             'schoolRanking' => $this->mergeRanking($current['schools'], $previous['schools']),
             'schools' => $schools,
+        ];
+    }
+
+    /**
+     * Rückgabe, wenn die Grunddaten (Produktkatalog, Kategorien) noch fehlen —
+     * gleiche Form wie eine echte Auswertung, aber ausdrücklich unvollständig.
+     * Der Aufrufer zeigt dann die Ladeseite.
+     *
+     * @return array<string, mixed>
+     */
+    private function incomplete(StatisticsFilters $filters): array
+    {
+        $empty = fn (SchoolYear $year) => [
+            'year' => $year, 'label' => $year->label(), 'complete' => false, 'loaded' => 0, 'total' => 0,
+            'revenue' => 0.0, 'quantity' => 0, 'orders' => 0, 'avgPerOrder' => null, 'unassigned' => 0.0,
+            'months' => $this->emptyMonths($year), 'days' => [],
+            'collective' => ['count' => 0, 'revenue' => 0.0, 'avg' => null, 'list' => []],
+            'ondemand' => ['count' => 0, 'revenue' => 0.0, 'avg' => null, 'list' => []],
+            'schoolsWithoutWindow' => 0, 'products' => [], 'colors' => [], 'schools' => [],
+        ];
+
+        return [
+            'filters' => $filters,
+            'current' => $empty($filters->year),
+            'previous' => $empty($filters->year->previous()),
+            'history' => [],
+            'complete' => false,
+            'loaded' => 0,
+            'months' => 0,
+            'previousAtSamePoint' => 0.0,
+            'products' => [],
+            'colors' => [],
+            'schoolRanking' => [],
+            'schools' => collect(),
         ];
     }
 

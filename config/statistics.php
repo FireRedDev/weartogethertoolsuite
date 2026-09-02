@@ -80,6 +80,15 @@ return [
      * `poll_seconds` — wie oft die Ladeseite den Fortschritt abfragt.
      */
     'warm_budget_seconds' => 25,
+
+    /*
+     * Wie lange ein Fehler den Aufbau anhält, in Sekunden. Solange er
+     * gespeichert ist, wird kein neuer Durchgang angestoßen. Kurz genug, dass
+     * sich ein vorübergehendes Zucken des Shops von selbst erledigt, lang
+     * genug, dass ein dauerhaft kaputter Shop nicht im Sekundentakt angefragt
+     * wird.
+     */
+    'error_retry_seconds' => 120,
     'pause_ms' => 400,
     'poll_seconds' => 3,
 

@@ -14,6 +14,18 @@ class PrintifyClient
 {
     private const BASE = 'https://api.printify.com/v1';
 
+    /**
+     * Zeitablauf einer Anfrage. Der Verbindungstest der Admin-Seite setzt ihn
+     * kurz: Dort laufen fünf Prüfungen nacheinander, und ausgerechnet die
+     * Seite, die man aufruft, WEIL etwas hängt, darf nicht selbst hängen.
+     */
+    private int $timeout = 60;
+
+    private static function statusTimeout(): int
+    {
+        return max(2, (int) config('schoolshop.status_timeout_seconds', 5));
+    }
+
     public function isConfigured(): bool
     {
         return config('schoolshop.printify.api_token') !== '' && config('schoolshop.printify.shop_id') !== '';
@@ -22,6 +34,7 @@ class PrintifyClient
     /** Verbindungstest für den Admin-Status. */
     public function testConnection(): void
     {
+        $this->timeout = self::statusTimeout();
         $this->request('get', '/shops.json');
     }
 
@@ -143,7 +156,7 @@ class PrintifyClient
         }
 
         try {
-            $pending = Http::withToken(config('schoolshop.printify.api_token'))->timeout(60)->acceptJson();
+            $pending = Http::withToken(config('schoolshop.printify.api_token'))->timeout($this->timeout)->acceptJson();
             $response = $method === 'get' ? $pending->get(self::BASE.$path) : $pending->{$method}(self::BASE.$path, $body);
         } catch (ConnectionException $e) {
             throw WooCommerceApiException::unreachable("{$method} {$path}: {$e->getMessage()}");

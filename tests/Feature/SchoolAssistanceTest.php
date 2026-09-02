@@ -78,6 +78,9 @@ class SchoolAssistanceTest extends TestCase
         $this->fakeOrders();
         $onboarding = $this->onboarding();
 
+        // Geholt wird nach der Antwort, gelesen wird aus dem Zwischenspeicher —
+        // die Antragsseite darf nicht auf eine Abfrage je Produkt warten.
+        app(SchoolOrderStats::class)->warm($onboarding);
         $stats = app(SchoolOrderStats::class)->for($onboarding);
 
         $this->assertSame(2, $stats['orders']);
@@ -91,6 +94,11 @@ class SchoolAssistanceTest extends TestCase
         $this->fakeOrders();
         $onboarding = $this->onboarding();
 
+        // Erster Aufruf: noch keine Zahlen — sie werden erst NACH der Antwort
+        // geholt, damit die Seite nicht auf eine Abfrage je Produkt wartet.
+        $this->get("/schulen/{$onboarding->id}")->assertOk();
+
+        // Der Nachlauf des ersten Aufrufs hat sie inzwischen gefüllt.
         $this->get("/schulen/{$onboarding->id}")
             ->assertOk()
             ->assertSee('Bestellungen bisher')
@@ -109,6 +117,7 @@ class SchoolAssistanceTest extends TestCase
         Http::fake(['shop.example/*' => Http::response('kaputt', 500)]);
         $onboarding = $this->onboarding();
 
+        app(SchoolOrderStats::class)->warm($onboarding);
         $this->assertNull(app(SchoolOrderStats::class)->for($onboarding));
         $this->get("/schulen/{$onboarding->id}")->assertOk();
     }

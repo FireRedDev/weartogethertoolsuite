@@ -90,11 +90,16 @@ class StatisticsWarmer
             @set_time_limit((int) ($budgetSeconds ?? config('statistics.warm_budget_seconds')) + 60);
         }
 
-        $deadline = microtime(true) + (float) ($budgetSeconds ?? config('statistics.warm_budget_seconds'));
+        $budget = (float) ($budgetSeconds ?? config('statistics.warm_budget_seconds'));
+        $deadline = microtime(true) + $budget;
         $pause = max(0, (int) config('statistics.pause_ms')) * 1000;
         $fetched = 0;
 
-        Cache::put(self::RUNNING, true, now()->addMinutes(5));
+        // Laufzeit-Marke genauso lang halten wie die Sperre. Wäre sie länger,
+        // meldete die Ladeseite nach einem harten Abbruch (Deploy, Speichernot)
+        // noch minutenlang „läuft", ohne dass jemand lädt — und stieße
+        // deshalb auch keinen neuen Durchgang an.
+        Cache::put(self::RUNNING, true, now()->addSeconds((int) $budget + 60));
 
         try {
             if (! $this->repository->hasCategories()) {
@@ -126,13 +131,13 @@ class StatisticsWarmer
             Cache::put(self::ERROR, [
                 'message' => $e->userMessage().($e->hint() ? ' '.$e->hint() : ''),
                 'technical' => $e->getMessage(),
-            ], now()->addMinutes(15));
+            ], now()->addSeconds($this->errorTtl()));
         } catch (\Throwable $e) {
             report($e);
             Cache::put(self::ERROR, [
-                'message' => 'Beim Aufbau der Auswertung ist ein unerwarteter Fehler aufgetreten.',
+                'message' => 'Beim Aufbau der Auswertung ist ein unerwarteter Fehler aufgetreten. Der Aufbau versucht es gleich noch einmal.',
                 'technical' => get_class($e).': '.$e->getMessage(),
-            ], now()->addMinutes(15));
+            ], now()->addSeconds($this->errorTtl()));
         } finally {
             Cache::forget(self::RUNNING);
             $lock->release();
@@ -192,6 +197,18 @@ class StatisticsWarmer
         ksort($months);
 
         return array_values($months);
+    }
+
+    /**
+     * Wie lange ein Fehler den Aufbau anhält. Solange er gespeichert ist, wird
+     * kein neuer Durchgang angestoßen — bei 15 Minuten stünde die Auswertung
+     * nach einem einmaligen 500er unnötig lange still. Kurz genug, dass sich
+     * ein vorübergehendes Zucken des Shops von selbst erledigt, lang genug,
+     * dass ein dauerhaft kaputter Shop nicht im Sekundentakt angefragt wird.
+     */
+    private function errorTtl(): int
+    {
+        return max(30, (int) config('statistics.error_retry_seconds', 120));
     }
 
     /** Pause zwischen zwei Shop-Anfragen — der Webshop teilt sich den Server. */

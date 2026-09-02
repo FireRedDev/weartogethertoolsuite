@@ -560,15 +560,11 @@ class ReviewAuditTest extends TestCase
     // ---------------------------------------------------------------- S-01
 
     /**
-     * S-01 (mittel): `RevenueReport::build()` ruft den Shop synchron auf, wenn
-     * ein Monat fehlt — obwohl Klassenkommentar und CLAUDE.md zusichern, die
-     * Seite rufe den Shop nie auf. Im Request-Pfad ist das erreichbar, sobald
-     * ein Monat zwischen Fortschrittsprüfung und Auswertung abläuft (der
-     * laufende Monat wird nur 30 Minuten gehalten).
-     *
-     * SOLL: im Request-Pfad mit Budget 0 arbeiten.
+     * S-01 (behoben): Der Seitenaufruf arbeitet mit Budget 0 — fehlt ein
+     * Monat (der laufende wird nur 30 Minuten gehalten), kommt die Ladeseite
+     * statt eines Abrufs mitten im Request.
      */
-    public function test_S01_revenue_report_fetches_from_the_shop_inside_the_request(): void
+    public function test_S01_statistics_page_never_calls_the_shop(): void
     {
         Http::fake([
             'shop.example/wp-json/wc/v3/products/categories*' => Http::response([]),
@@ -584,13 +580,21 @@ class ReviewAuditTest extends TestCase
         $months = app(StatisticsWarmer::class)->years($filters);
         app(\App\Services\Statistics\OrderRepository::class)->forget($months[0], $filters->statuses, $filters->fetchPadding());
 
-        Http::fake([
-            'shop.example/wp-json/wc/v3/orders*' => Http::response([]),
-        ]);
+        $before = count(Http::recorded());
+        $data = app(RevenueReport::class)->build($filters, allowFetching: false);
 
-        app(RevenueReport::class)->build($filters);
+        $this->assertFalse($data['complete'], 'Unvollständig gemeldet statt nachgeladen.');
+        $this->assertCount($before, Http::recorded(), 'Kein einziger Shop-Aufruf im Seitenaufruf.');
+    }
 
-        Http::assertSent(fn ($r) => str_contains($r->url(), '/wc/v3/orders'));
+    /** S-01b: Fehlen die Grunddaten ganz, zeigt die Seite die Ladeanzeige. */
+    public function test_S01b_statistics_page_shows_the_loading_view_without_cached_data(): void
+    {
+        Http::fake(['shop.example/*' => Http::response([])]);
+
+        $response = $this->get('/statistiken');
+
+        $response->assertOk()->assertSee('Die Auswertung wird aufgebaut', false);
     }
 
     // -------------------------------------------------------------- E2E-01

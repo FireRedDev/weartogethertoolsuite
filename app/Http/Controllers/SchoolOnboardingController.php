@@ -72,6 +72,15 @@ class SchoolOnboardingController extends Controller
         // Produktzeilen des Präsentationsblatts: gespeicherte Fassung, sonst der
         // Vorschlag aus dem Konfigurator — immer auf die Zeilenzahl aufgefüllt,
         // damit auch leere Zeilen bearbeitbar sind.
+        // Bestellzahlen nach der Antwort nachladen — der Abruf braucht eine
+        // eigene Abfrage je Produkt und darf die Seite nicht aufhalten.
+        if ($onboarding->delivery_type === 'collective') {
+            app()->terminating(static function () use ($orderStats, $onboarding) {
+                @ignore_user_abort(true);
+                $orderStats->warm($onboarding);
+            });
+        }
+
         $rows = $sheet->productRows($onboarding);
         $rowCount = max(count($rows), (int) config('presentation_sheet.products.max_products'));
         $sheetRows = [];

@@ -14,6 +14,18 @@ use Illuminate\Support\Facades\Http;
  */
 class WooCommerceWriteClient
 {
+    /**
+     * Zeitablauf einer Anfrage. Der Verbindungstest der Admin-Seite setzt ihn
+     * kurz: Dort laufen fünf Prüfungen nacheinander, und ausgerechnet die
+     * Seite, die man aufruft, WEIL etwas hängt, darf nicht selbst hängen.
+     */
+    private int $timeout = 60;
+
+    private static function statusTimeout(): int
+    {
+        return max(2, (int) config('schoolshop.status_timeout_seconds', 5));
+    }
+
     public function isConfigured(): bool
     {
         return config('ordersuite.woocommerce.store_url') !== ''
@@ -24,6 +36,7 @@ class WooCommerceWriteClient
     /** Verbindungstest für den Admin-Status: minimaler, seitenfreier GET-Aufruf. */
     public function testConnection(): void
     {
+        $this->timeout = self::statusTimeout();
         $this->request('get', 'products/shipping_classes', ['per_page' => '1']);
     }
 
@@ -230,7 +243,7 @@ class WooCommerceWriteClient
             // stillschweigend ein GET (so ging real ein 'Kategorie anlegen'
             // verloren, weil WC_STORE_URL mit www konfiguriert war, der Shop
             // aber ohne www läuft). Stattdessen klarer Abbruch mit Erklärung.
-            $pending = Http::withBasicAuth($key, $secret)->timeout(60)->acceptJson()
+            $pending = Http::withBasicAuth($key, $secret)->timeout($this->timeout)->acceptJson()
                 ->withOptions(['allow_redirects' => false]);
             $response = $method === 'get' ? $pending->get($url, $query) : $pending->{$method}($url.'?'.http_build_query($query + [
                 // Fallback für Hoster, die den Authorization-Header verwerfen

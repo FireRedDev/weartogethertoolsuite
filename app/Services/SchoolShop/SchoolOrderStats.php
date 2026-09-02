@@ -30,24 +30,12 @@ class SchoolOrderStats
             return null;
         }
 
-        $key = sprintf(
-            'school_orders.%d.%s.%s',
-            $onboarding->woo_category_id,
-            $onboarding->window_start?->toDateString() ?? '-',
-            $onboarding->window_end?->toDateString() ?? '-',
-        );
-
-        try {
-            $summary = Cache::remember($key, now()->addMinutes(self::TTL_MINUTES), fn () => $this->fetcher->summary(
-                (int) $onboarding->woo_category_id,
-                config('ordersuite.woocommerce.default_statuses'),
-                $onboarding->window_start?->toDateString(),
-                // Bis einschließlich Enddatum — die API filtert auf Zeitstempel
-                $onboarding->window_end?->copy()->addDay()->toDateString(),
-            ));
-        } catch (\Throwable $e) {
-            report($e);
-
+        // NUR aus dem Zwischenspeicher. Der Abruf braucht eine eigene,
+        // seitenweise Abfrage JE PRODUKT der Schule; synchron im Seitenaufruf
+        // wartet die Antragsseite dadurch im schlechten Fall minutenlang.
+        // Geholt wird nach der Antwort (siehe warm()).
+        $summary = Cache::get($this->cacheKey($onboarding));
+        if ($summary === null) {
             return null;
         }
 
@@ -61,14 +49,47 @@ class SchoolOrderStats
         ];
     }
 
+    /**
+     * Holt die Zahlen beim Shop und legt sie ab — gedacht für den Aufruf NACH
+     * der Antwort (`app()->terminating()`), damit kein Seitenaufruf darauf
+     * wartet. Fehler bleiben folgenlos; beim nächsten Aufruf steht es dann da.
+     */
+    public function warm(SchoolOnboarding $onboarding): void
+    {
+        if (! $onboarding->woo_category_id || Cache::has($this->cacheKey($onboarding))) {
+            return;
+        }
+
+        try {
+            $summary = $this->fetcher->summary(
+                (int) $onboarding->woo_category_id,
+                config('ordersuite.woocommerce.default_statuses'),
+                $onboarding->window_start?->toDateString(),
+                // Bis einschließlich Enddatum — die API filtert auf Zeitstempel
+                $onboarding->window_end?->copy()->addDay()->toDateString(),
+            );
+        } catch (\Throwable $e) {
+            report($e);
+
+            return;
+        }
+
+        Cache::put($this->cacheKey($onboarding), $summary, now()->addMinutes(self::TTL_MINUTES));
+    }
+
     /** Verwirft den Zwischenspeicher — nach dem Schließen oder Wiederöffnen sinnvoll. */
     public function forget(SchoolOnboarding $onboarding): void
     {
-        Cache::forget(sprintf(
+        Cache::forget($this->cacheKey($onboarding));
+    }
+
+    private function cacheKey(SchoolOnboarding $onboarding): string
+    {
+        return sprintf(
             'school_orders.%d.%s.%s',
             $onboarding->woo_category_id,
             $onboarding->window_start?->toDateString() ?? '-',
             $onboarding->window_end?->toDateString() ?? '-',
-        ));
+        );
     }
 }

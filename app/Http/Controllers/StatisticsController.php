@@ -64,7 +64,10 @@ class StatisticsController extends Controller
             ]);
         }
 
-        $data = $report->build($filters);
+        // Ohne Nachladen: Die Auswertung nutzt ausschließlich, was im
+        // Zwischenspeicher liegt. Fehlt etwas, kommt die Ladeseite — dieser
+        // Seitenaufruf wartet nie auf den Shop.
+        $data = $report->build($filters, allowFetching: false);
 
         // Sonderfall: ein Monat ist zwischen Prüfung und Auswertung abgelaufen.
         // Dann lieber wieder die Ladeseite als halbe Zahlen.

@@ -14,6 +14,18 @@ use Illuminate\Support\Facades\Http;
  */
 class WordPressClient
 {
+    /**
+     * Zeitablauf einer Anfrage. Der Verbindungstest der Admin-Seite setzt ihn
+     * kurz: Dort laufen fünf Prüfungen nacheinander, und ausgerechnet die
+     * Seite, die man aufruft, WEIL etwas hängt, darf nicht selbst hängen.
+     */
+    private int $timeout = 60;
+
+    private static function statusTimeout(): int
+    {
+        return max(2, (int) config('schoolshop.status_timeout_seconds', 5));
+    }
+
     public function isConfigured(): bool
     {
         return config('ordersuite.woocommerce.store_url') !== ''
@@ -27,6 +39,7 @@ class WordPressClient
      */
     public function testConnection(): void
     {
+        $this->timeout = self::statusTimeout();
         $restBase = config('schoolshop.wordpress.schule_post_type_rest_base');
         $this->request('get', $restBase, ['per_page' => 1, '_fields' => 'id']);
     }
@@ -108,7 +121,7 @@ class WordPressClient
 
         $storeUrl = rtrim(config('ordersuite.woocommerce.store_url'), '/');
         $response = Http::withBasicAuth(config('schoolshop.wordpress.user'), config('schoolshop.wordpress.password'))
-            ->timeout(60)
+            ->timeout($this->timeout)
             ->withHeaders(['Content-Disposition' => 'attachment; filename="'.$filename.'"'])
             ->withBody($contents, $mime)
             ->post("{$storeUrl}/wp-json/wp/v2/media");
@@ -138,7 +151,7 @@ class WordPressClient
 
         try {
             $response = Http::withBasicAuth(config('schoolshop.wordpress.user'), config('schoolshop.wordpress.password'))
-                ->timeout(60)
+                ->timeout($this->timeout)
                 ->acceptJson()
                 ->withOptions(['allow_redirects' => false])
                 ->{$method}($url, $body);

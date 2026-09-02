@@ -80,6 +80,10 @@ class HomeTest extends TestCase
             'auto_extend_days' => 7,
         ]);
 
+        // Die Verlängerung läuft NACH der Antwort — die Startseite darf nicht
+        // je fälliger Schule auf WordPress warten. Der erste Aufruf stößt sie
+        // an, der zweite zeigt, was verlängert wurde.
+        $this->get('/')->assertOk();
         $this->get('/')->assertOk()->assertSee('Automatisch verlängert');
 
         $onboarding->refresh();
