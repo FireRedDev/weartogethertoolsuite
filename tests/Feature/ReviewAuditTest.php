@@ -285,13 +285,11 @@ class ReviewAuditTest extends TestCase
     // ---------------------------------------------------------------- P-04
 
     /**
-     * P-04 (hoch): Ein erneutes "Shop anlegen" schreibt die Zustandsfelder des
-     * CPT zurück — ein zuvor geöffnetes Bestellfenster wird stumm wieder
-     * geschlossen.
-     *
-     * SOLL: Zustandsfelder nur beim erstmaligen Anlegen setzen.
+     * P-04 (behoben): Ein erneutes „Shop anlegen" aktualisiert nur die
+     * Stammdaten des CPT. Die Zustandsfelder gehören den jeweiligen Aktionen —
+     * ein zuvor geöffnetes Bestellfenster bleibt offen.
      */
-    public function test_P04_reprovision_silently_closes_a_reopened_window(): void
+    public function test_P04_reprovision_leaves_a_reopened_window_open(): void
     {
         // GET /products liefert eine Liste, POST /products das neue Objekt —
         // mit einem reinen Mustervergleich nicht unterscheidbar.
@@ -331,7 +329,27 @@ class ReviewAuditTest extends TestCase
             }
         }
 
-        $this->assertSame('NEIN', $lastValue, 'IST: das geöffnete Fenster ist im Shop wieder zu. SOLL: unverändert JA.');
+        $this->assertSame('JA', $lastValue, 'Das geöffnete Fenster bleibt offen.');
+    }
+
+    /** P-04b: Beim ERSTEN Anlegen werden die Zustandsfelder sehr wohl gesetzt. */
+    public function test_P04b_first_provision_still_initialises_the_state_fields(): void
+    {
+        $this->fakeCollectiveShop();
+        $record = $this->onboarding();
+
+        app(ShopProvisioner::class)->apply($record);
+
+        $created = null;
+        foreach (Http::recorded() as [$request]) {
+            if ($request->method() === 'POST' && parse_url($request->url(), PHP_URL_PATH) === '/wp-json/wp/v2/schule') {
+                $created = $request->data();
+            }
+        }
+
+        $this->assertNotNull($created, 'Der CPT-Eintrag wurde angelegt.');
+        $this->assertSame('NEIN', $created['bestellfenster_offen'] ?? null, 'Startwert gesetzt.');
+        $this->assertSame('0', $created['versandklasse_on_demand_fur_jedes_produkt_gesetzt'] ?? null);
     }
 
     private function cptFieldWasSetTo(string $field, string $value): bool
@@ -511,13 +529,12 @@ class ReviewAuditTest extends TestCase
     // --------------------------------------------------------------- M3-01
 
     /**
-     * M3-01 (hoch): Scheitert beim Schließen der CPT-Schritt, sind die Produkte
-     * trotzdem privat — die Schule erreicht aber nie den Status „abgeschlossen"
-     * und lässt sich im Tool nicht wieder öffnen. Sackgasse.
-     *
-     * SOLL: am tatsächlichen Zustand festmachen, nicht am fehlerfreien Lauf.
+     * M3-01 (behoben): Scheitert beim Schließen der CPT-Schritt, sind die
+     * Produkte trotzdem privat. Der Status folgt jetzt dem Zustand der
+     * Produkte, nicht der Fehlerfreiheit des Laufs — die Schule lässt sich
+     * daher wieder öffnen, statt in einer Sackgasse zu landen.
      */
-    public function test_M301_partial_close_leaves_school_unreopenable(): void
+    public function test_M301_partial_close_still_marks_the_school_closed(): void
     {
         Http::fake([
             'shop.example/wp-json/wc/v3/products?*' => Http::response([
@@ -533,11 +550,11 @@ class ReviewAuditTest extends TestCase
 
         $record->refresh();
         Http::assertSent(fn ($r) => $r->method() === 'PUT' && ($r->data()['status'] ?? null) === 'private');
-        $this->assertSame('angelegt', $record->status, 'IST: Produkte privat, Status aber nicht „abgeschlossen".');
+        $this->assertSame('abgeschlossen', $record->status, 'Produkte privat — also gilt das Fenster als geschlossen.');
 
         $response = $this->get('/bestellfenster-schliessen');
         $closed = collect($response->viewData('closedSchools'))->pluck('id')->all();
-        $this->assertNotContains($record->id, $closed, 'IST: nicht wieder zu öffnen — Sackgasse.');
+        $this->assertContains($record->id, $closed, 'Die Schule steht in der Öffnen-Liste.');
     }
 
     // ---------------------------------------------------------------- S-01

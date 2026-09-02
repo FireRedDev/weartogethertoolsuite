@@ -68,7 +68,9 @@ class ShopProvisioner
         }
 
         $steps[] = $onboarding->pods_post_id
-            ? "Schule-Eintrag (CPT) vorhanden (ID {$onboarding->pods_post_id}) - wird übersprungen"
+            ? "Schule-Eintrag (CPT) vorhanden (ID {$onboarding->pods_post_id}) - Stammdaten werden aktualisiert: "
+                .'Bestellfenster, Shortcode, On-Demand-Kennzeichen, Kategorie. '
+                .'„Bestellfenster offen" und die Versandklassen-Marke bleiben unverändert (die gehören den jeweiligen Aktionen).'
             : sprintf(
                 'Schule-Eintrag (CPT) anlegen: Bestellfenster %s - %s, On-Demand: %s',
                 $onboarding->window_start?->format('d.m.Y') ?? '-',
@@ -197,17 +199,21 @@ class ShopProvisioner
                 }
             }
 
-            // 5. Pods-CPT "schule" anlegen (nur falls noch nicht vorhanden)
-            $fields = $this->schuleFields($onboarding);
+            // 5. Pods-CPT "schule" anlegen (nur falls noch nicht vorhanden).
+            // Beim ERSTEN Anlegen inklusive der Zustandsfelder.
             if (! $onboarding->pods_post_id) {
-                $pods = $run('Schule-Eintrag (CPT) anlegen', fn () => $this->wordpress->createSchule($onboarding->school_name, $fields));
+                $initial = $this->schuleFields($onboarding, includeState: true);
+                $pods = $run('Schule-Eintrag (CPT) anlegen', fn () => $this->wordpress->createSchule($onboarding->school_name, $initial));
                 $onboarding->pods_post_id = (int) ($pods['id'] ?? 0) ?: null;
                 $onboarding->save();
             }
 
-            // 5b. Felder immer (idempotent) setzen und zurücklesen — so lässt
-            // sich ein bereits angelegter Eintrag nach dem Aktivieren der
-            // Pods-Feld-Schreibrechte per erneutem Klick nachbefüllen.
+            // 5b. Stammdaten immer (idempotent) setzen und zurücklesen — so
+            // lässt sich ein bereits angelegter Eintrag nach dem Aktivieren der
+            // Pods-Feld-Schreibrechte per erneutem Klick nachbefüllen. Ohne die
+            // Zustandsfelder: die gehören den Aktionen „Fenster öffnen/
+            // schließen" und „On-Demand-Nachbearbeitung".
+            $fields = $this->schuleFields($onboarding);
             if ($onboarding->pods_post_id) {
                 $run('Schule-Felder setzen', fn () => $this->wordpress->updateSchule($onboarding->pods_post_id, $fields));
                 $this->verifySchuleFields($onboarding->pods_post_id, $fields, $log);
@@ -685,14 +691,36 @@ class ShopProvisioner
             $log[] = ['step' => 'Schule-Eintrag', 'ok' => false, 'detail' => 'Kein CPT-Eintrag (pods_post_id) hinterlegt — „Bestellfenster offen" konnte nicht gesetzt werden.'];
         }
 
-        // Status im Tool nachziehen, wenn alles glattlief.
-        if (collect($log)->every(fn ($l) => $l['ok'])) {
+        // Der Status folgt dem tatsächlichen Zustand der Produkte, nicht der
+        // Fehlerfreiheit des ganzen Laufs. Sonst bliebe eine Schule, bei der
+        // nur der CPT-Schritt scheitert, für immer „angelegt" — obwohl ihre
+        // Produkte längst privat sind. Sie tauchte dann in der Öffnen-Liste nie
+        // auf und ließe sich nur noch von Hand in WooCommerce zurückstellen.
+        if ($products !== [] && $this->allProductsAre($products, 'private', $closed)) {
             $onboarding->status = OnboardingStatus::ABGESCHLOSSEN;
         }
         $onboarding->provision_log = array_merge($onboarding->provision_log ?? [], $log);
         $onboarding->save();
 
         return $log;
+    }
+
+    /**
+     * Haben am Ende ALLE gefundenen Produkte den gewünschten Zustand? Zählt
+     * die vorher schon passenden mit den in diesem Lauf umgestellten zusammen.
+     *
+     * @param  list<array<string, mixed>>  $products
+     */
+    private function allProductsAre(array $products, string $status, int $changed): bool
+    {
+        $already = 0;
+        foreach ($products as $product) {
+            if (($product['status'] ?? '') === $status) {
+                $already++;
+            }
+        }
+
+        return $already + $changed === count($products);
     }
 
     /**
@@ -748,7 +776,11 @@ class ShopProvisioner
         $onboarding->window_end = $end;
         // Nachfrist wieder frei: das ist ein neues Fenster.
         OrderWindowExtender::resetFor($onboarding);
-        if (collect($log)->every(fn ($l) => $l['ok'])) {
+        // Wie beim Schließen: Der Status folgt dem Zustand der Produkte. Sonst
+        // stünden öffentliche Produkte einer Schule gegenüber, die im Tool
+        // weiter als „abgeschlossen" gilt und erneut in der Schließen-Liste
+        // auftaucht.
+        if ($products !== [] && $this->allProductsAre($products, 'publish', $opened)) {
             $onboarding->status = OnboardingStatus::ANGELEGT;
         }
         $onboarding->provision_log = array_merge($onboarding->provision_log ?? [], $log);
@@ -854,22 +886,36 @@ class ShopProvisioner
      *
      * @return array<string, mixed>
      */
-    private function schuleFields(SchoolOnboarding $onboarding): array
+    private function schuleFields(SchoolOnboarding $onboarding, bool $includeState = false): array
     {
         $ondemand = $onboarding->delivery_type === 'ondemand';
 
-        return [
+        // Stammdaten: beschreiben den Antrag und dürfen bei jedem Lauf
+        // aktualisiert werden.
+        $fields = [
             'bestellfensterstart' => $onboarding->window_start?->format('Y-m-d 00:00:00') ?? '',
             'bestellfensterende' => $onboarding->window_end?->format('Y-m-d 23:59:59') ?? '',
             'produkte_shortcode' => mb_strtolower($onboarding->school_name),
+            'on-demand' => $ondemand ? '1' : '0',
+            'woocommerce_produkt_kategorie' => $onboarding->woo_category_id,
+        ];
+
+        if (! $includeState) {
+            return $fields;
+        }
+
+        // Zustandsfelder: NUR beim erstmaligen Anlegen. Sie werden später durch
+        // eigene Aktionen verändert — „Bestellfenster öffnen" setzt JA, die
+        // On-Demand-Nachbearbeitung setzt die Versandklassen-Marke auf 1.
+        // Würden sie bei jedem Lauf mitgeschrieben, nähme ein erneutes
+        // „Shop anlegen" beides stumm zurück: Die Produkte blieben öffentlich,
+        // der Shop schaltete das Fenster zu, und im Tool wäre nichts davon zu
+        // sehen.
+        return $fields + [
             'bestellfenster_offen' => config('schoolshop.pods.bestellfenster_offen_default'),
             'lieferstatus' => '',
-            'on-demand' => $ondemand ? '1' : '0',
-            // Wird erst nach der On-Demand-Nachbearbeitung (Versandklassen
-            // auf den von Printify angelegten Produkten) auf 1 gesetzt.
             'versandklasse_on_demand_fur_jedes_produkt_gesetzt' => '0',
             'crm_eintrag' => '',
-            'woocommerce_produkt_kategorie' => $onboarding->woo_category_id,
         ];
     }
 
