@@ -473,7 +473,9 @@ class StatisticsTest extends TestCase
 
         // Sperre von außen halten — ein zweiter Durchgang darf nicht loslegen
         // und dabei den Webshop doppelt belasten.
-        $lock = Cache::lock('statistics.warm.lock', 60);
+        // Sperre, Laufzeit-Marke und Fehler gelten je Filtersatz, damit sich
+        // zwei Personen mit verschiedenen Filtern nicht blockieren.
+        $lock = Cache::lock($warmer->lockKey($this->filters()), 60);
         $this->assertTrue($lock->get());
 
         $result = $warmer->warm($this->filters());

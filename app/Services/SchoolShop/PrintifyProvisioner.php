@@ -254,10 +254,20 @@ class PrintifyProvisioner
         $size = $fromOptions(['size', 'sizes']);
 
         if ($color === null || $size === null) {
+            // Rückfall auf den Titel („Black / S"). Die Reihenfolge ist nicht
+            // garantiert, deshalb wird der Größenteil an seiner Form erkannt
+            // (S, XL, 2XL, 128, 38/40) statt stur das letzte Stück zu nehmen —
+            // sonst würde bei „S / Black" die Farbe als Größe gelesen.
             $parts = array_values(array_filter(array_map('trim', explode('/', (string) ($variant['title'] ?? '')))));
-            $color ??= $parts[0] ?? null;
             if (count($parts) > 1) {
-                $size ??= end($parts);
+                $looksLikeSize = static fn (string $p) => (bool) preg_match('/^(\d{2,3}|[0-9]?X{0,3}[SML]|One Size|Einheitsgröße)$/i', $p);
+                $sizeParts = array_values(array_filter($parts, $looksLikeSize));
+                $colorParts = array_values(array_filter($parts, static fn ($p) => ! $looksLikeSize($p)));
+                $size ??= $sizeParts[0] ?? end($parts);
+                $color ??= $colorParts[0] ?? $parts[0];
+            } elseif ($parts !== []) {
+                // Nur ein Teil: das ist die Farbe, nicht die Größe.
+                $color ??= $parts[0];
             }
         }
 

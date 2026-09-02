@@ -65,6 +65,20 @@ class Dashboard
                 ),
             ],
             [
+                'key' => 'no_window',
+                'title' => 'Bestellzeitraum fehlt',
+                'tone' => 'warn',
+                'explanation' => 'Im Formular stand kein auswertbares Datum. Ohne Bestellzeitraum gibt es kein '
+                    .'Präsentationsblatt, keine automatische Nachfrist und keine Zuordnung in der Statistik — '
+                    .'bitte im Konfigurator nachtragen.',
+                'items' => $this->map(
+                    $all->filter(fn ($o) => $o->delivery_type === 'collective'
+                        && $o->status !== OnboardingStatus::ABGESCHLOSSEN
+                        && ($o->window_start === null || $o->window_end === null)),
+                    fn ($o) => 'eingegangen '.$o->created_at->format('d.m.Y').', Zeitraum offen',
+                ),
+            ],
+            [
                 'key' => 'new',
                 'title' => 'Neue Anträge',
                 'tone' => 'warn',

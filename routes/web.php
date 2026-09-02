@@ -19,8 +19,11 @@ Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1')->name('login.attempt');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-// FluentForms-Webhook (kein Login/CSRF — Secret in der URL)
-Route::post('/webhooks/fluentforms/{secret}', [FluentFormsWebhookController::class, 'receive'])->name('webhooks.fluentforms');
+// FluentForms-Webhook (kein Login/CSRF — Secret in der URL).
+// Gedrosselt: Jeder Treffer wird protokolliert, BEVOR das Secret geprüft wird —
+// ohne Bremse ließe sich die Protokolltabelle von außen vollschreiben.
+Route::post('/webhooks/fluentforms/{secret}', [FluentFormsWebhookController::class, 'receive'])
+    ->middleware('throttle:60,1')->name('webhooks.fluentforms');
 // Dieselbe URL im Browser (GET) öffnen = Test, ob Secret/URL stimmen
 Route::get('/webhooks/fluentforms/{secret}', [FluentFormsWebhookController::class, 'verify'])->name('webhooks.fluentforms.verify');
 

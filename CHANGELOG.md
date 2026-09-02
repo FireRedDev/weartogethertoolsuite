@@ -4,6 +4,18 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 
 ## [Unreleased]
 
+### Code-Review: behobene Befunde (v17–v22)
+- **Marge rechnete Brutto gegen Netto.** Die Shop-Preise sind Bruttopreise, die Printify-Kosten netto — jede angezeigte Marge lag rund 20 Prozentpunkte zu hoch. Verglichen wird jetzt netto gegen netto (`schoolshop.printify.vat_rate`), angezeigt wird der Mindestpreis brutto.
+- **Doppelanlage ausgeschlossen:** Sperre je Antrag um „Shop anlegen", Nachladen innerhalb der Sperre, und alle externen IDs (WooCommerce-Produkt, Printify-Produkt, jedes Mockup) werden sofort nach dem Aufruf gespeichert. Bezahlte Mockup-Renders gehen bei einem Abbruch nicht mehr verloren.
+- **Fremde Schulen werden nicht mehr mit geschlossen:** Die Namenssuche im Shop ist eine Teilstring-Suche („HAK Wien" trifft „HAK Wien 13") und wird jetzt auf die Produktnamen dieser Schule eingegrenzt.
+- **Datumswerte aus dem Formular werden zurückgerechnet:** `31.02.2026` galt vorher als 03.03., `04/16/2026` als 04.04.2027 — beides wanderte in den Schule-Eintrag, auf das gedruckte Blatt und in die Statistik. Unklare Werte gelten jetzt als unbekannt und erscheinen als Aufgabe auf der Startseite.
+- **Keine Seite wartet mehr auf eine Schnittstelle:** Fensterverlängerung (Startseite), Bestellzahlen (Antragsseite) und Statistik laden nach der Antwort. Zwei unbegrenzte Seitenschleifen im Schreib-Client haben jetzt dieselbe Notbremse wie `fetchAllPages()`.
+- **Zustandsfelder im CPT gehören ihren Aktionen:** Ein erneutes „Shop anlegen" nimmt „Fenster öffnen" und die On-Demand-Nachbearbeitung nicht mehr stumm zurück.
+- **Bestellfenster-Durchschnitte zählen jetzt je Antrag** statt je Shop-Kategorie — der Umsatz früherer Fenster derselben Schule fehlte vorher.
+- **Klassenlisten** werden an Zeilenumbrüchen getrennt (das Feld ist mehrzeilig); vorher entstand eine einzige Auswahloption mit Zeilenumbrüchen darin.
+- **QR-Code des Präsentationsblatts** nutzt den echten Kategorie-Slug aus dem Shop statt einer aus dem Schulnamen abgeleiteten Adresse.
+- Weiter: Anmeldung und Webhook gedrosselt, Eingabegrenzen für Preise/Farben/Größen, Medien-Upload mit Typ- und Größenprüfung, Sicherung mit Sperre und Platzprüfung, kurze Zeitabläufe für die Verbindungstests, erklärte Fehlerseiten statt nackter 500er.
+
 ### Modul 2: Schul-Onboarding
 - FluentForms-Webhook (Webshopstartfragebogen) legt Onboarding-Anträge automatisch an; manuelle Anlage möglich
 - Konfigurator: Produkte/Preise/Größen/Farben/Klassenliste/Bestellfenster aus dem Musterschule-Excel-Master, vorbefüllt aus den Formularwünschen

@@ -59,7 +59,7 @@ class MockupGenerationTest extends TestCase
                 ['id' => 15, 'name' => 'Schulen', 'parent' => 0],
             ]),
             'shop.example/wp-json/wc/v3/products/categories?*search=AHS*' => Http::response([]),
-            'shop.example/wp-json/wc/v3/products/categories?*' => Http::response(['id' => 77, 'name' => 'AHS Testschule', 'parent' => 15], 201),
+            'shop.example/wp-json/wc/v3/products/categories*' => Http::response(['id' => 77, 'name' => 'AHS Testschule', 'parent' => 15], 201),
             'shop.example/wp-json/wc/v3/products/attributes/*/terms*' => Http::response([]),
             'shop.example/wp-json/wc/v3/products/attributes?*' => Http::response([
                 ['id' => 1, 'name' => 'Größe'], ['id' => 2, 'name' => 'Farbe'],
@@ -67,7 +67,7 @@ class MockupGenerationTest extends TestCase
             ]),
             'shop.example/wp-json/wc/v3/products/*/variations*' => Http::response(['id' => 501], 201),
             'shop.example/wp-json/wc/v3/products/401*' => Http::response(['id' => 401], 200),
-            'shop.example/wp-json/wc/v3/products?*' => Http::response(['id' => 401, 'name' => 'AHS Testschule Schulpullover'], 201),
+            'shop.example/wp-json/wc/v3/products*' => Http::response(['id' => 401, 'name' => 'AHS Testschule Schulpullover'], 201),
             'shop.example/wp-json/wp/v2/schule*' => Http::response([
                 'id' => 900,
                 'bestellfensterstart' => '2026-04-16 00:00:00',

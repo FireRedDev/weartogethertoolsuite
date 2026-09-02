@@ -21,6 +21,12 @@ class WordPressClient
      */
     private int $timeout = 60;
 
+    /** Was als Bild in die Mediathek darf. */
+    private const ALLOWED_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+    /** Obergrenze je Datei — sie wird komplett in den Arbeitsspeicher geladen. */
+    private const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
+
     private static function statusTimeout(): int
     {
         return max(2, (int) config('schoolshop.status_timeout_seconds', 5));
@@ -92,13 +98,32 @@ class WordPressClient
      */
     public function uploadMediaFromUrl(string $url): int
     {
-        $binary = Http::timeout(60)->get($url);
+        $binary = Http::timeout($this->timeout)->get($url);
         if (! $binary->successful()) {
             throw WooCommerceApiException::unreachable("Logo-Download {$url}: HTTP {$binary->status()}");
         }
+
+        // Nicht blind übernehmen: Eine HTML-Fehlerseite landete sonst als
+        // „Bild" in der Mediathek, und eine sehr große Datei komplett im
+        // Arbeitsspeicher.
+        $mime = strtok((string) ($binary->header('Content-Type') ?: ''), ';') ?: '';
+        if (! in_array($mime, self::ALLOWED_MEDIA_TYPES, true)) {
+            throw WooCommerceApiException::unexpectedResponse(
+                "Logo-Download {$url}: unerwarteter Inhaltstyp „{$mime}“. Erwartet wird ein Bild ("
+                .implode(', ', self::ALLOWED_MEDIA_TYPES).').',
+            );
+        }
+        $contents = $binary->body();
+        if (strlen($contents) > self::MAX_MEDIA_BYTES) {
+            throw WooCommerceApiException::unexpectedResponse(sprintf(
+                'Logo-Download %s: die Datei ist mit %d MB zu groß (erlaubt sind %d MB).',
+                $url, (int) round(strlen($contents) / 1024 / 1024), (int) (self::MAX_MEDIA_BYTES / 1024 / 1024),
+            ));
+        }
+
         $filename = basename(parse_url($url, PHP_URL_PATH) ?: 'logo.png') ?: 'logo.png';
 
-        return $this->uploadMedia($filename, $binary->body(), $binary->header('Content-Type') ?: 'image/png')['id'];
+        return $this->uploadMedia($filename, $contents, $mime)['id'];
     }
 
     /**
@@ -122,6 +147,9 @@ class WordPressClient
         $storeUrl = rtrim(config('ordersuite.woocommerce.store_url'), '/');
         $response = Http::withBasicAuth(config('schoolshop.wordpress.user'), config('schoolshop.wordpress.password'))
             ->timeout($this->timeout)
+            // Wie bei allen anderen Schreibzugriffen: Bei einer Umleitung
+            // würde aus dem POST still ein GET, und der Upload verschwände.
+            ->withOptions(['allow_redirects' => false])
             ->withHeaders(['Content-Disposition' => 'attachment; filename="'.$filename.'"'])
             ->withBody($contents, $mime)
             ->post("{$storeUrl}/wp-json/wp/v2/media");

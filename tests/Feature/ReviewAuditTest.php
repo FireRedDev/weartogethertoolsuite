@@ -21,11 +21,14 @@ use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
- * PRÜFHARNISCH ZUM CODE-REVIEW — kein Bestandteil der Suite.
+ * REGRESSIONSTESTS ZUM CODE-REVIEW.
  *
- * Jeder Test belegt EINEN Befund aus Phase 1. Die Tests bestätigen das
- * IST-Verhalten; im Kommentar steht jeweils, was das SOLL wäre. Ein grüner
- * Test heißt hier also: der Mangel ist vorhanden.
+ * Jeder Test gehört zu einem Befund des Reviews und prüft, dass er behoben
+ * BLEIBT. Die Kürzel (P-01, FF-01, MO-01 …) verweisen auf den Bericht und auf
+ * die GitHub-Issues #2 bis #7.
+ *
+ * Alles läuft gegen `Http::fake()` mit `preventStrayRequests()` — kein Aufruf
+ * geht an ein echtes System.
  */
 class ReviewAuditTest extends TestCase
 {
@@ -497,12 +500,10 @@ class ReviewAuditTest extends TestCase
     // ---------------------------------------------------------------- P-10
 
     /**
-     * P-10 (mittel): Negative Preise passieren die serverseitige Prüfung und
-     * werden so an WooCommerce/Printify geschrieben.
-     *
-     * SOLL: auf 0 begrenzen bzw. im Controller ablehnen.
+     * P-10 (behoben): Negative Preise wären genau so an WooCommerce bzw.
+     * Printify geschrieben worden. Sie werden jetzt auf 0 begrenzt.
      */
-    public function test_P10_negative_prices_pass_validation(): void
+    public function test_P10_negative_prices_are_clamped(): void
     {
         $current = ProductConfigurator::defaultsAllDisabled();
         $result = ProductConfigurator::applyInput($current, [
@@ -510,12 +511,16 @@ class ReviewAuditTest extends TestCase
         ]);
 
         $product = collect($result)->firstWhere('key', 'schulpullover');
-        $this->assertSame(-5.0, $product['base_price'], 'IST: negativer Preis übernommen.');
-        $this->assertSame(-2.0, $product['indiv_surcharge']);
+        $this->assertSame(0.0, $product['base_price'], 'Kein negativer Preis im Shop.');
+        $this->assertSame(0.0, $product['indiv_surcharge']);
     }
 
-    /** P-10b: keine Begrenzung der Farb-/Größenlisten (werden zu Shop-weiten Terms). */
-    public function test_P10b_unbounded_color_list_is_accepted(): void
+    /**
+     * P-10b (behoben): Aus Farb- und Größenlisten entstehen SHOPWEITE
+     * Attribut-Terms, die sich über das Tool nicht mehr löschen lassen —
+     * deshalb eine Obergrenze.
+     */
+    public function test_P10b_color_list_is_capped(): void
     {
         $many = implode(',', array_map(fn ($i) => 'Farbe'.$i, range(1, 500)));
         $result = ProductConfigurator::applyInput(ProductConfigurator::defaultsAllDisabled(), [
@@ -523,7 +528,7 @@ class ReviewAuditTest extends TestCase
         ]);
 
         $product = collect($result)->firstWhere('key', 'schulpullover');
-        $this->assertCount(500, $product['colors'], 'IST: 500 Farben werden als Attribut-Terms angelegt.');
+        $this->assertCount(60, $product['colors'], 'Die Liste ist auf 60 Einträge begrenzt.');
     }
 
     // --------------------------------------------------------------- M3-01
@@ -841,19 +846,147 @@ class ReviewAuditTest extends TestCase
         $this->assertTrue(session('tool_authenticated'));
     }
 
+    // ---------------------------------------------------------------- S6
+
+    /**
+     * P-09 (behoben): Die API-Zugangsdaten stehen nicht mehr im Query-String
+     * jedes Schreibzugriffs — von dort landeten sie im Zugriffslog des
+     * Webservers.
+     */
+    public function test_P09_write_requests_do_not_carry_credentials_in_the_url(): void
+    {
+        $this->fakeCollectiveShop();
+
+        app(ShopProvisioner::class)->apply($this->onboarding());
+
+        foreach (Http::recorded() as [$request]) {
+            if ($request->method() === 'GET' || ! str_contains($request->url(), '/wc/v3/')) {
+                continue;
+            }
+            $this->assertStringNotContainsString('consumer_secret', $request->url(), 'Kein Schlüssel in der Adresse: '.$request->url());
+        }
+    }
+
+    /**
+     * P-15 (behoben): Das Logo wird nur einmal in die Mediathek geladen. Vorher
+     * erzeugte jeder weitere Anlageversuch eine Dublette.
+     */
+    public function test_P15_logo_is_uploaded_to_the_media_library_only_once(): void
+    {
+        $this->fakeCollectiveShop([
+            'shop.example/uploads/*' => Http::response('img', 200, ['Content-Type' => 'image/png']),
+            'shop.example/wp-json/wp/v2/media*' => Http::response(['id' => 555, 'source_url' => 'https://shop.example/logo.png'], 201),
+        ]);
+        $record = $this->onboarding(['logo_front_url' => 'https://shop.example/uploads/logo.png']);
+
+        app(ShopProvisioner::class)->apply($record);
+        app(ShopProvisioner::class)->apply($record->fresh());
+
+        $uploads = 0;
+        foreach (Http::recorded() as [$request]) {
+            if ($request->method() === 'POST' && str_contains($request->url(), '/wp/v2/media')) {
+                $uploads++;
+            }
+        }
+
+        $this->assertSame(1, $uploads, 'Genau ein Mediathek-Upload für zwei Anlagevorgänge.');
+        $this->assertSame(555, $record->fresh()->featured_media_id);
+    }
+
+    /**
+     * P-17 (behoben): Dieselbe Submission zweimal zugestellt ergibt einen
+     * Antrag, nicht zwei — und später nicht zwei Shops.
+     */
+    public function test_P17_duplicate_webhook_submission_creates_one_onboarding(): void
+    {
+        $payload = ['entry_id' => '669', 'input_text_6' => 'AHS Testschule', 'datetime' => '16.04.2026'];
+
+        $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
+        $second = $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
+
+        $this->assertSame(1, SchoolOnboarding::count());
+        $this->assertTrue($second->json('duplicate'));
+    }
+
+    /**
+     * PS-02 (behoben): Die Bestelladresse für den QR-Code kommt aus dem echten
+     * Kategorie-Slug des Shops. Aus dem Schulnamen abgeleitet wäre sie bei
+     * Umlauten falsch — und das fällt erst auf dem gedruckten Aushang auf.
+     */
+    public function test_PS02_shop_url_uses_the_real_category_slug(): void
+    {
+        $this->fakeCollectiveShop([
+            'shop.example/wp-json/wc/v3/products/categories*' => Http::response(
+                ['id' => 77, 'name' => 'BG Wörgl', 'slug' => 'bg-woergl', 'parent' => 15], 201,
+            ),
+        ]);
+        $record = $this->onboarding(['school_name' => 'BG Wörgl']);
+
+        app(ShopProvisioner::class)->apply($record);
+
+        $record->refresh();
+        $this->assertSame('bg-woergl', $record->woo_category_slug);
+        $this->assertStringContainsString(
+            'bg-woergl',
+            app(\App\Services\PresentationSheet\PresentationSheetRenderer::class)->shopUrl($record),
+        );
+    }
+
+    /**
+     * CO-01 (behoben): Die Provision wird je Staffel gerechnet statt Stück für
+     * Stück. Eine unplausibel große Menge im Export ließ den Vorgang vorher
+     * praktisch hängen.
+     */
+    public function test_CO01_commission_is_computed_without_looping_per_piece(): void
+    {
+        $calculator = app(\App\Services\CommissionCalculator::class);
+
+        // Gleiche Ergebnisse wie die alte Schleife …
+        foreach ([0, 1, 5, 49, 50, 51, 200] as $pieces) {
+            $this->assertSame(
+                $this->commissionByLoop($pieces),
+                (float) $calculator->calculate($pieces),
+                "Provision bei {$pieces} Stück",
+            );
+        }
+
+        // … und eine unsinnige Menge rechnet trotzdem sofort durch.
+        $start = microtime(true);
+        $calculator->calculate(50_000_000);
+        $this->assertLessThan(1.0, microtime(true) - $start, 'Auch eine unsinnige Menge blockiert nicht.');
+    }
+
+    /** Die frühere Rechenweise, Stück für Stück — als Vergleichsmaßstab. */
+    private function commissionByLoop(int $pieces): float
+    {
+        $config = config('ordersuite.commission');
+        $commission = 0.0;
+        for ($i = 0; $i < $pieces; $i++) {
+            foreach ($config['tiers'] as $tier) {
+                if ($i >= $tier['from'] && ($tier['to'] === null || $i <= $tier['to'])) {
+                    $commission += $tier['amount'];
+                    break;
+                }
+            }
+        }
+        if ($commission < $config['minimum'] && $pieces >= $config['minimum_from_pieces']) {
+            $commission = $config['minimum'];
+        }
+
+        return $commission;
+    }
+
     // ---------------------------------------------------------------- O-01
 
     /**
-     * O-01 (mittel): Eine beschädigte meta.json führt zum nackten 500er statt
-     * zur erklärten Meldung — entgegen der eigenen Konvention.
-     *
-     * SOLL: verständliche Meldung, zurück zu Schritt 1.
+     * O-01 (behoben): Eine beschädigte meta.json ergibt eine erklärte Meldung
+     * mit eigenem HTTP-Status statt eines nackten 500ers.
      */
-    public function test_O01_corrupt_job_metadata_produces_a_bare_500(): void
+    public function test_O01_corrupt_job_metadata_gives_an_explained_error(): void
     {
         $jobId = (string) Str::uuid();
         Storage::disk('local')->put("jobs/{$jobId}/meta.json", 'kein json');
 
-        $this->get("/job/{$jobId}")->assertStatus(500);
+        $this->get("/job/{$jobId}")->assertStatus(410);
     }
 }

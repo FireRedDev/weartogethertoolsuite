@@ -9,6 +9,15 @@ namespace App\Services\SchoolShop;
  */
 class ProductConfigurator
 {
+    /** Obergrenzen gegen Tippfehler und manipulierte Formularfelder. */
+    private const MAX_PRICE = 9999.0;
+
+    private const MAX_OPTIONS = 60;
+
+    private const MAX_OPTION_LENGTH = 40;
+
+    private const MAX_LABEL_LENGTH = 80;
+
     /**
      * Startzustand aus den Formular-Produktwünschen.
      *
@@ -130,6 +139,36 @@ class ProductConfigurator
      * @param  array<int, array<string, mixed>>  $current
      * @param  array<string, array<string, mixed>>  $input  key => Felder
      */
+    /** Preise ohne Vorzeichenfehler und in plausiblen Grenzen. */
+    private static function price(mixed $value, float $fallback = 0.0): float
+    {
+        $normalized = str_replace(',', '.', (string) $value);
+        if (! is_numeric($normalized)) {
+            return $fallback;
+        }
+
+        // Ein negativer Preis wäre sonst genau so an WooCommerce bzw. Printify
+        // geschrieben worden; nach oben eine Grenze gegen Tippfehler.
+        return round(max(0.0, min(self::MAX_PRICE, (float) $normalized)), 2);
+    }
+
+    /**
+     * Kommaliste zu Größen/Farben — begrenzt in Anzahl und Länge.
+     *
+     * Aus diesen Werten entstehen SHOPWEITE Attribut-Terms: Ein Tippfehler
+     * bleibt für alle Schulen im Shop stehen und ist über das Tool nicht mehr
+     * löschbar. Deshalb eine Obergrenze statt beliebig vieler Einträge.
+     *
+     * @return list<string>
+     */
+    private static function optionList(mixed $value): array
+    {
+        $parts = array_filter(array_map('trim', explode(',', (string) $value)));
+        $parts = array_map(fn ($p) => mb_substr($p, 0, self::MAX_OPTION_LENGTH), $parts);
+
+        return array_values(array_slice(array_unique($parts), 0, self::MAX_OPTIONS));
+    }
+
     public static function applyInput(array $current, array $input): array
     {
         $existingKeys = [];
@@ -143,15 +182,15 @@ class ProductConfigurator
             }
             $fields = $input[$key] ?? [];
             $current[$i]['enabled'] = ! empty($fields['enabled']);
-            if (isset($fields['base_price']) && is_numeric(str_replace(',', '.', (string) $fields['base_price']))) {
-                $current[$i]['base_price'] = round((float) str_replace(',', '.', (string) $fields['base_price']), 2);
+            if (isset($fields['base_price'])) {
+                $current[$i]['base_price'] = self::price($fields['base_price'], (float) $current[$i]['base_price']);
             }
-            if (isset($fields['indiv_surcharge']) && is_numeric(str_replace(',', '.', (string) $fields['indiv_surcharge']))) {
-                $current[$i]['indiv_surcharge'] = round((float) str_replace(',', '.', (string) $fields['indiv_surcharge']), 2);
+            if (isset($fields['indiv_surcharge'])) {
+                $current[$i]['indiv_surcharge'] = self::price($fields['indiv_surcharge'], (float) $current[$i]['indiv_surcharge']);
             }
             foreach (['sizes', 'colors'] as $listField) {
                 if (isset($fields[$listField])) {
-                    $current[$i][$listField] = array_values(array_filter(array_map('trim', explode(',', (string) $fields[$listField]))));
+                    $current[$i][$listField] = self::optionList($fields[$listField]);
                 }
             }
             foreach (['printify_blueprint_id', 'printify_provider_id'] as $idField) {
@@ -171,7 +210,8 @@ class ProductConfigurator
                 continue;
             }
             $existingKeys[$key] = true;
-            $label = trim((string) ($fields['label'] ?? '')) ?: 'Neues Produkt';
+            // Das Label steckt später im Produktnamen im Shop — begrenzen.
+            $label = mb_substr(trim((string) ($fields['label'] ?? '')), 0, self::MAX_LABEL_LENGTH) ?: 'Neues Produkt';
             $current[] = [
                 'key' => $key,
                 'label' => $label,
@@ -180,10 +220,10 @@ class ProductConfigurator
                 'supplier_code' => '',
                 'no_individualisierung' => false,
                 'enabled' => ! empty($fields['enabled']),
-                'base_price' => is_numeric(str_replace(',', '.', (string) ($fields['base_price'] ?? ''))) ? round((float) str_replace(',', '.', (string) $fields['base_price']), 2) : 0.0,
-                'indiv_surcharge' => is_numeric(str_replace(',', '.', (string) ($fields['indiv_surcharge'] ?? ''))) ? round((float) str_replace(',', '.', (string) $fields['indiv_surcharge']), 2) : 0.0,
-                'sizes' => array_values(array_filter(array_map('trim', explode(',', (string) ($fields['sizes'] ?? ''))))),
-                'colors' => array_values(array_filter(array_map('trim', explode(',', (string) ($fields['colors'] ?? ''))))),
+                'base_price' => self::price($fields['base_price'] ?? ''),
+                'indiv_surcharge' => self::price($fields['indiv_surcharge'] ?? ''),
+                'sizes' => self::optionList($fields['sizes'] ?? ''),
+                'colors' => self::optionList($fields['colors'] ?? ''),
                 'printify_blueprint_id' => isset($fields['printify_blueprint_id']) && ctype_digit(trim((string) $fields['printify_blueprint_id'])) ? (int) $fields['printify_blueprint_id'] : null,
                 'printify_provider_id' => isset($fields['printify_provider_id']) && ctype_digit(trim((string) $fields['printify_provider_id'])) ? (int) $fields['printify_provider_id'] : null,
             ];

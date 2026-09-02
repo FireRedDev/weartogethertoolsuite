@@ -212,7 +212,7 @@ class SchoolLogoAndPrintTest extends TestCase
 
         Http::fake([
             'shop.example/wp-json/wc/v3/products/categories?*search=Schulen*' => Http::response([['id' => 15, 'name' => 'Schulen', 'parent' => 0]]),
-            'shop.example/wp-json/wc/v3/products/categories?*' => Http::response(['id' => 77, 'name' => 'AHS Testschule', 'parent' => 15], 201),
+            'shop.example/wp-json/wc/v3/products/categories*' => Http::response(['id' => 77, 'name' => 'AHS Testschule', 'parent' => 15], 201),
             'shop.example/wp-json/wc/v3/products/shipping_classes*' => Http::response([['id' => 9, 'slug' => 'on-demand']]),
             'shop.example/wp-json/wp/v2/schule*' => Http::response(['id' => 900], 201),
             'shop.example/wp-json/wp/v2/media*' => Http::response(['id' => 555, 'source_url' => 'https://shop.example/l.png'], 201),

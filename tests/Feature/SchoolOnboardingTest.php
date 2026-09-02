@@ -267,14 +267,14 @@ class SchoolOnboardingTest extends TestCase
                 ['id' => 15, 'name' => 'Schulen', 'parent' => 0],
             ]),
             'shop.example/wp-json/wc/v3/products/categories?*search=AHS*' => Http::response([]),
-            'shop.example/wp-json/wc/v3/products/categories?*' => Http::response(['id' => 77, 'name' => 'AHS Testschule', 'parent' => 15], 201),
+            'shop.example/wp-json/wc/v3/products/categories*' => Http::response(['id' => 77, 'name' => 'AHS Testschule', 'parent' => 15], 201),
             'shop.example/wp-json/wc/v3/products/attributes/*/terms*' => Http::response([]),
             'shop.example/wp-json/wc/v3/products/attributes?*' => Http::response([
                 ['id' => 1, 'name' => 'Größe'], ['id' => 2, 'name' => 'Farbe'],
                 ['id' => 3, 'name' => 'Klasse'], ['id' => 4, 'name' => 'Individualisierung'],
             ]),
             'shop.example/wp-json/wc/v3/products/*/variations*' => Http::response(['id' => 501], 201),
-            'shop.example/wp-json/wc/v3/products?*' => Http::response(['id' => 401, 'name' => 'AHS Testschule Schulpullover'], 201),
+            'shop.example/wp-json/wc/v3/products*' => Http::response(['id' => 401, 'name' => 'AHS Testschule Schulpullover'], 201),
             // CPT: Create/Update/Get liefern den Eintrag mit gesetzten Feldern zurück
             // (damit die Rücklese-Verifikation die Felder als gesetzt erkennt)
             'shop.example/wp-json/wp/v2/schule*' => Http::response([
@@ -311,7 +311,9 @@ class SchoolOnboardingTest extends TestCase
         // Wie der Excel-Master: ALLE Attribute variation=true (Variationen = "Any"
         // außer Individualisierung), Standard-Größe M, Beschreibung ohne \n-Literale.
         Http::assertSent(function ($request) {
-            if (! str_contains($request->url(), '/wc/v3/products?') || $request->method() !== 'POST') {
+            // Die Zugangsdaten stehen nicht mehr im Query-String, die Anlage-URL
+            // hat deshalb gar keinen mehr.
+            if (parse_url($request->url(), PHP_URL_PATH) !== '/wp-json/wc/v3/products' || $request->method() !== 'POST') {
                 return false;
             }
             $body = $request->data();
@@ -355,11 +357,11 @@ class SchoolOnboardingTest extends TestCase
         // eine konkrete Handlungsanweisung ausgeben, statt still zu schlucken.
         Http::fake([
             'shop.example/wp-json/wc/v3/products/categories?*search=Schulen*' => Http::response([['id' => 15, 'name' => 'Schulen', 'parent' => 0]]),
-            'shop.example/wp-json/wc/v3/products/categories?*' => Http::response(['id' => 77, 'name' => 'AHS Testschule', 'parent' => 15], 201),
+            'shop.example/wp-json/wc/v3/products/categories*' => Http::response(['id' => 77, 'name' => 'AHS Testschule', 'parent' => 15], 201),
             'shop.example/wp-json/wc/v3/products/attributes/*/terms*' => Http::response([]),
             'shop.example/wp-json/wc/v3/products/attributes?*' => Http::response([['id' => 3, 'name' => 'Klasse'], ['id' => 4, 'name' => 'Individualisierung']]),
             'shop.example/wp-json/wc/v3/products/*/variations*' => Http::response(['id' => 501], 201),
-            'shop.example/wp-json/wc/v3/products?*' => Http::response(['id' => 401], 201),
+            'shop.example/wp-json/wc/v3/products*' => Http::response(['id' => 401], 201),
             // Antwort OHNE die Felder → Verifikation muss anschlagen
             'shop.example/wp-json/wp/v2/schule*' => Http::response(['id' => 900], 201),
             'shop.example/wp-json/wp/v2/media*' => Http::response(['id' => 555], 201),
@@ -385,7 +387,7 @@ class SchoolOnboardingTest extends TestCase
     {
         Http::fake([
             'shop.example/wp-json/wc/v3/products/categories?*search=Schulen*' => Http::response([['id' => 15, 'name' => 'Schulen', 'parent' => 0]]),
-            'shop.example/wp-json/wc/v3/products/categories?*' => Http::response(['id' => 78, 'name' => 'X', 'parent' => 15], 201),
+            'shop.example/wp-json/wc/v3/products/categories*' => Http::response(['id' => 78, 'name' => 'X', 'parent' => 15], 201),
             'shop.example/wp-json/wc/v3/products/shipping_classes*' => Http::response([['slug' => 'andere-klasse']]),
         ]);
 
@@ -467,7 +469,7 @@ class SchoolOnboardingTest extends TestCase
     {
         Http::fake([
             'shop.example/wp-json/wc/v3/products/categories?*search=Schulen*' => Http::response([['id' => 15, 'name' => 'Schulen', 'parent' => 0]]),
-            'shop.example/wp-json/wc/v3/products/categories?*' => Http::response(['id' => 77, 'name' => 'AHS Testschule', 'parent' => 15], 201),
+            'shop.example/wp-json/wc/v3/products/categories*' => Http::response(['id' => 77, 'name' => 'AHS Testschule', 'parent' => 15], 201),
             'shop.example/wp-json/wc/v3/products/shipping_classes*' => Http::response([['id' => 9, 'slug' => 'on-demand']]),
             'shop.example/wp-json/wp/v2/schule*' => Http::response([
                 'id' => 900, 'bestellfensterstart' => '2026-04-16 00:00:00', 'bestellfensterende' => 'x',
@@ -518,14 +520,14 @@ class SchoolOnboardingTest extends TestCase
             && collect($r->data()['variants'] ?? [])->every(fn ($v) => $v['price'] === 3999));
         Http::assertSent(fn ($r) => str_contains($r->url(), '/publish.json'));
         // Kein direkter Woo-Produkt-POST im On-Demand-Weg
-        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/wc/v3/products?') && $r->method() === 'POST');
+        Http::assertNotSent(fn ($r) => parse_url($r->url(), PHP_URL_PATH) === '/wp-json/wc/v3/products' && $r->method() === 'POST');
     }
 
     public function test_ondemand_provisioning_requires_blueprint_assignment(): void
     {
         Http::fake([
             'shop.example/wp-json/wc/v3/products/categories?*search=Schulen*' => Http::response([['id' => 15, 'name' => 'Schulen', 'parent' => 0]]),
-            'shop.example/wp-json/wc/v3/products/categories?*' => Http::response(['id' => 77, 'name' => 'X', 'parent' => 15], 201),
+            'shop.example/wp-json/wc/v3/products/categories*' => Http::response(['id' => 77, 'name' => 'X', 'parent' => 15], 201),
             'shop.example/wp-json/wc/v3/products/shipping_classes*' => Http::response([['id' => 9, 'slug' => 'on-demand']]),
         ]);
 

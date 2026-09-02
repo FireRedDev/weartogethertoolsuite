@@ -23,7 +23,8 @@ class FluentFormsMapper
         $formProducts = $this->list($payload, $deliveryType === 'ondemand' ? 'multi_select_1' : 'multi_select_4');
         $formColors = $this->list($payload, $deliveryType === 'ondemand' ? 'multi_select_2' : 'multi_select_3');
 
-        $schoolName = trim($this->str($payload, 'input_text_6')) ?: 'Unbenannte Schule';
+        // Der Name steckt später in jedem Produktnamen im Shop — begrenzen.
+        $schoolName = mb_substr(trim($this->str($payload, 'input_text_6')), 0, 150) ?: 'Unbenannte Schule';
 
         if ($deliveryType === 'ondemand') {
             // On-Demand: Produkte werden laufend einzeln verschickt, kein Bestellfenster nötig.
@@ -84,9 +85,16 @@ class FluentFormsMapper
         $value = $payload[$key] ?? [];
         if (is_string($value)) {
             // FluentForms liefert Mehrfachauswahl je nach Konfiguration als
-            // Array oder als kommaseparierten String
+            // Array oder als getrennten String. Getrennt wird an Zeilenumbrüchen
+            // und Semikolons, an Kommas nur, wenn keines der beiden vorkommt —
+            // sonst zerfiele ein Produktname mit Komma darin.
             $decoded = json_decode($value, true);
-            $value = is_array($decoded) ? $decoded : array_map('trim', explode(',', $value));
+            if (is_array($decoded)) {
+                $value = $decoded;
+            } else {
+                $separator = preg_match('/[\r\n;]/', $value) ? '/[\r\n;]+/' : '/,/';
+                $value = preg_split($separator, $value) ?: [];
+            }
         }
         if (! is_array($value)) {
             return [];

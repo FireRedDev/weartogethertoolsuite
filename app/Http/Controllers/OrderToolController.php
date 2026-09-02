@@ -97,7 +97,9 @@ class OrderToolController extends Controller
             'pivot_columns' => $result->pivotListColumns,
             'pivot_rows' => $result->pivotListRows,
         ];
-        file_put_contents($dir.'/preview.json', json_encode($preview, JSON_UNESCAPED_UNICODE));
+        if (file_put_contents($dir.'/preview.json', json_encode($preview, JSON_UNESCAPED_UNICODE)) === false) {
+            return back()->withErrors(['generate' => 'Die Vorschau konnte nicht gespeichert werden — vermutlich ist der Speicherplatz auf dem Server erschöpft.'])->withInput();
+        }
 
         $meta = array_merge($meta, [
             'generated' => true,
@@ -151,7 +153,9 @@ class OrderToolController extends Controller
         }
         $zip->close();
 
-        return response()->download($zipPath);
+        // Nach dem Senden aufräumen: Das Archiv lässt sich jederzeit neu
+        // packen und würde sonst bis zum nächsten Aufräumlauf liegen bleiben.
+        return response()->download($zipPath)->deleteFileAfterSend();
     }
 
     private function jobDir(string $jobId): string
@@ -166,7 +170,12 @@ class OrderToolController extends Controller
         $path = $this->jobDir($jobId).'/meta.json';
         abort_unless(is_file($path), 404);
 
-        return json_decode((string) file_get_contents($path), true);
+        $meta = json_decode((string) file_get_contents($path), true);
+        // Eine unlesbare Datei darf keinen kahlen 500er ergeben — dann lieber
+        // wie ein nicht vorhandener Auftrag behandeln, mit erklärter Seite.
+        abort_unless(is_array($meta), 410, 'Die Daten zu diesem Auftrag sind unlesbar oder unvollständig. Bitte den Shop-Export erneut hochladen.');
+
+        return $meta;
     }
 
     private function writeMeta(string $jobId, array $meta): void

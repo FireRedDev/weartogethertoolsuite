@@ -43,7 +43,10 @@ class LogoManager
      */
     public function store(SchoolOnboarding $onboarding, string $slot, UploadedFile $file): ?string
     {
-        $this->deleteStoredFile($onboarding, $slot);
+        // Erst das Neue vollständig ablegen, dann umschalten. Würde vorher
+        // gelöscht, stünde nach einem gescheiterten Mediathek-Upload gar kein
+        // Logo mehr bereit — auch das alte, funktionierende nicht.
+        $previousPath = $onboarding->logoPath($slot);
 
         $extension = mb_strtolower($file->getClientOriginalExtension() ?: 'png');
         $path = $file->storeAs(
@@ -51,11 +54,6 @@ class LogoManager
             $slot.'-'.Str::random(10).'.'.$extension,
             self::DISK,
         );
-
-        $onboarding->forceFill([
-            "logo_{$slot}_path" => $path,
-            "logo_{$slot}_url" => null,
-        ])->save();
 
         // Öffentlich erreichbare Kopie in der WordPress-Mediathek
         try {
@@ -67,12 +65,23 @@ class LogoManager
         } catch (\Throwable $e) {
             report($e);
 
+            // Die neue Datei liegt im Tool, die öffentliche Adresse fehlt.
+            $onboarding->forceFill([
+                "logo_{$slot}_path" => $path,
+                "logo_{$slot}_url" => null,
+            ])->save();
+            $this->deleteFile($previousPath);
+
             return 'Das Logo wurde im Tool gespeichert, konnte aber nicht in die WordPress-Mediathek geladen werden: '
                 .$e->getMessage()
                 .' — Printify und die Mockup-Erzeugung brauchen eine öffentlich erreichbare Adresse. Bitte die WordPress-Verbindung prüfen (Admin-Informationen) und das Logo danach erneut hochladen.';
         }
 
-        $onboarding->forceFill(["logo_{$slot}_url" => $media['source_url']])->save();
+        $onboarding->forceFill([
+            "logo_{$slot}_path" => $path,
+            "logo_{$slot}_url" => $media['source_url'],
+        ])->save();
+        $this->deleteFile($previousPath);
 
         return null;
     }
@@ -158,7 +167,11 @@ class LogoManager
 
     private function deleteStoredFile(SchoolOnboarding $onboarding, string $slot): void
     {
-        $path = $onboarding->logoPath($slot);
+        $this->deleteFile($onboarding->logoPath($slot));
+    }
+
+    private function deleteFile(?string $path): void
+    {
         if ($path && Storage::disk(self::DISK)->exists($path)) {
             Storage::disk(self::DISK)->delete($path);
         }

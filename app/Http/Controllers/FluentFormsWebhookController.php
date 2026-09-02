@@ -45,6 +45,22 @@ class FluentFormsWebhookController extends Controller
         ]);
     }
 
+    /**
+     * Kennung der Submission, sofern FluentForms eine mitschickt. Die Namen
+     * unterscheiden sich je nach Konfiguration des Webhooks.
+     */
+    private function entryId(array $payload): ?string
+    {
+        foreach (['entry_id', 'submission_id', 'id', '__entry_id'] as $key) {
+            $value = $payload[$key] ?? null;
+            if (is_scalar($value) && trim((string) $value) !== '') {
+                return trim((string) $value);
+            }
+        }
+
+        return null;
+    }
+
     public function receive(Request $request, string $secret, FluentFormsMapper $mapper): JsonResponse
     {
         $expected = (string) config('schoolshop.webhook_secret');
@@ -88,6 +104,23 @@ class FluentFormsWebhookController extends Controller
         if ($payload === []) {
             $logEntry->update(['outcome' => 'leerer Payload empfangen — als leerer Antrag gesichert']);
             Log::warning('FluentForms-Webhook: leerer Payload. Sendet FluentForms die Felder als JSON/Formulardaten?');
+        }
+
+        // Dieselbe Submission kann mehrfach ankommen (Wiederholung durch
+        // FluentForms, doppelt gedrückter Absendeknopf). Ohne Erkennung
+        // entstünden zwei Anträge — und später womöglich zwei Shops.
+        $entryId = $this->entryId($payload);
+        if ($entryId !== null) {
+            $existing = SchoolOnboarding::query()
+                ->where('source', 'webhook')
+                ->whereJsonContains('raw_entry->__entry_id', $entryId)
+                ->first();
+            if ($existing !== null) {
+                $logEntry->update(['outcome' => "Dublette zu Antrag #{$existing->id} — nicht erneut angelegt"]);
+
+                return response()->json(['ok' => true, 'id' => $existing->id, 'duplicate' => true]);
+            }
+            $payload['__entry_id'] = $entryId;
         }
 
         try {

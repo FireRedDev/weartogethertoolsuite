@@ -241,11 +241,14 @@ class PresentationSheetRenderer
             return $onboarding->sheet_shop_url;
         }
 
-        return str_replace(
-            '{slug}',
-            Str::slug($onboarding->school_name),
-            (string) config('presentation_sheet.shop_url_pattern'),
-        );
+        // Bevorzugt der echte Slug aus dem Shop. Er wird beim Anlegen der
+        // Kategorie mitgeschrieben. Nur solange er fehlt (Altbestand, noch
+        // nicht angelegt) wird er aus dem Schulnamen abgeleitet — WordPress
+        // schreibt Umlaute anders um, und ein falscher QR-Code fällt erst auf
+        // dem gedruckten Aushang auf.
+        $slug = $onboarding->woo_category_slug ?: Str::slug($onboarding->school_name);
+
+        return str_replace('{slug}', $slug, (string) config('presentation_sheet.shop_url_pattern'));
     }
 
     /**

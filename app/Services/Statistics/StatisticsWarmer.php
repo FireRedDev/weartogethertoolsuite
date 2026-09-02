@@ -34,6 +34,25 @@ class StatisticsWarmer
 
     private const ERROR = 'statistics.warm.error';
 
+    /**
+     * Sperre, Laufzeit-Marke und Fehler gelten je FILTERSATZ. Global gehalten
+     * würden sich zwei Personen mit verschiedenen Schuljahren oder
+     * Bestellstatus gegenseitig blockieren und fremde Fehler sehen.
+     */
+    /** Der Sperrschlüssel dieses Filtersatzes — auch für Tests und Diagnose. */
+    public function lockKey(StatisticsFilters $filters): string
+    {
+        return $this->key(self::LOCK, $filters);
+    }
+
+    private function key(string $base, StatisticsFilters $filters): string
+    {
+        $statuses = $filters->statuses;
+        sort($statuses);
+
+        return $base.'.'.substr(md5($filters->year->key().'|'.implode(',', $statuses).'|'.$filters->fetchPadding()), 0, 8);
+    }
+
     public function __construct(private readonly OrderRepository $repository) {}
 
     /**
@@ -59,8 +78,8 @@ class StatisticsWarmer
             'total' => $total,
             'percent' => $total > 0 ? (int) floor($loaded / $total * 100) : 100,
             'done' => $loaded >= $total,
-            'running' => (bool) Cache::get(self::RUNNING, false),
-            'error' => Cache::get(self::ERROR),
+            'running' => (bool) Cache::get($this->key(self::RUNNING, $filters), false),
+            'error' => Cache::get($this->key(self::ERROR, $filters)),
         ];
     }
 
@@ -77,7 +96,7 @@ class StatisticsWarmer
     {
         // Sperr-Laufzeit knapp über dem Budget: stirbt ein Durchgang
         // unsanft, blockiert er den nächsten nicht minutenlang.
-        $lock = Cache::lock(self::LOCK, (int) ($budgetSeconds ?? config('statistics.warm_budget_seconds')) + 60);
+        $lock = Cache::lock($this->key(self::LOCK, $filters), (int) ($budgetSeconds ?? config('statistics.warm_budget_seconds')) + 60);
         if (! $lock->get()) {
             return ['ran' => false, 'fetched' => 0];
         }
@@ -99,7 +118,7 @@ class StatisticsWarmer
         // meldete die Ladeseite nach einem harten Abbruch (Deploy, Speichernot)
         // noch minutenlang „läuft", ohne dass jemand lädt — und stieße
         // deshalb auch keinen neuen Durchgang an.
-        Cache::put(self::RUNNING, true, now()->addSeconds((int) $budget + 60));
+        Cache::put($this->key(self::RUNNING, $filters), true, now()->addSeconds((int) $budget + 60));
 
         try {
             if (! $this->repository->hasCategories()) {
@@ -125,21 +144,21 @@ class StatisticsWarmer
                 $this->pause($pause);
             }
 
-            Cache::forget(self::ERROR);
+            Cache::forget($this->key(self::ERROR, $filters));
         } catch (WooCommerceApiException $e) {
             // Der Fehler gehört auf die Ladeseite, nicht ins Nichts.
-            Cache::put(self::ERROR, [
+            Cache::put($this->key(self::ERROR, $filters), [
                 'message' => $e->userMessage().($e->hint() ? ' '.$e->hint() : ''),
                 'technical' => $e->getMessage(),
             ], now()->addSeconds($this->errorTtl()));
         } catch (\Throwable $e) {
             report($e);
-            Cache::put(self::ERROR, [
+            Cache::put($this->key(self::ERROR, $filters), [
                 'message' => 'Beim Aufbau der Auswertung ist ein unerwarteter Fehler aufgetreten. Der Aufbau versucht es gleich noch einmal.',
                 'technical' => get_class($e).': '.$e->getMessage(),
             ], now()->addSeconds($this->errorTtl()));
         } finally {
-            Cache::forget(self::RUNNING);
+            Cache::forget($this->key(self::RUNNING, $filters));
             $lock->release();
         }
 
@@ -154,7 +173,7 @@ class StatisticsWarmer
         foreach ($this->years($filters) as $year) {
             $this->repository->forget($year, $filters->statuses, $filters->fetchPadding());
         }
-        Cache::forget(self::ERROR);
+        Cache::forget($this->key(self::ERROR, $filters));
     }
 
     /**

@@ -140,6 +140,10 @@ class ShopProvisioner
                 $category = $run("Kategorie '{$onboarding->school_name}' anlegen",
                     fn () => $this->woo->ensureCategory($onboarding->school_name, (int) $parentCategory['id']));
                 $onboarding->woo_category_id = (int) $category['id'];
+                // Den echten Slug mitnehmen: Aus ihm entsteht die Bestelladresse
+                // für den QR-Code des Präsentationsblatts. Aus dem Schulnamen
+                // abgeleitet wäre sie bei Umlauten falsch.
+                $onboarding->woo_category_slug = $category['slug'] ?? null;
                 $onboarding->save();
             }
 
@@ -223,10 +227,17 @@ class ShopProvisioner
             $logoUrl = $onboarding->logoUrl('front');
             if ($logoUrl && $onboarding->pods_post_id) {
                 $run('Logo als Beitragsbild setzen', function () use ($onboarding, $logoUrl) {
-                    $mediaId = $this->wordpress->uploadMediaFromUrl($logoUrl);
-                    $this->wordpress->setFeaturedImage($onboarding->pods_post_id, $mediaId);
+                    // Einmal hochgeladene Logos wiederverwenden. Sonst legt
+                    // jeder weitere Anlageversuch eine Dublette in der
+                    // Mediathek an.
+                    $known = $onboarding->featured_media_id;
+                    $mediaId = $known ?: $this->wordpress->uploadMediaFromUrl($logoUrl);
+                    $this->wordpress->setFeaturedImage($onboarding->pods_post_id, (int) $mediaId);
+                    if (! $known) {
+                        $onboarding->forceFill(['featured_media_id' => (int) $mediaId])->save();
+                    }
 
-                    return "Media-ID {$mediaId}";
+                    return $known ? "Media-ID {$mediaId} (bereits vorhanden)" : "Media-ID {$mediaId}";
                 });
             }
 
@@ -404,7 +415,12 @@ class ShopProvisioner
             $state = $this->mockupState($onboarding, $key);
             $plan = $this->mockups->planForProduct($onboarding, $product);
             if ($plan === []) {
-                $log[] = ['step' => "Mockups {$key}", 'ok' => true, 'detail' => "keine Vorlagen für '{$key}' konfiguriert (config/schoolshop.php → mockups.templates) — übersprungen"];
+                $configured = config("schoolshop.mockups.templates.{$key}", []);
+                $detail = ($configured['lifestyle'] ?? []) === [] && ($configured['detail'] ?? []) === []
+                    ? "keine Vorlagen für '{$key}' konfiguriert (config/schoolshop.php → mockups.templates) — übersprungen"
+                    : "Vorlagen für '{$key}' sind konfiguriert, aber keine passt zu den gewählten Schulfarben ("
+                        .implode(', ', $product['colors'] ?? []).') — übersprungen. Ein Detailfoto in der falschen Farbe wäre irreführend.';
+                $log[] = ['step' => "Mockups {$key}", 'ok' => true, 'detail' => $detail];
 
                 continue;
             }
@@ -672,6 +688,23 @@ class ShopProvisioner
     {
         $log = [];
 
+        try {
+            return $this->runClose($onboarding, $log);
+        } finally {
+            // Auch ein Abbruch mitten in der Produktschleife soll nachvollziehbar
+            // bleiben: Was bis dahin passiert ist, gehört ins Protokoll.
+            $onboarding->provision_log = array_merge($onboarding->provision_log ?? [], $log);
+            $onboarding->save();
+        }
+    }
+
+    /**
+     * @param  list<array{step: string, ok: bool, detail: string}>  $log
+     * @return list<array{step: string, ok: bool, detail: string}>
+     */
+    private function runClose(SchoolOnboarding $onboarding, array &$log): array
+    {
+
         [$products, $note] = $this->productsOfSchool($onboarding);
         if ($note !== null) {
             $log[] = ['step' => 'Shop-Produkte suchen', 'ok' => true, 'detail' => $note];
@@ -718,7 +751,6 @@ class ShopProvisioner
         if ($products !== [] && $this->allProductsAre($products, 'private', $closed)) {
             $onboarding->status = OnboardingStatus::ABGESCHLOSSEN;
         }
-        $onboarding->provision_log = array_merge($onboarding->provision_log ?? [], $log);
         $onboarding->save();
 
         return $log;
@@ -793,6 +825,12 @@ class ShopProvisioner
         }
 
         $onboarding->window_end = $end;
+        // Ein wieder geöffnetes Fenster beginnt heute, wenn der alte Start
+        // längst vorbei ist — sonst stünde auf dem Präsentationsblatt und in
+        // der Statistik ein Zeitraum über viele Monate.
+        if ($onboarding->window_start === null || $onboarding->window_start->isPast()) {
+            $onboarding->window_start = Carbon::today();
+        }
         // Nachfrist wieder frei: das ist ein neues Fenster.
         OrderWindowExtender::resetFor($onboarding);
         // Wie beim Schließen: Der Status folgt dem Zustand der Produkte. Sonst

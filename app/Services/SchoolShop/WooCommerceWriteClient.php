@@ -245,10 +245,9 @@ class WooCommerceWriteClient
             // aber ohne www läuft). Stattdessen klarer Abbruch mit Erklärung.
             $pending = Http::withBasicAuth($key, $secret)->timeout($this->timeout)->acceptJson()
                 ->withOptions(['allow_redirects' => false]);
-            $response = $method === 'get' ? $pending->get($url, $query) : $pending->{$method}($url.'?'.http_build_query($query + [
-                // Fallback für Hoster, die den Authorization-Header verwerfen
-                'consumer_key' => $key, 'consumer_secret' => $secret,
-            ]), $body);
+            $response = $method === 'get'
+                ? $pending->get($url, $query)
+                : $pending->{$method}($query === [] ? $url : $url.'?'.http_build_query($query), $body);
         } catch (ConnectionException $e) {
             throw WooCommerceApiException::unreachable("{$method} {$url}: {$e->getMessage()}");
         }
@@ -262,8 +261,18 @@ class WooCommerceWriteClient
             );
         }
 
-        if ($method === 'get' && $response->status() === 401 && str_contains($response->body(), 'woocommerce_rest_cannot_view')) {
-            $response = Http::timeout(60)->acceptJson()->get($url, $query + ['consumer_key' => $key, 'consumer_secret' => $secret]);
+        // Rückfallebene für Hoster, die den Authorization-Header verwerfen:
+        // Schlüssel in der Adresse. Bewusst NUR nach einem 401 und nur beim
+        // Lesen — sonst stünden die Zugangsdaten bei jedem Schreibzugriff im
+        // Zugriffslog des Webservers. Die Umleitungssperre bleibt auch hier,
+        // damit eine falsch konfigurierte Shop-Adresse dieselbe klare Meldung
+        // ergibt statt einer irreführenden.
+        if ($response->status() === 401 && str_contains($response->body(), 'woocommerce_rest_cannot_view')) {
+            $withKeys = $query + ['consumer_key' => $key, 'consumer_secret' => $secret];
+            $retry = Http::timeout($this->timeout)->acceptJson()->withOptions(['allow_redirects' => false]);
+            $response = $method === 'get'
+                ? $retry->get($url, $withKeys)
+                : $retry->{$method}($url.'?'.http_build_query($withKeys), $body);
         }
 
         if (! $response->successful()) {
