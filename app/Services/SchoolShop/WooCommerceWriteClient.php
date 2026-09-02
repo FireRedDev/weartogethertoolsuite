@@ -116,6 +116,20 @@ class WooCommerceWriteClient
         return $this->assertHasId($response->json(), "PUT products/{$productId}", $response);
     }
 
+    /**
+     * Vorhandene Variationen eines Produkts — Grundlage dafür, dass ein
+     * abgebrochener Anlagevorgang wiederholt werden kann, ohne Variationen
+     * doppelt anzulegen.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function variations(int $productId): array
+    {
+        $variations = $this->request('get', "products/{$productId}/variations", ['per_page' => '100'])->json();
+
+        return is_array($variations) ? $variations : [];
+    }
+
     public function createVariation(int $productId, array $payload): array
     {
         $response = $this->request('post', "products/{$productId}/variations", [], $payload);

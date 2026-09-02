@@ -4,6 +4,7 @@ namespace App\Services\SchoolShop;
 
 use App\Models\SchoolOnboarding;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Legt für ein Onboarding alles im Shop an: Produktkategorie, variable
@@ -17,6 +18,9 @@ use Illuminate\Support\Carbon;
  */
 class ShopProvisioner
 {
+    /** Sperre je Antrag, damit „Shop anlegen" nie zweimal gleichzeitig läuft. */
+    private const PROVISION_LOCK = 'schoolshop.provision.';
+
     public function __construct(
         private readonly WooCommerceWriteClient $woo,
         private readonly WordPressClient $wordpress,
@@ -82,6 +86,35 @@ class ShopProvisioner
      */
     public function apply(SchoolOnboarding $onboarding): array
     {
+        // Der Vorgang dauert je API-Aufruf bis zu einer Minute. Ohne Sperre
+        // legt ein zweiter Klick (oder ein zweiter Tab) alles ein zweites Mal
+        // an: beide Läufe sehen dieselbe leere Ausgangslage. Rückgängig machen
+        // ginge nur von Hand in WooCommerce.
+        $lock = Cache::lock(self::PROVISION_LOCK.$onboarding->id, 900);
+        if (! $lock->get()) {
+            throw new ProvisionAbortedException([[
+                'step' => 'Shop-Anlage', 'ok' => false,
+                'detail' => 'Für diese Schule läuft die Anlage bereits (in einem anderen Fenster oder durch eine zweite Person). '
+                    .'Bitte den laufenden Vorgang abwarten und die Seite danach neu laden — ein zweiter Durchgang würde alles doppelt anlegen.',
+            ]], new \RuntimeException('Anlage läuft bereits'));
+        }
+
+        try {
+            // Innerhalb der Sperre den aktuellen Stand lesen: Ein parallel
+            // gestarteter Aufruf hat womöglich schon Kategorie oder Produkte
+            // angelegt. Ohne dieses Nachladen liefe dieser Durchgang auf einem
+            // veralteten Abbild und legte sie erneut an.
+            $onboarding->refresh();
+
+            return $this->runApply($onboarding);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /** @return list<array{step: string, ok: bool, detail: string}> */
+    private function runApply(SchoolOnboarding $onboarding): array
+    {
         $log = [];
         $run = function (string $step, callable $action) use (&$log): mixed {
             try {
@@ -132,16 +165,28 @@ class ShopProvisioner
                 $productIds = $onboarding->woo_product_ids ?? [];
                 $klassen = $this->klassenListe($onboarding);
                 foreach ($onboarding->enabledProducts() as $product) {
+                    $name = $onboarding->school_name.' '.ProductConfigurator::preset($product)['name_suffix'];
+
                     if (isset($productIds[$product['key']])) {
                         $log[] = ['step' => "Produkt {$product['key']} bereits vorhanden", 'ok' => true, 'detail' => 'ID '.$productIds[$product['key']]];
-
-                        continue;
+                    } else {
+                        // Die ID wird SOFORT gespeichert — vor den Variationen.
+                        // Sonst bliebe nach einem Fehler beim Anlegen der
+                        // Variationen ein Produkt im Shop zurück, das das Tool
+                        // nicht kennt, und der nächste Versuch legte ein
+                        // zweites an.
+                        $created = $run("Produkt '{$name}' anlegen",
+                            fn () => $this->createProduct($onboarding, $product, $attributeIds, $klassen, $shippingClassSlug));
+                        $productIds[$product['key']] = (int) $created['id'];
+                        $onboarding->woo_product_ids = $productIds;
+                        $onboarding->save();
                     }
-                    $created = $run("Produkt '".$onboarding->school_name.' '.ProductConfigurator::preset($product)['name_suffix']."' anlegen (inkl. Variationen)",
-                        fn () => $this->createProduct($onboarding, $product, $attributeIds, $klassen, $shippingClassSlug));
-                    $productIds[$product['key']] = (int) $created['id'];
-                    $onboarding->woo_product_ids = $productIds;
-                    $onboarding->save();
+
+                    // Variationen bei jedem Lauf abgleichen: fehlende werden
+                    // ergänzt, vorhandene bleiben unberührt. So lässt sich ein
+                    // abgebrochener Durchgang einfach wiederholen.
+                    $run("Variationen für '{$name}' sicherstellen",
+                        fn () => $this->ensureVariations((int) $productIds[$product['key']], $product, $attributeIds));
                 }
 
                 // 4b. Optional: Mockups erzeugen und als Produktbilder setzen.
@@ -266,26 +311,56 @@ class ShopProvisioner
             $payload['shipping_class'] = $shippingClassSlug;
         }
 
-        $created = $this->woo->createProduct($payload);
-        $productId = (int) $created['id'];
+        return $this->woo->createProduct($payload);
+    }
 
-        // Variationen: Individualisierung Nein (Basispreis) / Ja (Basis + Aufpreis)
-        $indivAttribute = fn (string $value) => [array_merge(
-            isset($attributeIds['individualisierung']) ? ['id' => $attributeIds['individualisierung']] : ['name' => 'Individualisierung'],
-            ['option' => $value],
-        )];
-        $this->woo->createVariation($productId, [
-            'regular_price' => number_format((float) $product['base_price'], 2, '.', ''),
-            'attributes' => $indivAttribute('Nein'),
-        ]);
+    /**
+     * Gleicht die Variationen eines Produkts ab: Individualisierung „Nein"
+     * (Basispreis) und, falls ein Aufpreis konfiguriert ist, „Ja".
+     *
+     * Bewusst wiederholbar: Es wird erst gelesen, was schon da ist, und nur
+     * Fehlendes angelegt. Ein abgebrochener Anlagevorgang lässt sich dadurch
+     * einfach noch einmal starten, ohne doppelte Variationen zu erzeugen.
+     *
+     * @param  array<string, mixed>  $product
+     * @param  array<string, int>  $attributeIds
+     */
+    private function ensureVariations(int $productId, array $product, array $attributeIds): string
+    {
+        $hasIndiv = ($product['indiv_surcharge'] ?? 0) > 0;
+        $wanted = ['Nein' => (float) $product['base_price']];
         if ($hasIndiv) {
-            $this->woo->createVariation($productId, [
-                'regular_price' => number_format((float) $product['base_price'] + (float) $product['indiv_surcharge'], 2, '.', ''),
-                'attributes' => $indivAttribute('Ja'),
-            ]);
+            $wanted['Ja'] = (float) $product['base_price'] + (float) $product['indiv_surcharge'];
         }
 
-        return $created;
+        $existing = [];
+        foreach ($this->woo->variations($productId) as $variation) {
+            foreach ($variation['attributes'] ?? [] as $attribute) {
+                $option = trim((string) ($attribute['option'] ?? ''));
+                if ($option !== '') {
+                    $existing[mb_strtolower($option)] = true;
+                }
+            }
+        }
+
+        $created = [];
+        foreach ($wanted as $option => $price) {
+            if (isset($existing[mb_strtolower($option)])) {
+                continue;
+            }
+            $this->woo->createVariation($productId, [
+                'regular_price' => number_format($price, 2, '.', ''),
+                'attributes' => [array_merge(
+                    isset($attributeIds['individualisierung']) ? ['id' => $attributeIds['individualisierung']] : ['name' => 'Individualisierung'],
+                    ['option' => $option],
+                )],
+            ]);
+            $created[] = $option;
+        }
+
+        return $created === []
+            ? 'alle Variationen bereits vorhanden'
+            : 'angelegt: Individualisierung '.implode(' und ', $created);
     }
 
     /**
@@ -312,7 +387,6 @@ class ShopProvisioner
             return;
         }
 
-        $done = $onboarding->mockup_images ?? [];
         $productIds = $onboarding->woo_product_ids ?? [];
         foreach ($onboarding->enabledProducts() as $product) {
             $key = $product['key'];
@@ -320,21 +394,51 @@ class ShopProvisioner
             if ($productId === null) {
                 continue;
             }
-            if (isset($done[$key])) {
-                $log[] = ['step' => "Mockups {$key}", 'ok' => true, 'detail' => 'bereits erzeugt — übersprungen'];
 
-                continue;
-            }
-
-            try {
-                $images = $this->mockups->generateForProduct($onboarding, $product, $logoUrl);
-            } catch (\Throwable $e) {
-                $log[] = ['step' => "Mockups {$key}", 'ok' => false, 'detail' => 'Rendern fehlgeschlagen (Produkt selbst wurde angelegt): '.$e->getMessage()];
-
-                continue;
-            }
-            if ($images === []) {
+            $state = $this->mockupState($onboarding, $key);
+            $plan = $this->mockups->planForProduct($onboarding, $product);
+            if ($plan === []) {
                 $log[] = ['step' => "Mockups {$key}", 'ok' => true, 'detail' => "keine Vorlagen für '{$key}' konfiguriert (config/schoolshop.php → mockups.templates) — übersprungen"];
+
+                continue;
+            }
+
+            // JEDES fertige Bild wird sofort gespeichert. Renders kosten
+            // Credits; würde erst am Ende vermerkt, wären bei einem Fehler im
+            // letzten Bild alle vorher bezahlten verloren und der nächste
+            // Versuch zahlte sie erneut.
+            $rendered = 0;
+            $failed = null;
+            foreach ($plan as $template) {
+                if (isset($state['images'][$template['label']])) {
+                    continue;
+                }
+                try {
+                    $url = $this->mockups->renderOne($onboarding, $template, $logoUrl);
+                } catch (\Throwable $e) {
+                    $failed = $e->getMessage();
+                    break;
+                }
+                $state['images'][$template['label']] = $url;
+                $state['assigned'] = false;
+                $this->saveMockupState($onboarding, $key, $state);
+                $rendered++;
+            }
+
+            if ($state['images'] === []) {
+                $log[] = ['step' => "Mockups {$key}", 'ok' => false, 'detail' => 'Rendern fehlgeschlagen (Produkt selbst wurde angelegt): '.$failed];
+
+                continue;
+            }
+            if ($failed !== null) {
+                $log[] = ['step' => "Mockups {$key}", 'ok' => false, 'detail' => sprintf(
+                    '%d Bild(er) fertig und gesichert, danach abgebrochen: %s — ein erneuter Klick rendert nur die fehlenden.',
+                    count($state['images']), $failed,
+                )];
+            }
+
+            if ($state['assigned'] === true) {
+                $log[] = ['step' => "Mockups {$key}", 'ok' => true, 'detail' => count($state['images']).' Bild(er) bereits gesetzt — übersprungen'];
 
                 continue;
             }
@@ -343,19 +447,64 @@ class ShopProvisioner
                 // WooCommerce lädt die Bild-URLs selbst in die Mediathek
                 // (erstes Bild = Produktbild, Rest = Produktgalerie).
                 $this->woo->updateProduct((int) $productId, [
-                    'images' => array_map(fn ($img) => ['src' => $img['url'], 'name' => $img['label'], 'alt' => $img['label']], $images),
+                    'images' => array_map(
+                        fn (string $label, string $url) => ['src' => $url, 'name' => $label, 'alt' => $label],
+                        array_keys($state['images']),
+                        array_values($state['images']),
+                    ),
                 ]);
             } catch (\Throwable $e) {
-                $log[] = ['step' => "Mockups {$key}", 'ok' => false, 'detail' => 'Bilder gerendert, aber Zuweisung am Produkt fehlgeschlagen: '.$e->getMessage()];
+                $log[] = ['step' => "Mockups {$key}", 'ok' => false, 'detail' => 'Bilder gerendert und gesichert, aber Zuweisung am Produkt fehlgeschlagen: '
+                    .$e->getMessage().' — ein erneuter Klick weist sie zu, ohne neu zu rendern.'];
 
                 continue;
             }
 
-            $done[$key] = array_column($images, 'url');
-            $onboarding->mockup_images = $done;
-            $onboarding->save();
-            $log[] = ['step' => "Mockups {$key}", 'ok' => true, 'detail' => count($images).' Bild(er) gesetzt (Produktbild + Galerie)'];
+            $state['assigned'] = true;
+            $this->saveMockupState($onboarding, $key, $state);
+            $log[] = ['step' => "Mockups {$key}", 'ok' => true, 'detail' => sprintf(
+                '%d Bild(er) gesetzt (Produktbild + Galerie)%s',
+                count($state['images']),
+                $rendered > 0 ? ", davon {$rendered} neu gerendert" : ', keine neuen Renders nötig',
+            )];
         }
+    }
+
+    /**
+     * Stand der Mockups eines Produkts.
+     *
+     * Altbestand ist eine reine Liste von URLs (vor der Umstellung auf
+     * einzelnes Sichern) — die gilt als fertig und zugewiesen, damit für
+     * bestehende Schulen nichts erneut gerendert und bezahlt wird.
+     *
+     * @return array{images: array<string, string>, assigned: bool}
+     */
+    private function mockupState(SchoolOnboarding $onboarding, string $key): array
+    {
+        $stored = ($onboarding->mockup_images ?? [])[$key] ?? null;
+
+        if (is_array($stored) && isset($stored['images']) && is_array($stored['images'])) {
+            return ['images' => $stored['images'], 'assigned' => (bool) ($stored['assigned'] ?? false)];
+        }
+        if (is_array($stored) && $stored !== []) {
+            $images = [];
+            foreach (array_values($stored) as $i => $url) {
+                $images['Bild '.($i + 1)] = (string) $url;
+            }
+
+            return ['images' => $images, 'assigned' => true];
+        }
+
+        return ['images' => [], 'assigned' => false];
+    }
+
+    /** @param array{images: array<string, string>, assigned: bool} $state */
+    private function saveMockupState(SchoolOnboarding $onboarding, string $key, array $state): void
+    {
+        $all = $onboarding->mockup_images ?? [];
+        $all[$key] = $state;
+        $onboarding->mockup_images = $all;
+        $onboarding->save();
     }
 
     /**
@@ -397,16 +546,31 @@ class ShopProvisioner
             }
 
             $result = $run(
-                "Printify-Produkt '".$onboarding->school_name.' '.$preset['name_suffix']."' anlegen + publishen (inkl. Margen-Prüfung)",
+                "Printify-Produkt '".$onboarding->school_name.' '.$preset['name_suffix']."' anlegen (inkl. Margen-Prüfung)",
                 fn () => $this->printify->createAndPublish($onboarding, $product, $blueprintId, $providerId),
             );
+            // ID sofort sichern — vor dem Veröffentlichen. Sonst bliebe nach
+            // einem Fehler beim Publish ein Produkt bei Printify zurück, das
+            // das Tool nicht kennt, und der nächste Versuch legte ein zweites
+            // an, das später ebenfalls im Shop erschiene.
+            $printifyIds[$key] = $result['printify_product_id'];
+            $onboarding->printify_product_ids = $printifyIds;
+            $onboarding->save();
+
             $log[] = ['step' => "Margen-Prüfung {$key}", 'ok' => true, 'detail' => $result['price_check']['message']];
             foreach ($result['notes'] as $note) {
                 $log[] = ['step' => "Varianten/Druck {$key}", 'ok' => true, 'detail' => $note];
             }
-            $printifyIds[$key] = $result['printify_product_id'];
-            $onboarding->printify_product_ids = $printifyIds;
-            $onboarding->save();
+        }
+
+        // Veröffentlichen als eigener Schritt — wiederholbar und für bereits
+        // angelegte Produkte nachholbar.
+        foreach ($onboarding->enabledProducts() as $product) {
+            $key = $product['key'];
+            if (! isset($printifyIds[$key])) {
+                continue;
+            }
+            $run("Printify-Produkt {$key} veröffentlichen", fn () => $this->printify->publish((string) $printifyIds[$key]));
         }
 
         $log[] = [

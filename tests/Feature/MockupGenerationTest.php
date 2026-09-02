@@ -177,8 +177,12 @@ class MockupGenerationTest extends TestCase
         });
 
         $onboarding->refresh();
+        // Gemerkt wird je Bild (Beschriftung => URL) plus die Angabe, ob die
+        // Bilder schon am Produkt hängen. Beides einzeln, damit ein Abbruch
+        // keine bereits bezahlten Renders verwirft.
         $this->assertArrayHasKey('schulpullover', $onboarding->mockup_images);
-        $this->assertCount(3, $onboarding->mockup_images['schulpullover']);
+        $this->assertCount(3, $onboarding->mockup_images['schulpullover']['images']);
+        $this->assertTrue($onboarding->mockup_images['schulpullover']['assigned']);
         $this->assertTrue(collect($log)->contains(fn ($l) => str_starts_with($l['step'], 'Mockups schulpullover') && $l['ok']));
     }
 

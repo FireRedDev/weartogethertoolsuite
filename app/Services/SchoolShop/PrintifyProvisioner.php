@@ -411,12 +411,25 @@ class PrintifyProvisioner
             ]],
         ]);
 
-        $this->printify->publishProduct((string) $created['id']);
-
         return [
             'printify_product_id' => (string) $created['id'],
             'price_check' => $priceCheck,
             'notes' => $notes,
         ];
+    }
+
+    /**
+     * Veröffentlicht ein bereits angelegtes Printify-Produkt im Shop.
+     *
+     * Bewusst getrennt vom Anlegen: Scheitert das Veröffentlichen, ist das
+     * Produkt bei Printify trotzdem vorhanden und seine ID im Tool vermerkt.
+     * Der nächste Versuch veröffentlicht nur noch — statt ein zweites Produkt
+     * anzulegen, das später ebenfalls im Shop erscheinen würde.
+     */
+    public function publish(string $printifyProductId): string
+    {
+        $this->printify->publishProduct($printifyProductId);
+
+        return "Produkt {$printifyProductId} veröffentlicht";
     }
 }

@@ -95,9 +95,25 @@ class ReviewAuditTest extends TestCase
                 'on-demand' => '0',
                 'woocommerce_produkt_kategorie' => 77,
             ], 201),
-            'shop.example/wp-json/wc/v3/products/*/variations*' => Http::response(['id' => 501], 201),
+            // GET liest die vorhandenen Variationen (Liste), POST legt eine an
+            // (Objekt) — dieselbe Adresse, unterschiedliche Antwortform.
+            'shop.example/wp-json/wc/v3/products/*/variations*' => fn ($request) => $request->method() === 'POST'
+                ? Http::response(['id' => 501], 201)
+                : Http::response([]),
             'shop.example/wp-json/wc/v3/products*' => Http::response(['id' => 401, 'name' => 'AHS Testschule Schulpullover'], 201),
         ]);
+    }
+
+    private function countRenders(): int
+    {
+        $count = 0;
+        foreach (Http::recorded() as [$request]) {
+            if (str_contains($request->url(), '/renders')) {
+                $count++;
+            }
+        }
+
+        return $count;
     }
 
     private function countProductCreates(): int
@@ -129,14 +145,13 @@ class ReviewAuditTest extends TestCase
     // ---------------------------------------------------------------- P-01
 
     /**
-     * P-01 (kritisch): Zwei gleichzeitige "Shop anlegen"-Vorgänge legen alles
-     * doppelt an. Nachgestellt über zwei Modell-Instanzen desselben Datensatzes
-     * — genau der Zustand zweier paralleler Requests, die beide gelesen haben,
-     * bevor einer geschrieben hat.
-     *
-     * SOLL: der zweite Lauf bricht ab oder wartet (Sperre) — eine Kategorie.
+     * P-01 (behoben): Zwei „Shop anlegen"-Vorgänge auf demselben Antrag dürfen
+     * nichts doppelt anlegen. Nachgestellt über zwei Modell-Instanzen desselben
+     * Datensatzes — genau der Zustand zweier paralleler Requests, die beide
+     * gelesen haben, bevor einer geschrieben hat. Der zweite Lauf lädt
+     * innerhalb der Sperre nach und überspringt alles Vorhandene.
      */
-    public function test_P01_parallel_provision_creates_everything_twice(): void
+    public function test_P01_second_provision_run_creates_nothing_twice(): void
     {
         $this->fakeCollectiveShop();
         $record = $this->onboarding();
@@ -147,25 +162,54 @@ class ReviewAuditTest extends TestCase
         app(ShopProvisioner::class)->apply($first);
         app(ShopProvisioner::class)->apply($second);
 
-        $this->assertSame(2, $this->countCategoryCreates(), 'IST: zwei Kategorien. SOLL: eine.');
-        $this->assertSame(2, $this->countProductCreates(), 'IST: zwei Produktsätze. SOLL: einer.');
+        $this->assertSame(1, $this->countCategoryCreates(), 'Genau eine Kategorie.');
+        $this->assertSame(1, $this->countProductCreates(), 'Genau ein Produktsatz.');
+    }
+
+    /** P-01b: Läuft bereits ein Durchgang, bricht der zweite mit Erklärung ab. */
+    public function test_P01b_concurrent_provision_is_refused(): void
+    {
+        $this->fakeCollectiveShop();
+        $record = $this->onboarding();
+
+        // Sperre halten, als liefe gerade ein anderer Durchgang
+        $held = Cache::lock('schoolshop.provision.'.$record->id, 60);
+        $this->assertTrue($held->get());
+
+        try {
+            app(ShopProvisioner::class)->apply($record);
+            $this->fail('Abbruch erwartet');
+        } catch (ProvisionAbortedException $e) {
+            $this->assertStringContainsString('läuft die Anlage bereits', $e->log[0]['detail']);
+        } finally {
+            $held->release();
+        }
+
+        $this->assertSame(0, $this->countCategoryCreates(), 'Der abgewiesene Lauf hat nichts angelegt.');
     }
 
     // ---------------------------------------------------------------- P-02
 
     /**
-     * P-02 (hoch): Scheitert eine Variation, wird die bereits vergebene
-     * Produkt-ID nie gespeichert — der nächste Versuch legt das Produkt erneut an.
-     *
-     * SOLL: ID direkt nach dem Anlegen speichern, Variationen wiederholbar.
+     * P-02 (behoben): Die Produkt-ID wird vor den Variationen gespeichert.
+     * Scheitert danach eine Variation, kennt das Tool das Produkt trotzdem —
+     * der nächste Versuch ergänzt nur die fehlende Variation, statt ein zweites
+     * Produkt anzulegen.
      */
-    public function test_P02_failed_variation_orphans_the_product_and_duplicates_on_retry(): void
+    public function test_P02_failed_variation_keeps_the_product_and_retries_cleanly(): void
     {
         $this->fakeCollectiveShop([
-            'shop.example/wp-json/wc/v3/products/*/variations*' => Http::sequence()
-                ->push('', 500)                       // erster Versuch: Shop-Fehler
-                ->push(['id' => 501], 201)            // zweiter Versuch: klappt
-                ->push(['id' => 502], 201),
+            // GET (vorhandene Variationen lesen) und POST teilen sich die
+            // Adresse — deshalb nach Methode unterscheiden.
+            'shop.example/wp-json/wc/v3/products/*/variations*' => function ($request) {
+                static $posts = 0;
+                if ($request->method() !== 'POST') {
+                    return Http::response([]);
+                }
+                $posts++;
+
+                return $posts === 1 ? Http::response('', 500) : Http::response(['id' => 500 + $posts], 201);
+            },
         ]);
         $record = $this->onboarding();
 
@@ -178,22 +222,21 @@ class ReviewAuditTest extends TestCase
 
         $record->refresh();
         $this->assertSame(1, $this->countProductCreates(), 'Produkt wurde im Shop angelegt …');
-        $this->assertEmpty($record->woo_product_ids ?? [], '… seine ID ist im Tool aber unbekannt.');
+        $this->assertSame(['schulpullover' => 401], $record->woo_product_ids, '… und seine ID ist vermerkt.');
 
-        app(ShopProvisioner::class)->apply($record);
+        app(ShopProvisioner::class)->apply($record->fresh());
 
-        $this->assertSame(2, $this->countProductCreates(), 'IST: zweites Produkt im Shop. SOLL: das vorhandene weiterverwenden.');
+        $this->assertSame(1, $this->countProductCreates(), 'Der zweite Lauf legt kein zweites Produkt an.');
     }
 
     // ---------------------------------------------------------------- P-03
 
     /**
-     * P-03 (hoch): Dasselbe Muster bei Printify — scheitert `publish`, ist das
-     * bereits angelegte Produkt im Tool unbekannt.
-     *
-     * SOLL: ID nach `createProduct` speichern, `publish` als eigener Schritt.
+     * P-03 (behoben): Die Printify-ID wird vor dem Veröffentlichen gespeichert.
+     * Scheitert `publish`, ist das Produkt bei Printify vorhanden UND im Tool
+     * vermerkt — der nächste Versuch veröffentlicht nur noch.
      */
-    public function test_P03_failed_printify_publish_orphans_the_product(): void
+    public function test_P03_failed_printify_publish_keeps_the_product_id(): void
     {
         Http::fake([
             'shop.example/wp-json/wc/v3/products/categories?*search=Schulen*' => Http::response([['id' => 15, 'name' => 'Schulen', 'parent' => 0]]),
@@ -227,7 +270,16 @@ class ReviewAuditTest extends TestCase
 
         $record->refresh();
         Http::assertSent(fn ($r) => str_contains($r->url(), '/shops/99/products.json') && $r->method() === 'POST');
-        $this->assertEmpty($record->printify_product_ids ?? [], 'IST: Printify-Produkt existiert, ID im Tool unbekannt.');
+        $this->assertSame(['schulpullover' => 'pfy-1'], $record->printify_product_ids, 'Die ID ist trotz Publish-Fehler vermerkt.');
+
+        // Zweiter Versuch: kein neues Produkt, nur noch veröffentlichen
+        $creates = 0;
+        foreach (Http::recorded() as [$request]) {
+            if (str_contains($request->url(), '/shops/99/products.json') && $request->method() === 'POST') {
+                $creates++;
+            }
+        }
+        $this->assertSame(1, $creates, 'Genau ein Printify-Produkt angelegt.');
     }
 
     // ---------------------------------------------------------------- P-04
@@ -620,15 +672,11 @@ class ReviewAuditTest extends TestCase
     // ---------------------------------------------------------------- MO-01
 
     /**
-     * MO-01 (hoch, Kosten): Ein Produkt kann bis zu sechs kostenpflichtige
-     * Renders auslösen. Der Merker gegen doppelte Abrechnung
-     * (`mockup_images`) wird aber erst gesetzt, wenn ALLE Renders eines
-     * Produkts fertig sind. Scheitert der letzte, sind die bereits bezahlten
-     * verloren und werden beim nächsten Versuch erneut bezahlt.
-     *
-     * SOLL: jedes fertige Bild sofort vermerken.
+     * MO-01 (behoben): Renders kosten Credits. Jedes fertige Bild wird sofort
+     * vermerkt — scheitert ein späteres, bleiben die bezahlten erhalten und der
+     * nächste Versuch rendert nur noch die fehlenden.
      */
-    public function test_MO01_paid_renders_are_lost_when_a_later_one_fails(): void
+    public function test_MO01_paid_renders_survive_a_later_failure(): void
     {
         config([
             'schoolshop.mockups.api_key' => 'dm_key',
@@ -644,6 +692,9 @@ class ReviewAuditTest extends TestCase
             ],
         ]);
 
+        // EIN Fake für beide Durchgänge: eine bereits registrierte Adresse
+        // lässt sich später nicht überschreiben (erste Registrierung gewinnt),
+        // deshalb deckt die Sequenz gleich beide Läufe ab.
         $this->fakeCollectiveShop([
             'shop.example/uploads/*' => Http::response('img', 200, ['Content-Type' => 'image/png']),
             'shop.example/wp-json/wp/v2/media*' => Http::response(['id' => 555, 'source_url' => 'https://shop.example/logo.png'], 201),
@@ -651,7 +702,8 @@ class ReviewAuditTest extends TestCase
             'mockups.example/v1/renders' => Http::sequence()
                 ->push(['data' => ['export_path' => 'https://cdn.example/1.jpg']])
                 ->push(['data' => ['export_path' => 'https://cdn.example/2.jpg']])
-                ->push('', 500),   // der dritte, bezahlte Versuch scheitert
+                ->push('', 500)   // der dritte, bezahlte Versuch scheitert
+                ->push(['data' => ['export_path' => 'https://cdn.example/3.jpg']]),
         ]);
 
         $record = $this->onboarding([
@@ -665,15 +717,14 @@ class ReviewAuditTest extends TestCase
         app(ShopProvisioner::class)->apply($record);
 
         $record->refresh();
-        $renders = 0;
-        foreach (Http::recorded() as [$request]) {
-            if (str_contains($request->url(), '/renders')) {
-                $renders++;
-            }
-        }
+        $this->assertSame(3, $this->countRenders(), 'Drei Renders angestoßen, zwei davon erfolgreich.');
+        $this->assertCount(2, $record->mockup_images['schulpullover']['images'] ?? [], 'Beide bezahlten Bilder sind gesichert.');
 
-        $this->assertSame(3, $renders, 'Drei Renders angestoßen, zwei davon erfolgreich abgerechnet …');
-        $this->assertEmpty($record->mockup_images ?? [], '… vermerkt ist keines. Der nächste Versuch zahlt erneut.');
+        // Zweiter Durchgang: nur das fehlende dritte Bild wird gerendert.
+        app(ShopProvisioner::class)->apply($record->fresh());
+
+        $this->assertSame(4, $this->countRenders(), 'Insgesamt vier Renders — die bezahlten wurden nicht erneut erzeugt.');
+        $this->assertCount(3, $record->fresh()->mockup_images['schulpullover']['images'] ?? [], 'Jetzt sind alle drei Bilder gesichert.');
     }
 
     // ---------------------------------------------------------------- PR-02

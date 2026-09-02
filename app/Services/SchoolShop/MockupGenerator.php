@@ -23,36 +23,57 @@ class MockupGenerator
     }
 
     /**
-     * Rendert alle Mockups eines Produkts. Reihenfolge: Lifestyle zuerst
-     * (erstes Bild = WooCommerce-Produktbild), dann Details (Galerie).
+     * Die zu rendernden Vorlagen eines Produkts, in Anzeigereihenfolge:
+     * Lifestyle zuerst (erstes Bild = WooCommerce-Produktbild), dann Details
+     * (Galerie).
+     *
+     * Bewusst getrennt vom Rendern: Jeder Render kostet Credits, deshalb muss
+     * der Aufrufer einzeln rendern und jedes fertige Bild sofort vermerken
+     * können. Würde erst am Ende gespeichert, wären bei einem Fehler im letzten
+     * Bild alle vorher bezahlten verloren.
      *
      * @param  array<string, mixed>  $product  Eintrag aus dem products-JSON
-     * @return list<array{url: string, label: string}>
+     * @return list<array{label: string, mockup_uuid: string, smart_object_uuid: string}>
      */
-    public function generateForProduct(SchoolOnboarding $onboarding, array $product, string $logoUrl): array
+    public function planForProduct(SchoolOnboarding $onboarding, array $product): array
     {
         $templates = config("schoolshop.mockups.templates.{$product['key']}", ['lifestyle' => [], 'detail' => []]);
-        // Mockups zeigen die Vorderseite — Position/Größe kommen daher aus dem Frontprint.
-        $placement = $onboarding->logoPlacement('front');
-        $images = [];
+        $plan = [];
 
         foreach ($this->pickLifestyle($onboarding, $product['key'], $templates['lifestyle'] ?? []) as $i => $template) {
-            $label = "{$onboarding->school_name} {$product['key']} lifestyle ".($template['model'] ?? $i);
-            $images[] = [
-                'url' => $this->client->render($template['mockup_uuid'], $template['smart_object_uuid'], $logoUrl, $placement, $label),
-                'label' => $label,
+            $plan[] = [
+                'label' => trim("{$onboarding->school_name} {$product['key']} lifestyle ".($template['model'] ?? $i)),
+                'mockup_uuid' => $template['mockup_uuid'],
+                'smart_object_uuid' => $template['smart_object_uuid'],
             ];
         }
 
         foreach ($this->pickDetails($product, $templates['detail'] ?? []) as $template) {
-            $label = "{$onboarding->school_name} {$product['key']} detail ".($template['color'] ?? '');
-            $images[] = [
-                'url' => $this->client->render($template['mockup_uuid'], $template['smart_object_uuid'], $logoUrl, $placement, $label),
-                'label' => trim($label),
+            $plan[] = [
+                'label' => trim("{$onboarding->school_name} {$product['key']} detail ".($template['color'] ?? '')),
+                'mockup_uuid' => $template['mockup_uuid'],
+                'smart_object_uuid' => $template['smart_object_uuid'],
             ];
         }
 
-        return $images;
+        return $plan;
+    }
+
+    /**
+     * Rendert EIN Bild. Mockups zeigen die Vorderseite — Position und Größe
+     * kommen daher aus dem Frontprint.
+     *
+     * @param  array{label: string, mockup_uuid: string, smart_object_uuid: string}  $template
+     */
+    public function renderOne(SchoolOnboarding $onboarding, array $template, string $logoUrl): string
+    {
+        return $this->client->render(
+            $template['mockup_uuid'],
+            $template['smart_object_uuid'],
+            $logoUrl,
+            $onboarding->logoPlacement('front'),
+            $template['label'],
+        );
     }
 
     /**
