@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\SchoolOnboarding;
+use App\Services\SchoolShop\PrintifyProvisioner;
 use App\Services\SchoolShop\ProductConfigurator;
 use App\Services\SchoolShop\ProvisionAbortedException;
 use App\Services\SchoolShop\ShopProvisioner;
@@ -32,6 +33,9 @@ class ReviewAuditTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Nicht gefakte Adressen sollen als klarer Testfehler auffallen und
+        // nicht als echter Aufruf hinausgehen.
+        Http::preventStrayRequests();
         config([
             'schoolshop.webhook_secret' => 'test-secret',
             'ordersuite.woocommerce.store_url' => 'https://shop.example',
@@ -593,6 +597,203 @@ class ReviewAuditTest extends TestCase
             $data['current']['collective']['count'],
             'IST: ein Fenster gezählt. SOLL: zwei — es gab zwei Bestellfenster.',
         );
+    }
+
+    // ---------------------------------------------------------------- FF-01
+
+    /**
+     * FF-01 (hoch): Die Datumsauswertung des Webhooks probiert drei Formate der
+     * Reihe nach durch. PHP wertet dabei unmögliche Werte still aus, statt
+     * abzulehnen: Aus dem US-Format 04/16/2026 wird über `d/m/Y` der Tag 4 im
+     * Monat 16 — und daraus der 04.04.2027. Aus dem Tippfehler 31.02.2026 wird
+     * der 03.03.2026. Beides sieht danach wie ein gültiges Datum aus.
+     *
+     * Folge: falscher Bestellfensterstart im Tool, im Schule-Eintrag, auf dem
+     * Präsentationsblatt und in der Fensterzuordnung der Statistik.
+     *
+     * SOLL: unmögliche Datumswerte ablehnen und den Antrag als prüfbedürftig
+     * kennzeichnen, statt still ein plausibles falsches Datum zu erzeugen.
+     */
+    public function test_FF01_impossible_dates_are_silently_rolled_over(): void
+    {
+        $payload = ['input_text_6' => 'AHS Testschule', 'datetime' => '31.02.2026'];
+        $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
+
+        $record = SchoolOnboarding::sole();
+        $this->assertSame(
+            '2026-03-03',
+            $record->window_start->format('Y-m-d'),
+            'IST: 31.02. wird zum 03.03. SOLL: als ungültig erkannt.',
+        );
+    }
+
+    /** FF-01b: Datum im US-Format landet ein Jahr daneben. */
+    public function test_FF01b_us_format_date_lands_a_year_off(): void
+    {
+        $payload = ['input_text_6' => 'AHS Testschule', 'datetime' => '04/16/2026'];
+        $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
+
+        $record = SchoolOnboarding::sole();
+        $this->assertSame(
+            '2027-04-04',
+            $record->window_start->format('Y-m-d'),
+            'IST: 16.04.2026 wird zum 04.04.2027. SOLL: erkannt oder abgelehnt.',
+        );
+    }
+
+    // ---------------------------------------------------------------- MO-01
+
+    /**
+     * MO-01 (hoch, Kosten): Ein Produkt kann bis zu sechs kostenpflichtige
+     * Renders auslösen. Der Merker gegen doppelte Abrechnung
+     * (`mockup_images`) wird aber erst gesetzt, wenn ALLE Renders eines
+     * Produkts fertig sind. Scheitert der letzte, sind die bereits bezahlten
+     * verloren und werden beim nächsten Versuch erneut bezahlt.
+     *
+     * SOLL: jedes fertige Bild sofort vermerken.
+     */
+    public function test_MO01_paid_renders_are_lost_when_a_later_one_fails(): void
+    {
+        config([
+            'schoolshop.mockups.api_key' => 'dm_key',
+            'schoolshop.mockups.base_url' => 'https://mockups.example/v1',
+            'schoolshop.mockups.templates.schulpullover' => [
+                'lifestyle' => [
+                    ['model' => 'female', 'mockup_uuid' => 'm-1', 'smart_object_uuid' => 's-1'],
+                    ['model' => 'male', 'mockup_uuid' => 'm-2', 'smart_object_uuid' => 's-2'],
+                ],
+                'detail' => [
+                    ['color' => 'blau', 'mockup_uuid' => 'm-3', 'smart_object_uuid' => 's-3'],
+                ],
+            ],
+        ]);
+
+        $this->fakeCollectiveShop([
+            'shop.example/uploads/*' => Http::response('img', 200, ['Content-Type' => 'image/png']),
+            'shop.example/wp-json/wp/v2/media*' => Http::response(['id' => 555, 'source_url' => 'https://shop.example/logo.png'], 201),
+            'mockups.example/v1/mockups*' => Http::response(['smart_objects' => []]),
+            'mockups.example/v1/renders' => Http::sequence()
+                ->push(['data' => ['export_path' => 'https://cdn.example/1.jpg']])
+                ->push(['data' => ['export_path' => 'https://cdn.example/2.jpg']])
+                ->push('', 500),   // der dritte, bezahlte Versuch scheitert
+        ]);
+
+        $record = $this->onboarding([
+            'mockups_enabled' => true,
+            'logo_front_url' => 'https://shop.example/uploads/logo.png',
+        ]);
+        $record->products = collect($record->products)
+            ->map(fn ($p) => [...$p, 'colors' => ['blau']])->all();
+        $record->save();
+
+        app(ShopProvisioner::class)->apply($record);
+
+        $record->refresh();
+        $renders = 0;
+        foreach (Http::recorded() as [$request]) {
+            if (str_contains($request->url(), '/renders')) {
+                $renders++;
+            }
+        }
+
+        $this->assertSame(3, $renders, 'Drei Renders angestoßen, zwei davon erfolgreich abgerechnet …');
+        $this->assertEmpty($record->mockup_images ?? [], '… vermerkt ist keines. Der nächste Versuch zahlt erneut.');
+    }
+
+    // ---------------------------------------------------------------- PR-02
+
+    /**
+     * PR-02 (hoch): Der Teilstring-Vergleich greift nur, wenn es KEINEN exakten
+     * Treffer gibt — das ist gut gelöst. Gibt es aber keine Farbe „Red“,
+     * sondern nur Abstufungen, zieht „rot“ sie alle herein. Zusammen mit der
+     * 100-Varianten-Grenze wird danach stur am Ende abgeschnitten: Eine
+     * gewünschte Farbe kann dabei vollständig herausfallen, ohne unter
+     * `missing_colors` aufzutauchen — gemeldet wird nur „gekürzt“.
+     *
+     * SOLL: erst je gewünschter Farbe/Größe gleichmäßig auswählen, dann kürzen;
+     * herausgefallene Wünsche benennen.
+     */
+    public function test_PR02_capping_silently_drops_a_requested_color(): void
+    {
+        $variants = [];
+        // Vier Rot-Abstufungen, aber kein schlichtes „Red“ — der Teilstring-
+        // Vergleich zieht deshalb alle vier herein (100 Varianten) …
+        foreach (['Dark Red', 'Red Heather', 'Fire Red', 'Deep Red'] as $shade) {
+            for ($i = 1; $i <= 25; $i++) {
+                $variants[] = ['id' => count($variants) + 1, 'title' => "{$shade} / S{$i}", 'options' => ['color' => $shade, 'size' => "S{$i}"]];
+            }
+        }
+        // … und danach die gewünschte blaue Farbe
+        $variants[] = ['id' => 999, 'title' => 'Blue / M', 'options' => ['color' => 'Blue', 'size' => 'M']];
+
+        $selection = app(PrintifyProvisioner::class)->selectVariants($variants, [
+            'colors' => ['rot', 'blau'],
+            'sizes' => [],
+        ]);
+
+        $colors = array_values(array_unique(array_map(
+            fn ($v) => $v['options']['color'],
+            $selection['variants'],
+        )));
+
+        $this->assertTrue($selection['capped'], 'Die Auswahl wurde gekürzt.');
+        $this->assertNotContains('Blue', $colors, 'IST: Blau ist komplett herausgefallen …');
+        $this->assertNotContains('blau', $selection['missing_colors'], '… wird aber nicht als fehlend gemeldet.');
+        $this->assertContains('Dark Red', $colors, 'IST: nicht gewünschte Rot-Abstufungen wurden stattdessen angelegt.');
+    }
+
+    // ---------------------------------------------------------------- SO-01
+
+    /**
+     * SO-01 (hoch): Die Antragsseite ruft für die Bestellzahlen den Shop
+     * synchron ab — und zwar mit einer eigenen, seitenweisen Abfrage JE
+     * PRODUKT der Schule. Bei zehn Produkten sind das zehn Abfragefolgen mit je
+     * 30 Sekunden Zeitablauf, bevor die Seite überhaupt erscheint.
+     *
+     * SOLL: wie bei der Statistik nach der Antwort laden, oder nur auf Klick.
+     */
+    public function test_SO01_school_page_queries_the_shop_once_per_product(): void
+    {
+        Http::fake([
+            'shop.example/wp-json/wc/v3/products?*' => Http::response([
+                ['id' => 401, 'name' => 'A'], ['id' => 402, 'name' => 'B'], ['id' => 403, 'name' => 'C'],
+            ]),
+            'shop.example/wp-json/wc/v3/orders*' => Http::response([]),
+        ]);
+
+        $record = $this->onboarding(['woo_category_id' => 77, 'status' => 'angelegt']);
+
+        $this->get("/schulen/{$record->id}")->assertOk();
+
+        $orderCalls = 0;
+        foreach (Http::recorded() as [$request]) {
+            if (str_contains($request->url(), '/wc/v3/orders')) {
+                $orderCalls++;
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(3, $orderCalls, 'IST: eine Bestellabfrage je Produkt, synchron im Seitenaufruf.');
+    }
+
+    // ---------------------------------------------------------------- AU-01
+
+    /**
+     * AU-01 (mittel): Der Zugang beruht auf einem einzigen gemeinsamen
+     * Passwort, und die Anmeldung ist unbegrenzt oft versuchbar. `hash_equals`
+     * schützt gegen Zeitmessung, nicht gegen Durchprobieren.
+     *
+     * SOLL: `throttle:5,1` auf der Anmelderoute.
+     */
+    public function test_AU01_login_has_no_rate_limit(): void
+    {
+        config(['ordersuite.password' => 'geheim']);
+
+        $statuses = [];
+        for ($i = 0; $i < 25; $i++) {
+            $statuses[] = $this->post('/login', ['password' => 'falsch-'.$i])->status();
+        }
+
+        $this->assertNotContains(429, $statuses, 'IST: 25 Fehlversuche ohne jede Bremse.');
     }
 
     // ---------------------------------------------------------------- O-01
