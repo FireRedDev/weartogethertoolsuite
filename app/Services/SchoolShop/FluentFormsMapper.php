@@ -118,18 +118,43 @@ class FluentFormsMapper
         return ['line1' => $this->str($payload, 'address_1')];
     }
 
+    /**
+     * Datum aus dem Formular.
+     *
+     * PHP lehnt unmögliche Werte NICHT ab, sondern rechnet sie weiter: aus
+     * „31.02.2026" würde der 03.03.2026, und aus dem US-Format „04/16/2026"
+     * über d/m/Y der 04.04.2027 — beides sieht danach wie ein gültiges Datum
+     * aus und wandert in den Schule-Eintrag, auf das gedruckte
+     * Präsentationsblatt und in die Fensterzuordnung der Statistik.
+     *
+     * Deshalb wird jedes Format zurückgerechnet: Nur wenn die formatierte
+     * Ausgabe der Eingabe entspricht, war die Eingabe wirklich in diesem
+     * Format. Bleibt nichts übrig, gilt das Datum als unbekannt (null) — das
+     * ist ehrlicher als ein plausibler falscher Tag.
+     */
     private function parseDate(string $value): ?\Illuminate\Support\Carbon
     {
+        $value = trim($value);
         if ($value === '') {
             return null;
         }
+
         foreach (['d.m.Y', 'Y-m-d', 'd/m/Y'] as $format) {
-            try {
-                return \Illuminate\Support\Carbon::createFromFormat($format, $value)->startOfDay();
-            } catch (\Throwable) {
-                continue;
+            // '!' setzt alle nicht genannten Felder auf null statt auf „jetzt"
+            $parsed = \DateTimeImmutable::createFromFormat('!'.$format, $value);
+            if ($parsed !== false && $parsed->format($format) === $value) {
+                return \Illuminate\Support\Carbon::instance($parsed)->startOfDay();
             }
         }
+
+        // Rückfallebene NUR für Schreibweisen mit Buchstaben (ISO mit „T",
+        // „16 April 2026"). Ein reiner Zahlen-Datumswert, der oben durchgefallen
+        // ist, darf hier nicht landen: Carbon rechnet „31.02.2026" genauso
+        // stillschweigend in den 03.03.2026 um.
+        if (! preg_match('/[a-zA-Z]/', $value)) {
+            return null;
+        }
+
         try {
             return \Illuminate\Support\Carbon::parse($value)->startOfDay();
         } catch (\Throwable) {

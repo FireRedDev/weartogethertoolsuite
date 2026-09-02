@@ -425,7 +425,10 @@ class ShopProvisioner
     {
         $log = [];
         $slug = config('schoolshop.shipping_class_ondemand');
-        $products = $this->woo->findProductsByName($onboarding->school_name);
+        [$products, $note] = $this->productsByExactName($onboarding);
+        if ($note !== null) {
+            $log[] = ['step' => 'Shop-Produkte suchen', 'ok' => true, 'detail' => $note];
+        }
         if ($products === []) {
             $log[] = [
                 'step' => 'Shop-Produkte suchen', 'ok' => false,
@@ -480,9 +483,10 @@ class ShopProvisioner
     {
         $log = [];
 
-        $products = $onboarding->woo_category_id
-            ? $this->woo->findProductsByCategory((int) $onboarding->woo_category_id)
-            : $this->woo->findProductsByName($onboarding->school_name);
+        [$products, $note] = $this->productsOfSchool($onboarding);
+        if ($note !== null) {
+            $log[] = ['step' => 'Shop-Produkte suchen', 'ok' => true, 'detail' => $note];
+        }
 
         if ($products === []) {
             $log[] = [
@@ -539,9 +543,10 @@ class ShopProvisioner
     {
         $log = [];
 
-        $products = $onboarding->woo_category_id
-            ? $this->woo->findProductsByCategory((int) $onboarding->woo_category_id)
-            : $this->woo->findProductsByName($onboarding->school_name);
+        [$products, $note] = $this->productsOfSchool($onboarding);
+        if ($note !== null) {
+            $log[] = ['step' => 'Shop-Produkte suchen', 'ok' => true, 'detail' => $note];
+        }
 
         if ($products === []) {
             $log[] = ['step' => 'Shop-Produkte suchen', 'ok' => false,
@@ -588,10 +593,91 @@ class ShopProvisioner
         return $log;
     }
 
-    /** @return list<string> */
+    /**
+     * Die Shop-Produkte EINER Schule.
+     *
+     * Bevorzugt über die Schul-Kategorie — die ist eindeutig. Fehlt sie, bleibt
+     * nur die Namenssuche, und die ist eine TEILSTRING-Suche: „HAK Wien" trifft
+     * auch „HAK Wien 13". Das Ergebnis wird deshalb auf exakt die Namen
+     * eingegrenzt, die diese Schule haben kann ({Schulname} {Produktbezeichnung}).
+     * Ohne diese Eingrenzung würden Produkte einer fremden Schule mit ähnlichem
+     * Namen mit auf privat gesetzt — für die wäre das Bestellfenster dann zu,
+     * ohne dass es irgendwo auffiele.
+     *
+     * @return array{0: list<array<string, mixed>>, 1: ?string} Produkte und ein Hinweis fürs Protokoll
+     */
+    private function productsOfSchool(SchoolOnboarding $onboarding): array
+    {
+        if ($onboarding->woo_category_id) {
+            return [$this->woo->findProductsByCategory((int) $onboarding->woo_category_id), null];
+        }
+
+        return $this->productsByExactName($onboarding);
+    }
+
+    /**
+     * Produkte der Schule ausschließlich über den Namen — nötig für die
+     * On-Demand-Nachbearbeitung: Printify legt die Shop-Produkte selbst an,
+     * sie sind zu diesem Zeitpunkt noch in KEINER Schul-Kategorie (genau die
+     * setzt die Nachbearbeitung ja erst).
+     *
+     * @return array{0: list<array<string, mixed>>, 1: ?string}
+     */
+    private function productsByExactName(SchoolOnboarding $onboarding): array
+    {
+        $found = $this->woo->findProductsByName($onboarding->school_name);
+        $expected = $this->expectedProductNames($onboarding);
+        $matching = array_values(array_filter($found, function (array $product) use ($expected) {
+            $name = mb_strtolower(trim(html_entity_decode((string) ($product['name'] ?? ''), ENT_QUOTES | ENT_HTML5)));
+
+            return in_array($name, $expected, true);
+        }));
+
+        $foreign = count($found) - count($matching);
+
+        return [$matching, $foreign > 0 ? sprintf(
+            '%d von %d Namenstreffern gehören zu einer anderen Schule und wurden übergangen. '
+            .'Für diesen Antrag ist keine Schul-Kategorie hinterlegt, deshalb kann nur über den Namen gesucht werden — und der ist nicht eindeutig.',
+            $foreign,
+            count($found),
+        ) : null];
+    }
+
+    /**
+     * Produktnamen, die zu dieser Schule gehören können. Bewusst über ALLE
+     * konfigurierten Produkte, nicht nur die aktiven: ein nachträglich
+     * deaktiviertes Produkt steht trotzdem noch im Shop.
+     *
+     * @return list<string>
+     */
+    private function expectedProductNames(SchoolOnboarding $onboarding): array
+    {
+        $names = [];
+        foreach ($onboarding->products ?? [] as $product) {
+            if (empty($product['key'])) {
+                continue;
+            }
+            $names[] = mb_strtolower(trim($onboarding->school_name.' '.ProductConfigurator::preset($product)['name_suffix']));
+        }
+
+        return array_values(array_unique($names));
+    }
+
+    /**
+     * Klassen aus dem Eingabefeld.
+     *
+     * Getrennt wird an Zeilenumbrüchen, Kommas und Semikolons — das Feld ist
+     * ein mehrzeiliges Textfeld, und zeilenweise Eingabe ist der Normalfall.
+     * Würde nur an Kommas getrennt, entstünde EINE Variationsoption mit
+     * Zeilenumbrüchen darin, die genau so im Shop-Dropdown, in jeder Bestellung
+     * und in den Auftragsdokumenten landet.
+     *
+     * @return list<string>
+     */
     private function klassenListe(SchoolOnboarding $onboarding): array
     {
-        $klassen = array_values(array_filter(array_map('trim', explode(',', (string) $onboarding->class_list))));
+        $parts = preg_split('/[\r\n,;]+/u', (string) $onboarding->class_list) ?: [];
+        $klassen = array_values(array_filter(array_map('trim', $parts)));
         if ($klassen === []) {
             return [];
         }

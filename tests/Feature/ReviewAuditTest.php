@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\WooCommerceApiException;
 use App\Models\SchoolOnboarding;
 use App\Services\SchoolShop\PrintifyProvisioner;
 use App\Services\SchoolShop\ProductConfigurator;
@@ -295,13 +296,12 @@ class ReviewAuditTest extends TestCase
     // ---------------------------------------------------------------- P-05
 
     /**
-     * P-05 (hoch): Ohne Kategorie sucht das Schließen die Produkte über den
-     * Schulnamen — eine Teilstring-Suche. Produkte einer FREMDEN Schule mit
-     * ähnlichem Namen werden mit auf privat gesetzt.
-     *
-     * SOLL: exakter Abgleich oder Abbruch ohne Kategorie.
+     * P-05 (behoben): Ohne Kategorie bleibt nur die Namenssuche, und die ist
+     * eine Teilstring-Suche — „HAK Wien" trifft auch „HAK Wien 13". Das
+     * Ergebnis wird deshalb auf die Namen eingegrenzt, die diese Schule haben
+     * kann. Produkte einer fremden Schule bleiben unberührt.
      */
-    public function test_P05_closing_by_name_also_hits_a_foreign_school(): void
+    public function test_P05_closing_by_name_leaves_a_foreign_school_alone(): void
     {
         Http::fake([
             'shop.example/wp-json/wc/v3/products?*search=*' => Http::response([
@@ -314,7 +314,7 @@ class ReviewAuditTest extends TestCase
 
         $record = $this->onboarding(['school_name' => 'HAK Wien', 'pods_post_id' => 900]);
 
-        app(ShopProvisioner::class)->closeOrderWindow($record);
+        $log = app(ShopProvisioner::class)->closeOrderWindow($record);
 
         $touched = [];
         foreach (Http::recorded() as [$request]) {
@@ -323,76 +323,56 @@ class ReviewAuditTest extends TestCase
             }
         }
 
-        $this->assertContains(402, $touched, 'IST: Produkt der Schule „HAK Wien 13" wurde mit geschlossen. SOLL: unberührt.');
+        $this->assertContains(401, $touched, 'Das eigene Produkt wurde geschlossen.');
+        $this->assertNotContains(402, $touched, 'Das Produkt der Schule „HAK Wien 13" blieb unberührt.');
+        $this->assertTrue(
+            collect($log)->contains(fn ($l) => str_contains($l['detail'], 'anderen Schule')),
+            'Der übergangene Fremdtreffer steht im Protokoll.',
+        );
     }
 
     // ---------------------------------------------------------------- P-06
 
     /**
-     * P-06 (hoch): `findProductsByCategory()` blättert ohne Obergrenze weiter,
-     * solange eine volle Seite kommt. Genau die Bauart, die die Anwendung schon
-     * einmal lahmgelegt hat und für die es in `fetchAllPages()` eine Notbremse
-     * gibt. Hier wird nach 50 Seiten abgebrochen, damit der Test nicht hängt.
-     *
-     * SOLL: Abbruch mit `WooCommerceApiException::tooManyPages()`.
+     * P-06 (behoben): Liefert der Shop immer wieder volle Seiten (Caching-
+     * Plugin, Proxy, fehlerhafte Paginierung), muss die Schleife abbrechen —
+     * sonst hängt der PHP-Prozess für immer und blockiert nach ein paar
+     * Aufrufen die ganze Anwendung.
      */
-    public function test_P06_findProductsByCategory_pages_without_a_limit(): void
+    public function test_P06_findProductsByCategory_stops_at_the_page_limit(): void
     {
-        $calls = 0;
+        config(['ordersuite.woocommerce.max_pages' => 5]);
         $fullPage = array_map(fn ($i) => ['id' => $i, 'name' => 'P'.$i, 'status' => 'publish'], range(1, 100));
+        Http::fake(['shop.example/*' => Http::response($fullPage)]);
 
-        Http::fake(function () use (&$calls, $fullPage) {
-            $calls++;
-            if ($calls > 50) {
-                throw new \RuntimeException('NOTBREMSE-TEST: 50 Seiten ohne Abbruch');
-            }
+        $this->expectException(WooCommerceApiException::class);
+        $this->expectExceptionMessageMatches('/mehr als 5 Seiten/');
 
-            return Http::response($fullPage);
-        });
-
-        try {
-            app(WooCommerceWriteClient::class)->findProductsByCategory(77);
-            $this->fail('Die Schleife hat von sich aus aufgehört — Befund wäre entkräftet.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('NOTBREMSE-TEST', $e->getMessage());
-        }
-
-        $this->assertGreaterThan(50, $calls, 'IST: unbegrenzte Seitenschleife.');
+        app(WooCommerceWriteClient::class)->findProductsByCategory(77);
     }
 
     /** P-06b: dasselbe in `ensureAttributeTerms()`. */
-    public function test_P06b_ensureAttributeTerms_pages_without_a_limit(): void
+    public function test_P06b_ensureAttributeTerms_stops_at_the_page_limit(): void
     {
-        $calls = 0;
+        config(['ordersuite.woocommerce.max_pages' => 5]);
         $fullPage = array_map(fn ($i) => ['id' => $i, 'name' => 'Term '.$i], range(1, 100));
+        Http::fake(['shop.example/*' => Http::response($fullPage)]);
 
-        Http::fake(function () use (&$calls, $fullPage) {
-            $calls++;
-            if ($calls > 50) {
-                throw new \RuntimeException('NOTBREMSE-TEST');
-            }
+        $this->expectException(WooCommerceApiException::class);
+        $this->expectExceptionMessageMatches('/mehr als 5 Seiten/');
 
-            return Http::response($fullPage);
-        });
-
-        try {
-            app(WooCommerceWriteClient::class)->ensureAttributeTerms(2, ['Blau']);
-            $this->fail('Die Schleife hat von sich aus aufgehört — Befund wäre entkräftet.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('NOTBREMSE-TEST', $e->getMessage());
-        }
+        app(WooCommerceWriteClient::class)->ensureAttributeTerms(2, ['Blau']);
     }
 
     // ---------------------------------------------------------------- P-07
 
     /**
-     * P-07 (hoch): Die Klassenliste ist ein Textfeld über mehrere Zeilen, wird
-     * aber nur an Kommas getrennt. Zeilenweise Eingabe erzeugt EINE
-     * Variationsoption mit Zeilenumbrüchen — die so im Shop landet.
-     *
-     * SOLL: an Zeilenumbrüchen, Kommas und Semikolons trennen.
+     * P-07 (behoben): Die Klassenliste ist ein Textfeld über mehrere Zeilen.
+     * Getrennt wird an Zeilenumbrüchen, Kommas und Semikolons — sonst entstünde
+     * EINE Variationsoption mit Zeilenumbrüchen darin, die genau so im Shop,
+     * in jeder Bestellung und in den Auftragsdokumenten landet.
      */
-    public function test_P07_newline_separated_class_list_becomes_one_garbage_option(): void
+    public function test_P07_newline_separated_class_list_becomes_separate_options(): void
     {
         $this->fakeCollectiveShop();
         $record = $this->onboarding(['class_list' => "1a\n1b\n2a"]);
@@ -412,8 +392,10 @@ class ReviewAuditTest extends TestCase
         }
 
         $this->assertNotNull($klassen, 'Klassen-Attribut wurde übertragen');
-        $this->assertContains("1a\n1b\n2a", $klassen, 'IST: eine Option mit Zeilenumbrüchen. SOLL: 1a, 1b, 2a.');
-        $this->assertNotContains('1b', $klassen);
+        foreach (['1a', '1b', '2a'] as $klasse) {
+            $this->assertContains($klasse, $klassen, "Klasse {$klasse} ist eine eigene Auswahloption.");
+        }
+        $this->assertNotContains("1a\n1b\n2a", $klassen, 'Keine Sammeloption mit Zeilenumbrüchen.');
     }
 
     // ---------------------------------------------------------------- P-08
@@ -602,43 +584,37 @@ class ReviewAuditTest extends TestCase
     // ---------------------------------------------------------------- FF-01
 
     /**
-     * FF-01 (hoch): Die Datumsauswertung des Webhooks probiert drei Formate der
-     * Reihe nach durch. PHP wertet dabei unmögliche Werte still aus, statt
-     * abzulehnen: Aus dem US-Format 04/16/2026 wird über `d/m/Y` der Tag 4 im
-     * Monat 16 — und daraus der 04.04.2027. Aus dem Tippfehler 31.02.2026 wird
-     * der 03.03.2026. Beides sieht danach wie ein gültiges Datum aus.
-     *
-     * Folge: falscher Bestellfensterstart im Tool, im Schule-Eintrag, auf dem
-     * Präsentationsblatt und in der Fensterzuordnung der Statistik.
-     *
-     * SOLL: unmögliche Datumswerte ablehnen und den Antrag als prüfbedürftig
-     * kennzeichnen, statt still ein plausibles falsches Datum zu erzeugen.
+     * FF-01 (behoben): PHP lehnt unmögliche Datumswerte nicht ab, sondern
+     * rechnet sie weiter — aus 31.02.2026 würde der 03.03.2026. Jedes Format
+     * wird deshalb zurückgerechnet; stimmt die Ausgabe nicht mit der Eingabe
+     * überein, gilt das Datum als unbekannt. Kein Datum ist ehrlicher als ein
+     * plausibler falscher Tag, der auf dem gedruckten Blatt landet.
      */
-    public function test_FF01_impossible_dates_are_silently_rolled_over(): void
+    public function test_FF01_impossible_date_is_rejected_instead_of_rolled_over(): void
     {
         $payload = ['input_text_6' => 'AHS Testschule', 'datetime' => '31.02.2026'];
         $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
 
         $record = SchoolOnboarding::sole();
-        $this->assertSame(
-            '2026-03-03',
-            $record->window_start->format('Y-m-d'),
-            'IST: 31.02. wird zum 03.03. SOLL: als ungültig erkannt.',
-        );
+        $this->assertNull($record->window_start, '31.02. gilt als unbekannt, nicht als 03.03.');
+        $this->assertNull($record->window_end);
     }
 
-    /** FF-01b: Datum im US-Format landet ein Jahr daneben. */
-    public function test_FF01b_us_format_date_lands_a_year_off(): void
+    /** FF-01b: gültige Schreibweisen werden weiterhin korrekt erkannt. */
+    public function test_FF01b_valid_date_formats_are_still_understood(): void
     {
-        $payload = ['input_text_6' => 'AHS Testschule', 'datetime' => '04/16/2026'];
-        $this->postJson('/webhooks/fluentforms/test-secret', $payload)->assertOk();
+        foreach (['16.04.2026', '2026-04-16', '16/04/2026'] as $written) {
+            SchoolOnboarding::query()->delete();
+            $this->postJson('/webhooks/fluentforms/test-secret', [
+                'input_text_6' => 'AHS Testschule', 'datetime' => $written,
+            ])->assertOk();
 
-        $record = SchoolOnboarding::sole();
-        $this->assertSame(
-            '2027-04-04',
-            $record->window_start->format('Y-m-d'),
-            'IST: 16.04.2026 wird zum 04.04.2027. SOLL: erkannt oder abgelehnt.',
-        );
+            $this->assertSame(
+                '2026-04-16',
+                SchoolOnboarding::sole()->window_start->format('Y-m-d'),
+                "Schreibweise {$written} wurde richtig gelesen.",
+            );
+        }
     }
 
     // ---------------------------------------------------------------- MO-01
@@ -778,13 +754,11 @@ class ReviewAuditTest extends TestCase
     // ---------------------------------------------------------------- AU-01
 
     /**
-     * AU-01 (mittel): Der Zugang beruht auf einem einzigen gemeinsamen
-     * Passwort, und die Anmeldung ist unbegrenzt oft versuchbar. `hash_equals`
-     * schützt gegen Zeitmessung, nicht gegen Durchprobieren.
-     *
-     * SOLL: `throttle:5,1` auf der Anmelderoute.
+     * AU-01 (behoben): Der Zugang beruht auf einem einzigen gemeinsamen
+     * Passwort. `hash_equals` schützt gegen Zeitmessung, nicht gegen
+     * Durchprobieren — dafür braucht es eine Bremse.
      */
-    public function test_AU01_login_has_no_rate_limit(): void
+    public function test_AU01_login_is_rate_limited(): void
     {
         config(['ordersuite.password' => 'geheim']);
 
@@ -793,7 +767,16 @@ class ReviewAuditTest extends TestCase
             $statuses[] = $this->post('/login', ['password' => 'falsch-'.$i])->status();
         }
 
-        $this->assertNotContains(429, $statuses, 'IST: 25 Fehlversuche ohne jede Bremse.');
+        $this->assertContains(429, $statuses, 'Nach wenigen Fehlversuchen greift die Bremse.');
+    }
+
+    /** AU-01b: Die Bremse darf die richtige Anmeldung nicht behindern. */
+    public function test_AU01b_correct_password_still_logs_in(): void
+    {
+        config(['ordersuite.password' => 'geheim']);
+
+        $this->post('/login', ['password' => 'geheim'])->assertRedirect(route('home'));
+        $this->assertTrue(session('tool_authenticated'));
     }
 
     // ---------------------------------------------------------------- O-01

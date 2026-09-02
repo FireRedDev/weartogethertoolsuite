@@ -14,7 +14,9 @@ use App\Http\Middleware\ToolAuth;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-Route::post('/login', [AuthController::class, 'login'])->name('login.attempt');
+// Der gesamte Zugang beruht auf einem gemeinsamen Passwort — ohne Bremse ließe
+// es sich in Ruhe durchprobieren.
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1')->name('login.attempt');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // FluentForms-Webhook (kein Login/CSRF — Secret in der URL)

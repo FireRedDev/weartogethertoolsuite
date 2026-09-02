@@ -27,9 +27,14 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($request->is('api/*') || $request->is('webhooks/*') || $request->expectsJson()) {
                 return null;
             }
+            // Alles, was einen eigenen HTTP-Status mitbringt, ist KEIN
+            // unerwarteter Fehler: 404, 405, 409 (abort() mit Erklärung), 419
+            // (Sitzung abgelaufen), 429 (zu viele Anmeldeversuche). Ohne diese
+            // Ausnahme würde die Anmeldebremse als „unerwarteter technischer
+            // Fehler" mit Status 500 erscheinen — und der Browser hätte keine
+            // Chance, den eigentlichen Grund anzuzeigen.
             if (
-                $e instanceof \Symfony\Component\HttpKernel\Exception\NotFoundHttpException
-                || $e instanceof \Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException
+                $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface
                 || $e instanceof \Illuminate\Validation\ValidationException
                 || $e instanceof \Illuminate\Auth\AuthenticationException
                 || $e instanceof \Illuminate\Auth\Access\AuthorizationException

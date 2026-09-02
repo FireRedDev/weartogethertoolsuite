@@ -83,6 +83,7 @@ class WooCommerceWriteClient
     {
         $existing = [];
         for ($page = 1; ; $page++) {
+            $this->assertPageLimit($page, "products/attributes/{$attributeId}/terms");
             $terms = $this->request('get', "products/attributes/{$attributeId}/terms", ['per_page' => '100', 'page' => (string) $page])->json();
             if (! is_array($terms) || $terms === []) {
                 break;
@@ -141,6 +142,7 @@ class WooCommerceWriteClient
         $all = [];
         $page = 1;
         do {
+            $this->assertPageLimit($page, 'products');
             $products = $this->request('get', 'products', [
                 'category' => (string) $categoryId,
                 'per_page' => '100',
@@ -155,6 +157,26 @@ class WooCommerceWriteClient
         } while (count($products) === 100);
 
         return $all;
+    }
+
+    /**
+     * Notbremse für seitenweise Abrufe.
+     *
+     * Ohne sie blättert eine Schleife endlos weiter, sobald der Shop immer
+     * wieder eine volle Seite liefert (Caching-Plugin, Proxy, fehlerhafte
+     * Paginierung). Der PHP-Prozess hängt dann für immer; nach ein paar
+     * Aufrufen ist keine Arbeitskraft mehr frei und die ganze Anwendung
+     * antwortet nicht mehr — genau so ist die Statistik schon einmal
+     * ausgefallen (siehe ordersuite.woocommerce.max_pages).
+     */
+    private function assertPageLimit(int $page, string $endpoint): void
+    {
+        $maxPages = (int) config('ordersuite.woocommerce.max_pages');
+        if ($maxPages > 0 && $page > $maxPages) {
+            throw WooCommerceApiException::tooManyPages(
+                "GET {$endpoint}: mehr als {$maxPages} Seiten abgerufen — der Shop liefert immer weiter volle Seiten. Abgebrochen, um die Anwendung nicht zu blockieren.",
+            );
+        }
     }
 
     /**
