@@ -596,13 +596,20 @@ class SchoolOnboardingTest extends TestCase
         ]);
 
         $provisioner = app(PrintifyProvisioner::class);
-        // (18.00 + 4.50) * 1.10 = 24.75 EUR Mindestpreis
-        $tooLow = $provisioner->checkPrice(24.74, 6, 27);
+        // Kosten (18,00 + 4,50) * 1,10 = 24,75 EUR NETTO Mindestpreis.
+        // Der Preis im Shop ist brutto, also 24,75 * 1,20 = 29,70 EUR brutto.
+        $tooLow = $provisioner->checkPrice(29.69, 6, 27);
         $this->assertFalse($tooLow['ok']);
         $this->assertSame(2475, $tooLow['min_price_cents']);
+        $this->assertSame(2970, $tooLow['min_price_gross_cents']);
+        $this->assertStringContainsString('brutto', $tooLow['message']);
 
-        $ok = $provisioner->checkPrice(24.75, 6, 27);
+        $ok = $provisioner->checkPrice(29.70, 6, 27);
         $this->assertTrue($ok['ok']);
+
+        // Der frühere Vergleich brutto gegen netto hätte 24,75 durchgewinkt —
+        // in Wahrheit sind das nur 20,63 netto und damit ein Verlustgeschäft.
+        $this->assertFalse($provisioner->checkPrice(24.75, 6, 27)['ok']);
     }
 
     /** Katalog-Fakes für die Konfigurator-Anzeige (Provider, Varianten, Versand). */
@@ -681,7 +688,8 @@ class SchoolOnboardingTest extends TestCase
 
     public function test_margin_column_flags_price_below_minimum(): void
     {
-        // Teuerste gewählte Variante 18,00 + Versand 3,90 = 21,90 -> Mindestpreis 24,09
+        // Teuerste gewählte Variante 18,00 + Versand 3,90 = 21,90 netto
+        // -> Mindestpreis 24,09 netto = 28,91 brutto
         $this->fakePrintifyCatalog('DE', 390);
         $onboarding = $this->ondemandOnboarding();
         $onboarding->products = collect($onboarding->products)->map(fn ($p) => [
@@ -690,6 +698,6 @@ class SchoolOnboardingTest extends TestCase
         ])->all();
         $onboarding->save();
 
-        $this->get("/schulen/{$onboarding->id}")->assertOk()->assertSee('min. 24,09 €');
+        $this->get("/schulen/{$onboarding->id}")->assertOk()->assertSee('min. 28,91 €');
     }
 }

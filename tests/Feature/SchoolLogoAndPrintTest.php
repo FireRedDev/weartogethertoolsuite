@@ -383,7 +383,10 @@ class SchoolLogoAndPrintTest extends TestCase
         $this->assertSame(6, $economics['variant_selected']);
         $this->assertSame(9, $economics['variant_total']);
         $this->assertTrue($economics['margin_ok']);
-        // (18,00 + 4,00) -> Marge bei 39,99 = 81,8 %
-        $this->assertEqualsWithDelta(81.8, $economics['margin_pct'], 0.1);
+        // Kosten 18,00 + Versand 4,00 = 22,00 netto. Der Verkaufspreis 39,99
+        // ist BRUTTO; netto sind das 33,33 bei 20 % USt.
+        // Marge = (33,33 - 22,00) / 22,00 = 51,5 %
+        $this->assertEqualsWithDelta(51.5, $economics['margin_pct'], 0.1);
+        $this->assertEqualsWithDelta(33.33, $economics['net_price_eur'], 0.01);
     }
 }

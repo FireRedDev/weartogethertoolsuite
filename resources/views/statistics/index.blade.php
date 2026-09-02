@@ -64,7 +64,16 @@
 
             <div class="kpis">
                 <div class="kpi">
-                    <div class="label">Umsatz {{ $current['label'] }}</div>
+                    <div class="label">Umsatz {{ $current['label'] }}
+                        <x-info label="Was genau ist hier Umsatz?">
+                            Die Summe der Bestellpositionen
+                            {{ config('statistics.revenue_includes_tax') ? 'inklusive Umsatzsteuer' : 'ohne Umsatzsteuer' }},
+                            ohne Versandkosten und Gebühren — die lassen sich keiner Schule und keinem Produkt
+                            zuordnen. <strong>Erstattungen sind nicht abgezogen:</strong> Eine ganz stornierte
+                            Bestellung fällt über den Bestellstatus heraus, eine teilweise erstattete zählt aber
+                            in voller Höhe.
+                        </x-info>
+                    </div>
                     <div class="value hero">{{ $euro($current['revenue']) }}</div>
                     @if ($revenueDelta)
                         <div class="delta {{ $revenueDelta['tone'] }}">{{ $revenueDelta['text'] }} gegenüber {{ $previous['label'] }} (ganzes Jahr)</div>

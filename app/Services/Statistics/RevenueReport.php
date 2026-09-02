@@ -166,14 +166,19 @@ class RevenueReport
             }
         }
 
+        // ALLE Anträge je Kategorie sammeln, nicht nur einen. „Folgejahr" legt
+        // für das nächste Bestellfenster einen zweiten Antrag an, der beim
+        // Anlegen dieselbe Kategorie wiederverwendet — das ist der Normalfall.
+        // Zählte nur einer, fehlte der Umsatz aller früheren Fenster derselben
+        // Schule im Durchschnitt.
         $onboardings = SchoolOnboarding::query()->orderByDesc('window_end')->get();
         $byCategory = [];
         $byName = [];
         foreach ($onboardings as $onboarding) {
             if ($onboarding->woo_category_id !== null) {
-                $byCategory[(int) $onboarding->woo_category_id] ??= $onboarding;
+                $byCategory[(int) $onboarding->woo_category_id][] = $onboarding;
             }
-            $byName[mb_strtolower(trim((string) $onboarding->school_name))] ??= $onboarding;
+            $byName[mb_strtolower(trim((string) $onboarding->school_name))][] = $onboarding;
         }
 
         $schools = collect();
@@ -185,14 +190,18 @@ class RevenueReport
                 continue;
             }
 
-            $onboarding = $byCategory[$category['id']]
+            $matching = $byCategory[$category['id']]
                 ?? $byName[mb_strtolower(trim($category['name']))]
-                ?? null;
+                ?? [];
+            // Der neueste Antrag steht vorn (sortiert nach Fensterende) und
+            // liefert die Lieferart; die Fenster kommen aus allen.
+            $onboarding = $matching[0] ?? null;
 
             $schools->put($category['id'], [
                 'id' => $category['id'],
                 'name' => $category['name'],
                 'onboarding' => $onboarding,
+                'onboardings' => $matching,
                 // Ohne Antrag ist die Lieferart unbekannt; solche Schulen
                 // zählen in die Umsatzrangliste, aber in keinen Fenster-
                 // Durchschnitt (dafür fehlen die Fensterdaten).
@@ -216,6 +225,13 @@ class RevenueReport
         $windows = $this->windows($year, $filters, $schools);
         $inScope = $this->schoolsInScope($filters, $schools);
 
+        // Nachschlagewerk Kategorie => Fenster dieser Kategorie. Eine Schule
+        // kann im selben Schuljahr mehrere haben.
+        $windowsByCategory = [];
+        foreach ($windows as $windowId => $window) {
+            $windowsByCategory[$window['categoryId']][] = $windowId;
+        }
+
         $revenue = 0.0;
         $quantity = 0;
         $orderIds = [];
@@ -237,9 +253,14 @@ class RevenueReport
                 $school = $categoryId === null ? null : $schools->get($categoryId);
 
                 // Fensterzuordnung läuft unabhängig vom Schuljahr, weil ein
-                // Fenster über den Jahreswechsel hinausreichen kann.
-                if ($categoryId !== null && isset($windows[$categoryId]) && $windows[$categoryId]['contains']($date)) {
-                    $windowRevenue[$categoryId] += $item['revenue'];
+                // Fenster über den Jahreswechsel hinausreichen kann. Passt eine
+                // Bestellung in mehrere Fenster derselben Schule, zählt das
+                // erste — zwei Fenster einer Schule liegen nie beieinander.
+                foreach ($windowsByCategory[$categoryId] ?? [] as $windowId) {
+                    if ($windows[$windowId]['contains']($date)) {
+                        $windowRevenue[$windowId] += $item['revenue'];
+                        break;
+                    }
                 }
 
                 if (! $inYear) {
@@ -320,46 +341,62 @@ class RevenueReport
             if ($inScope !== null && ! isset($inScope[$categoryId])) {
                 continue;
             }
-            $onboarding = $school['onboarding'];
-            if ($onboarding === null) {
-                continue;
-            }
 
-            if ($onboarding->delivery_type === 'ondemand') {
-                // On-Demand hat kein Bestellfenster — gewertet wird das ganze
-                // Schuljahr, frühestens ab Anlage des Antrags.
-                $created = $onboarding->created_at ? Carbon::parse($onboarding->created_at)->startOfDay() : $year->start();
-                if ($created->gt($year->end())) {
+            // Ein Fenster JE ANTRAG. Eine Schule kann im selben Schuljahr
+            // mehrere Bestellfenster haben (Folgejahr-Kopie, zweite Runde) —
+            // die zählen einzeln, sonst fiele der Umsatz des früheren Fensters
+            // aus dem Durchschnitt.
+            foreach ($school['onboardings'] ?? [] as $onboarding) {
+                $window = $this->windowFor($onboarding, $year, $filters);
+                if ($window === null) {
                     continue;
                 }
-                $from = $created->gt($year->start()) ? $created : $year->start();
-                $to = $year->end();
-            } elseif ($onboarding->delivery_type === 'collective') {
-                if ($onboarding->window_end === null) {
-                    continue;
-                }
-                // Ein Fenster gehört zu dem Schuljahr, in dem es endet.
-                if (! $year->contains($onboarding->window_end)) {
-                    continue;
-                }
-                $start = $onboarding->window_start ?? $onboarding->window_end;
-                $from = Carbon::parse($start)->startOfDay()->subDays($filters->paddingBefore);
-                $to = Carbon::parse($onboarding->window_end)->endOfDay()->addDays($filters->paddingAfter);
-            } else {
-                // Listenbestellung: kein Webshop, kein Umsatz zuzuordnen.
-                continue;
+                $windows[$categoryId.'#'.$onboarding->id] = $window + ['school' => $school, 'categoryId' => $categoryId];
             }
-
-            $windows[$categoryId] = [
-                'school' => $school,
-                'type' => $onboarding->delivery_type,
-                'from' => $from,
-                'to' => $to,
-                'contains' => static fn (Carbon $date) => $date->betweenIncluded($from, $to),
-            ];
         }
 
         return $windows;
+    }
+
+    /**
+     * Auswertungszeitraum EINES Antrags, oder null, wenn er im gewählten
+     * Schuljahr keines hat.
+     *
+     * @return ?array{type: string, from: Carbon, to: Carbon, contains: callable}
+     */
+    private function windowFor(SchoolOnboarding $onboarding, SchoolYear $year, StatisticsFilters $filters): ?array
+    {
+        if ($onboarding->delivery_type === 'ondemand') {
+            // On-Demand hat kein Bestellfenster — gewertet wird das ganze
+            // Schuljahr, frühestens ab Anlage des Antrags.
+            $created = $onboarding->created_at ? Carbon::parse($onboarding->created_at)->startOfDay() : $year->start();
+            if ($created->gt($year->end())) {
+                return null;
+            }
+            $from = $created->gt($year->start()) ? $created : $year->start();
+            $to = $year->end();
+        } elseif ($onboarding->delivery_type === 'collective') {
+            if ($onboarding->window_end === null) {
+                return null;
+            }
+            // Ein Fenster gehört zu dem Schuljahr, in dem es endet.
+            if (! $year->contains($onboarding->window_end)) {
+                return null;
+            }
+            $start = $onboarding->window_start ?? $onboarding->window_end;
+            $from = Carbon::parse($start)->startOfDay()->subDays($filters->paddingBefore);
+            $to = Carbon::parse($onboarding->window_end)->endOfDay()->addDays($filters->paddingAfter);
+        } else {
+            // Listenbestellung: kein Webshop, kein Umsatz zuzuordnen.
+            return null;
+        }
+
+        return [
+            'type' => $onboarding->delivery_type,
+            'from' => $from,
+            'to' => $to,
+            'contains' => static fn (Carbon $date) => $date->betweenIncluded($from, $to),
+        ];
     }
 
     /**

@@ -304,7 +304,9 @@
                     <p>Die Spalten <strong>Einkauf</strong>, <strong>Versand</strong> und <strong>Marge</strong>
                         kommen live aus dem Printify-Katalog (24 h gecacht) und beziehen sich auf genau die Varianten,
                         die auch angelegt werden. Der Verkaufspreis wird beim Anlegen gegen Produktionskosten +
-                        Versand + {{ (int) round(config('schoolshop.printify.min_margin') * 100) }}% Marge geprüft.</p>
+                        Versand + {{ (int) round(config('schoolshop.printify.min_margin') * 100) }}% Marge geprüft —
+                        netto gegen netto, denn der Preis hier ist ein Bruttopreis
+                        ({{ (int) round((float) config('schoolshop.printify.vat_rate') * 100) }}% USt.).</p>
                     <p>Angelegt werden nur Varianten in den oben gewählten Farben und Größen. Sonst greift das
                         Printify-Limit von {{ config('schoolshop.printify.max_variants') }} Varianten pro Produkt, und
                         die Vorschaubilder zeigen Farben, die die Schule gar nicht bestellt.</p>
@@ -350,9 +352,13 @@
                                 </th>
                                 <th>Marge
                                     <x-info label="Wie wird die Marge gerechnet?">
-                                        (Verkaufspreis − Einkauf − Versand) ÷ (Einkauf + Versand). Rot bedeutet:
-                                        unter der Mindestmarge — dann verweigert die Shop-Anlage das Produkt und
-                                        nennt den nötigen Mindestpreis.
+                                        (Verkaufspreis netto − Einkauf − Versand) ÷ (Einkauf + Versand). Der Preis im
+                                        Konfigurator ist ein Bruttopreis — das sieht die Kundin im Shop —, die Kosten
+                                        von Printify sind netto. Verglichen wird deshalb netto gegen netto, also mit
+                                        dem Verkaufspreis geteilt durch
+                                        {{ number_format(1 + (float) config('schoolshop.printify.vat_rate'), 2, ',', '') }}.
+                                        Rot bedeutet: unter der Mindestmarge — dann verweigert die Shop-Anlage das
+                                        Produkt und nennt den nötigen Mindestpreis (ebenfalls brutto).
                                     </x-info>
                                 </th>
                             @endif

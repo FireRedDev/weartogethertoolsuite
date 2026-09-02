@@ -33,10 +33,18 @@ class PrintifyProvisioner
      *
      * @return array{provider: array, variants: list<array>, shipping: ?array}
      */
-    private function catalog(int $blueprintId, int $providerId): array
+    private function catalog(int $blueprintId, int $providerId, bool $fresh = false): array
     {
+        $key = "printify.catalog.{$blueprintId}.{$providerId}";
+        if ($fresh) {
+            // Vor dem Anlegen frisch holen: Eine Preiserhöhung des Providers
+            // bliebe sonst einen Tag unsichtbar, und die Margenprüfung liefe
+            // mit veralteten Kosten.
+            Cache::forget($key);
+        }
+
         return Cache::remember(
-            "printify.catalog.{$blueprintId}.{$providerId}",
+            $key,
             now()->addDay(),
             fn () => [
                 'provider' => $this->printify->providerDetails($providerId),
@@ -65,19 +73,29 @@ class PrintifyProvisioner
         $catalog = $this->catalog($blueprintId, $providerId);
         $selection = $this->selectVariants($catalog['variants'], $product);
 
-        // Für die Kostenanzeige zählen die tatsächlich angelegten Varianten;
-        // passt keine, behelfsweise der gesamte Katalog (sonst stünde hier gar nichts).
-        $relevant = $selection['variants'] !== [] ? $selection['variants'] : $catalog['variants'];
-        $costs = array_values(array_filter(array_map(fn ($v) => (int) ($v['cost'] ?? 0), $relevant), fn ($c) => $c > 0));
+        // Gerechnet wird ausschließlich mit den Varianten, die auch angelegt
+        // werden. Passt keine, gibt es keine Marge anzuzeigen — der frühere
+        // Rückgriff auf den gesamten Katalog zeigte Zahlen, die für dieses
+        // Produkt nie gelten (die Anlage bricht in dem Fall ohnehin ab).
+        $costs = array_values(array_filter(
+            array_map(fn ($v) => (int) ($v['cost'] ?? 0), $selection['variants']),
+            fn ($c) => $c > 0,
+        ));
 
         $country = $catalog['provider']['location']['country'] ?? null;
         $shipping = $catalog['shipping'];
         $shippingCents = $shipping['cost_cents'] ?? null;
         $maxCostCents = $costs === [] ? null : max($costs);
 
+        // Der Verkaufspreis im Shop ist BRUTTO, die Printify-Kosten sind NETTO.
+        // Verglichen wird deshalb netto gegen netto; angezeigt wird der
+        // Mindestpreis brutto, weil im Konfigurator ein Bruttopreis steht.
+        $vat = (float) config('schoolshop.printify.vat_rate');
         $salePrice = (float) ($product['base_price'] ?? 0);
+        $netSaleCents = (int) round($salePrice * 100 / (1 + $vat));
         $baseCents = ($maxCostCents ?? 0) + ($shippingCents ?? 0);
         $minMargin = (float) config('schoolshop.printify.min_margin');
+        $minNetCents = (int) ceil($baseCents * (1 + $minMargin));
 
         return [
             'provider_title' => $catalog['provider']['title'] ?? '?',
@@ -99,9 +117,13 @@ class PrintifyProvisioner
             'available_colors' => $selection['available_colors'],
             'capped' => $selection['capped'],
 
-            'min_price_eur' => $baseCents > 0 ? ceil($baseCents * (1 + $minMargin)) / 100 : null,
-            'margin_pct' => $baseCents > 0 ? ($salePrice * 100 - $baseCents) / $baseCents * 100 : null,
-            'margin_ok' => $baseCents > 0 && $salePrice * 100 >= ceil($baseCents * (1 + $minMargin)),
+            // Mindest-VERKAUFSPREIS brutto — direkt vergleichbar mit dem Wert
+            // im Konfigurator.
+            'min_price_eur' => $baseCents > 0 ? ceil($minNetCents * (1 + $vat)) / 100 : null,
+            'margin_pct' => $baseCents > 0 ? ($netSaleCents - $baseCents) / $baseCents * 100 : null,
+            'margin_ok' => $baseCents > 0 && $netSaleCents >= $minNetCents,
+            'net_price_eur' => $netSaleCents / 100,
+            'vat_rate' => $vat,
         ];
     }
 
@@ -145,11 +167,16 @@ class PrintifyProvisioner
             return true;
         }));
 
-        // Letzte Sicherung gegen das Printify-Limit von 100 Varianten pro Produkt
+        // Letzte Sicherung gegen das Printify-Limit von 100 Varianten pro
+        // Produkt. Gekürzt wird REIHUM über die Farben statt stur am Ende
+        // abzuschneiden: Sonst fiele eine gewünschte Farbe, die zufällig hinten
+        // im Katalog steht, vollständig heraus — und zwar unbemerkt, weil sie
+        // ja gefunden wurde und deshalb nicht als „fehlend" gilt.
         $max = (int) config('schoolshop.printify.max_variants', 100);
         $capped = count($selected) > $max;
+        $droppedColors = [];
         if ($capped) {
-            $selected = array_slice($selected, 0, $max);
+            [$selected, $droppedColors] = $this->capEvenly($selected, $max);
         }
 
         return [
@@ -159,7 +186,48 @@ class PrintifyProvisioner
             'available_colors' => $availableColors,
             'available_sizes' => $availableSizes,
             'capped' => $capped,
+            'dropped_colors' => $droppedColors,
         ];
+    }
+
+    /**
+     * Kürzt die Auswahl auf `$max`, indem reihum je Farbe eine Variante
+     * genommen wird. So bleibt jede Farbe vertreten, solange es überhaupt
+     * Plätze gibt; erst wenn es mehr Farben als Plätze gibt, fallen welche
+     * heraus — und die werden dann ausdrücklich benannt.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{0: list<array<string, mixed>>, 1: list<string>}
+     */
+    private function capEvenly(array $rows, int $max): array
+    {
+        $byColor = [];
+        foreach ($rows as $row) {
+            $byColor[(string) ($row['color'] ?? '')][] = $row;
+        }
+
+        $kept = [];
+        while (count($kept) < $max && $byColor !== []) {
+            foreach ($byColor as $color => $group) {
+                if (count($kept) >= $max) {
+                    break;
+                }
+                $kept[] = array_shift($byColor[$color]);
+                if ($byColor[$color] === []) {
+                    unset($byColor[$color]);
+                }
+            }
+        }
+
+        $dropped = [];
+        foreach ($rows as $row) {
+            $color = (string) ($row['color'] ?? '');
+            if ($color !== '' && ! in_array($color, array_column($kept, 'color'), true) && ! in_array($color, $dropped, true)) {
+                $dropped[] = $color;
+            }
+        }
+
+        return [array_values($kept), $dropped];
     }
 
     /**
@@ -292,19 +360,27 @@ class PrintifyProvisioner
     public function checkPrice(float $salePriceEur, int $blueprintId, int $providerId, array $product = []): array
     {
         $minimum = $this->minimumPrice($blueprintId, $providerId, $product);
-        $salePriceCents = (int) round($salePriceEur * 100);
-        $ok = $salePriceCents >= $minimum['min_price_cents'];
+        // Der Verkaufspreis im Shop ist brutto, die Printify-Kosten sind netto.
+        $vat = (float) config('schoolshop.printify.vat_rate');
+        $netCents = (int) round($salePriceEur * 100 / (1 + $vat));
+        $minGrossCents = (int) ceil($minimum['min_price_cents'] * (1 + $vat));
+        $ok = $netCents >= $minimum['min_price_cents'];
 
         return [
             'ok' => $ok,
             'min_price_cents' => $minimum['min_price_cents'],
+            'min_price_gross_cents' => $minGrossCents,
             'message' => sprintf(
-                'Produktionskosten max. %.2f EUR + Versand %.2f EUR, Mindestpreis inkl. %d%% Marge: %.2f EUR — Verkaufspreis %.2f EUR %s',
+                'Produktionskosten max. %.2f EUR + Versand %.2f EUR (netto), Mindestpreis inkl. %d%% Marge: %.2f EUR netto = %.2f EUR brutto — '
+                .'Verkaufspreis %.2f EUR brutto (= %.2f EUR netto bei %d%% USt.) %s',
                 $minimum['max_variant_cost_cents'] / 100,
                 $minimum['shipping_cents'] / 100,
                 (int) round(config('schoolshop.printify.min_margin') * 100),
                 $minimum['min_price_cents'] / 100,
+                $minGrossCents / 100,
                 $salePriceEur,
+                $netCents / 100,
+                (int) round($vat * 100),
                 $ok ? 'OK' : 'ZU NIEDRIG',
             ),
         ];
@@ -325,7 +401,7 @@ class PrintifyProvisioner
         int $providerId,
     ): array {
         $preset = ProductConfigurator::preset($product);
-        $catalog = $this->catalog($blueprintId, $providerId);
+        $catalog = $this->catalog($blueprintId, $providerId, fresh: true);
         $selection = $this->selectVariants($catalog['variants'], $product);
 
         if ($selection['variants'] === []) {
@@ -395,7 +471,12 @@ class PrintifyProvisioner
         }
         if ($selection['capped']) {
             $notes[] = 'Achtung: Printify erlaubt max. '.config('schoolshop.printify.max_variants')
-                .' Varianten pro Produkt — die Auswahl wurde gekürzt. Bitte Farben/Größen im Konfigurator eingrenzen.';
+                .' Varianten pro Produkt — die Auswahl wurde gekürzt (reihum je Farbe, damit keine Farbe ganz wegfällt). '
+                .'Bitte Farben/Größen im Konfigurator eingrenzen.';
+            if (($selection['dropped_colors'] ?? []) !== []) {
+                $notes[] = 'Trotz Kürzung ganz entfallen: '.implode(', ', $selection['dropped_colors'])
+                    .' — es gibt mehr Farben als Variantenplätze.';
+            }
         }
 
         $description = $preset['printify_description'] ?? $preset['description'];

@@ -608,16 +608,11 @@ class ReviewAuditTest extends TestCase
      * danach auf DIESELBE Kategorie. Genau das ist der Normalfall, nicht der
      * Sonderfall.
      *
-     * Die Statistik ordnet jeder Kategorie aber nur EINEN Antrag zu
-     * (`RevenueReport::schools()`, `$byCategory[...] ??=`, sortiert nach
-     * `window_end` absteigend) und baut je Kategorie nur EIN Fenster
-     * (`windows()`, `$windows[$categoryId]`). Zwei Bestellfenster derselben
-     * Schule im selben Schuljahr zählen deshalb als eines — der Umsatz des
-     * früheren Fensters fehlt im Durchschnitt.
-     *
-     * SOLL: je Antrag ein Fenster; Kategorie ist die Zuordnung, nicht die Einheit.
+     * Die Statistik zählt jetzt EIN FENSTER JE ANTRAG; die Kategorie ist die
+     * Zuordnung, nicht die Zähleinheit. Vorher fiel der Umsatz aller früheren
+     * Fenster derselben Schule aus dem Durchschnitt.
      */
-    public function test_E2E01_two_windows_of_one_school_count_as_one(): void
+    public function test_E2E01_two_windows_of_one_school_count_separately(): void
     {
         Http::fake([
             'shop.example/wp-json/wc/v3/products/categories*' => Http::response([
@@ -648,9 +643,9 @@ class ReviewAuditTest extends TestCase
         $data = app(RevenueReport::class)->build($filters);
 
         $this->assertSame(
-            1,
+            2,
             $data['current']['collective']['count'],
-            'IST: ein Fenster gezählt. SOLL: zwei — es gab zwei Bestellfenster.',
+            'Beide Bestellfenster derselben Schule zählen einzeln.',
         );
     }
 
@@ -751,17 +746,12 @@ class ReviewAuditTest extends TestCase
     // ---------------------------------------------------------------- PR-02
 
     /**
-     * PR-02 (hoch): Der Teilstring-Vergleich greift nur, wenn es KEINEN exakten
-     * Treffer gibt — das ist gut gelöst. Gibt es aber keine Farbe „Red“,
-     * sondern nur Abstufungen, zieht „rot“ sie alle herein. Zusammen mit der
-     * 100-Varianten-Grenze wird danach stur am Ende abgeschnitten: Eine
-     * gewünschte Farbe kann dabei vollständig herausfallen, ohne unter
-     * `missing_colors` aufzutauchen — gemeldet wird nur „gekürzt“.
-     *
-     * SOLL: erst je gewünschter Farbe/Größe gleichmäßig auswählen, dann kürzen;
-     * herausgefallene Wünsche benennen.
+     * PR-02 (behoben): Gibt es keine Farbe „Red“, sondern nur Abstufungen,
+     * zieht „rot“ sie alle herein. Beim Kürzen auf 100 Varianten wird jetzt
+     * REIHUM je Farbe genommen statt stur am Ende abzuschneiden — die
+     * gewünschte blaue Variante bleibt erhalten.
      */
-    public function test_PR02_capping_silently_drops_a_requested_color(): void
+    public function test_PR02_capping_keeps_every_requested_color(): void
     {
         $variants = [];
         // Vier Rot-Abstufungen, aber kein schlichtes „Red“ — der Teilstring-
@@ -785,9 +775,9 @@ class ReviewAuditTest extends TestCase
         )));
 
         $this->assertTrue($selection['capped'], 'Die Auswahl wurde gekürzt.');
-        $this->assertNotContains('Blue', $colors, 'IST: Blau ist komplett herausgefallen …');
-        $this->assertNotContains('blau', $selection['missing_colors'], '… wird aber nicht als fehlend gemeldet.');
-        $this->assertContains('Dark Red', $colors, 'IST: nicht gewünschte Rot-Abstufungen wurden stattdessen angelegt.');
+        $this->assertContains('Blue', $colors, 'Die gewünschte blaue Variante blieb erhalten.');
+        $this->assertLessThanOrEqual(100, count($selection['variants']), 'Das Printify-Limit wird eingehalten.');
+        $this->assertSame([], $selection['dropped_colors'], 'Keine Farbe ist ganz entfallen.');
     }
 
     // ---------------------------------------------------------------- SO-01

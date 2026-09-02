@@ -47,6 +47,16 @@ return [
         // Verkaufspreis muss mindestens (Produktionskosten + Versand) * (1 + Marge) sein
         'min_margin' => 0.10,
 
+        /*
+         * Umsatzsteuersatz für den Vergleich Verkaufspreis ↔ Kosten.
+         *
+         * Die Preise im Shop sind BRUTTO (das sieht die Kundin), die Kosten von
+         * Printify sind NETTO. Ohne diese Umrechnung sähe jede Marge rund 20
+         * Prozentpunkte besser aus, als sie ist — ein Produkt mit „+10 % Marge"
+         * wäre in Wahrheit defizitär.
+         */
+        'vat_rate' => 0.20,
+
         // Harte Obergrenze der Printify-API: ein Produkt darf max. 100 Varianten
         // haben. Wir filtern ohnehin auf die gewählten Farben/Größen; dieser
         // Deckel greift nur als letzte Sicherung (mit Protokoll-Hinweis).
