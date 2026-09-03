@@ -2,7 +2,9 @@
 
 namespace App\Services\Statistics;
 
+use App\Models\BalanceOrder;
 use App\Models\SchoolOnboarding;
+use App\Services\Balance\BalanceReport;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -39,6 +41,7 @@ class RevenueReport
     public function __construct(
         private readonly OrderRepository $repository,
         private readonly ProductGrouper $grouper,
+        private readonly BalanceReport $balance,
     ) {}
 
     /**
@@ -54,12 +57,17 @@ class RevenueReport
         // Auf der Konsole und in Tests darf dagegen geholt werden.
         $this->repository->startBudget($allowFetching ? null : 0.0);
 
-        if (! $allowFetching && (! $this->repository->hasProducts() || ! $this->repository->hasCategories())) {
+        // Ist die Shop-Quelle abgeschaltet, wird der Shop gar nicht gebraucht:
+        // Die Auswertung beruht dann allein auf der Auftragsbilanz und steht
+        // sofort — auch wenn noch kein einziger Monat geladen ist.
+        $needsShop = $filters->sourceShop;
+
+        if ($needsShop && ! $allowFetching && (! $this->repository->hasProducts() || ! $this->repository->hasCategories())) {
             return $this->incomplete($filters);
         }
 
-        $products = $this->repository->products($filters->fresh);
-        $schools = $this->schools($filters->fresh);
+        $products = $needsShop ? $this->repository->products($filters->fresh) : [];
+        $schools = $needsShop ? $this->schools($filters->fresh) : collect();
 
         $current = $this->aggregate($filters->year, $filters, $products, $schools);
         $previous = $this->aggregate($filters->year->previous(), $filters, $products, $schools);
@@ -123,6 +131,7 @@ class RevenueReport
         $empty = fn (SchoolYear $year) => [
             'year' => $year, 'label' => $year->label(), 'complete' => false, 'loaded' => 0, 'total' => 0, 'fetchedAt' => null,
             'revenue' => 0.0, 'quantity' => 0, 'orders' => 0, 'avgPerOrder' => null, 'unassigned' => 0.0,
+            'shopRevenue' => 0.0, 'manualRevenue' => 0.0, 'manualOrders' => 0,
             'refundedOrders' => 0, 'refundedTotal' => 0.0,
             'months' => $this->emptyMonths($year), 'days' => [],
             'collective' => ['count' => 0, 'done' => 0, 'running' => 0, 'upcoming' => 0, 'revenue' => 0.0, 'doneRevenue' => 0.0, 'avg' => null, 'avgDone' => null, 'list' => []],
@@ -222,7 +231,9 @@ class RevenueReport
      */
     private function aggregate(SchoolYear $year, StatisticsFilters $filters, array $products, Collection $schools): array
     {
-        $fetch = $this->repository->orders($year, $filters->statuses, $filters->fetchPadding(), $filters->fresh);
+        $fetch = $filters->sourceShop
+            ? $this->repository->orders($year, $filters->statuses, $filters->fetchPadding(), $filters->fresh)
+            : ['orders' => [], 'complete' => true, 'loaded' => 0, 'total' => 0, 'fetchedAt' => null];
         $orders = $fetch['orders'];
 
         $windows = $this->windows($year, $filters, $schools);
@@ -315,6 +326,21 @@ class RevenueReport
 
         $orderCount = count($orderIds);
 
+        /*
+         * Zweite Quelle: die Auftragsbilanz. Sie liefert genau das, was der
+         * Shop NICHT kennt — Bargeld, Direktverkäufe und die Online-Einnahmen
+         * der Jahre vor dem eigenen Webshop (`revenueOutsideShop()`).
+         *
+         * Bewusst hier drin und nicht als Nachbearbeitung: Umsatz, Monate und
+         * Tagesreihe müssen zusammenpassen, sonst rechnen Prognose,
+         * Verlaufskurve und der Vorjahresvergleich „zum selben Zeitpunkt" mit
+         * verschiedenen Grundlagen.
+         */
+        $manual = ['revenue' => 0.0, 'orders' => 0];
+        if ($filters->sourceOther) {
+            $manual = $this->addBalanceOrders($year, $filters, $revenue, $months, $days, $schoolTotals);
+        }
+
         return [
             'year' => $year,
             'label' => $year->label(),
@@ -325,7 +351,14 @@ class RevenueReport
             'revenue' => round($revenue, 2),
             'quantity' => $quantity,
             'orders' => $orderCount,
-            'avgPerOrder' => $orderCount > 0 ? round($revenue / $orderCount, 2) : null,
+            // Ø je Bestellung bleibt eine reine SHOP-Kennzahl: Wie viel eine
+            // einzelne Bestellung im Webshop bringt. Die Auftragsbilanz kennt
+            // keine einzelnen Bestellungen, nur ganze Aufträge — beides in
+            // einen Schnitt zu werfen ergäbe keine sinnvolle Zahl.
+            'avgPerOrder' => $orderCount > 0 ? round(($revenue - $manual['revenue']) / $orderCount, 2) : null,
+            'shopRevenue' => round($revenue - $manual['revenue'], 2),
+            'manualRevenue' => round($manual['revenue'], 2),
+            'manualOrders' => $manual['orders'],
             'unassigned' => round($unassigned, 2),
             'refundedOrders' => count($refundedOrders),
             'refundedTotal' => round($refundedTotal, 2),
@@ -338,6 +371,65 @@ class RevenueReport
             'colors' => $this->sortRanking($colorTotals),
             'schools' => $this->sortRanking($schoolTotals, byRevenue: true),
         ];
+    }
+
+    /**
+     * Die Umsätze der Auftragsbilanz, die es im Webshop nicht gibt, in die
+     * laufende Auswertung einrechnen.
+     *
+     * Der Lieferart-Filter greift auch hier (ein Auftrag trägt sie selbst);
+     * der Schulfilter dagegen NICHT — er arbeitet mit Shop-Kategorie-IDs, die
+     * ein händisch erfasster Auftrag ohne Verknüpfung gar nicht hat. Ist eine
+     * einzelne Schule gewählt, bleibt die Auftragsbilanz deshalb außen vor,
+     * sofern der Auftrag nicht ausdrücklich an deren Kategorie hängt.
+     *
+     * @param  array<string, array{short: string, label: string, revenue: float}>  $months
+     * @param  array<int, float>  $days
+     * @param  array<string, array{name: string, revenue: float, quantity: int}>  $schoolTotals
+     * @return array{revenue: float, orders: int}
+     */
+    private function addBalanceOrders(
+        SchoolYear $year,
+        StatisticsFilters $filters,
+        float &$revenue,
+        array &$months,
+        array &$days,
+        array &$schoolTotals,
+    ): array {
+        $added = 0.0;
+        $count = 0;
+
+        foreach (BalanceOrder::query()->ofYear($year)->get() as $order) {
+            $amount = $order->revenueOutsideShop();
+            if ($amount <= 0.0 || $order->ordered_on === null) {
+                continue;
+            }
+            if ($filters->deliveryType !== 'all' && $order->delivery_type !== $filters->deliveryType) {
+                continue;
+            }
+            if ($filters->schoolId !== null && (int) $order->woo_category_id !== $filters->schoolId) {
+                continue;
+            }
+
+            $date = Carbon::parse($order->ordered_on);
+            $revenue += $amount;
+            $added += $amount;
+            $count++;
+
+            $monthKey = $date->format('Y-m');
+            if (isset($months[$monthKey])) {
+                $months[$monthKey]['revenue'] += $amount;
+            }
+            $dayKey = (int) $year->start()->diffInDays($date);
+            $days[$dayKey] = ($days[$dayKey] ?? 0.0) + $amount;
+
+            $name = $order->school_name;
+            $schoolTotals[$name] ??= ['name' => $name, 'revenue' => 0.0, 'quantity' => 0];
+            $schoolTotals[$name]['revenue'] += $amount;
+            $schoolTotals[$name]['quantity'] += $order->productCount();
+        }
+
+        return ['revenue' => $added, 'orders' => $count];
     }
 
     /**
@@ -366,7 +458,14 @@ class RevenueReport
                 if ($window === null) {
                     continue;
                 }
-                $windows[$categoryId.'#'.$onboarding->id] = $window + ['school' => $school, 'categoryId' => $categoryId];
+                $windows[$categoryId.'#'.$onboarding->id] = $window + [
+                    'school' => $school,
+                    'categoryId' => $categoryId,
+                    // Wird in der Auftragsbilanz gebraucht: Sie hängt ihre
+                    // Aufträge an genau diesen Antrag und holt sich darüber den
+                    // Online-Umsatz des Fensters.
+                    'onboardingId' => $onboarding->id,
+                ];
             }
         }
 
@@ -462,6 +561,7 @@ class RevenueReport
             }
             $list[] = [
                 'name' => $window['school']['name'],
+                'onboardingId' => $window['onboardingId'] ?? null,
                 'revenue' => $value,
                 'from' => $window['from']->format('d.m.Y'),
                 'to' => $window['to']->format('d.m.Y'),

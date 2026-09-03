@@ -8,15 +8,24 @@
 return [
 
     /*
-     * Österreichisches Schuljahr. Es beginnt je nach Bundesland am ersten oder
-     * zweiten Montag im September; für eine Umsatzauswertung ist dieser
-     * Unterschied bedeutungslos, ein fester Stichtag dagegen über die Jahre
-     * vergleichbar. Ende ist der Tag davor im Folgejahr — die Sommerferien
-     * zählen damit ans ABLAUFENDE Schuljahr (so gewünscht: Nachzügler- und
-     * Ferienbestellungen gehören zum Bestellfenster, das im Juni endete).
+     * Das Geschäftsjahr, hier weiterhin „Schuljahr" genannt: 1. August bis
+     * 31. Juli. Dieser Stichtag ist die Vorgabe des Hauses — so rechnen die
+     * Jahresbilanzen („Bruttoumsatz 1. August bis 31. Juli") und so rechnet die
+     * Auftragsbilanz. Beide Module MÜSSEN denselben Stichtag verwenden, sonst
+     * zeigen sie unterschiedliche Jahressummen.
+     *
+     * Der Schnitt liegt bewusst vor Schulbeginn: Die Sommerferien zählen damit
+     * ans ABLAUFENDE Jahr — Nachzügler- und Ferienbestellungen gehören zu dem
+     * Bestellfenster, das im Juni endete, nicht zur neuen Saison. Der August
+     * dagegen ist der erste Monat der neuen Saison, weil dort die Bestellfenster
+     * für das kommende Schuljahr aufgehen.
+     *
+     * Achtung beim Ändern: Der Stichtag steckt in den Cache-Schlüsseln der
+     * Monatsdaten nicht drin. Nach einer Änderung einmal „Daten neu laden"
+     * anstoßen, sonst mischen sich alte und neue Jahreszuordnungen.
      */
     'school_year' => [
-        'start_month' => 9,
+        'start_month' => 8,
         'start_day' => 1,
         // Wie viele Schuljahre die Auswahl anbietet (inkl. laufendem)
         'history_years' => 6,

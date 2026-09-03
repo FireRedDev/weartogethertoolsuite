@@ -207,6 +207,44 @@
         }
         .need-block h3 { margin: 0 0 0.8rem; font-size: 1rem; }
 
+        /*
+         * Quellenschalter über der Auswertung. Bewusst Links und keine
+         * Kästchen: Jeder Zustand ist eine eigene Adresse und damit als
+         * Lesezeichen speicherbar. Der Zustand hängt NIE nur an der Farbe —
+         * der Knopf steht sichtbar links oder rechts, und die Schrift
+         * wechselt zwischen kräftig und blass.
+         */
+        .sources { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-bottom: 1rem; }
+        .sources-label { font-size: 0.82rem; color: var(--muted); font-weight: 600; }
+        .toggle {
+            display: inline-flex; align-items: center; gap: 0.55rem;
+            padding: 0.4rem 0.75rem 0.4rem 0.55rem;
+            border: 1px solid var(--line); border-radius: 999px;
+            background: var(--card); text-decoration: none; color: var(--ink);
+        }
+        .toggle:hover { border-color: var(--ink); }
+        .toggle.locked { cursor: default; }
+        .toggle.locked:hover { border-color: var(--line); }
+        .toggle-track {
+            width: 34px; height: 20px; border-radius: 999px; flex: none;
+            background: #cbd5e1; position: relative; transition: background 0.15s ease;
+        }
+        .toggle-knob {
+            position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+            border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+            transition: transform 0.15s ease;
+        }
+        .toggle.on .toggle-track { background: var(--ok); }
+        .toggle.on .toggle-knob { transform: translateX(14px); }
+        .toggle-text { display: flex; flex-direction: column; line-height: 1.15; }
+        .toggle-text strong { font-size: 0.88rem; }
+        .toggle-text small { font-size: 0.74rem; color: var(--muted); }
+        .toggle.off { background: var(--bg); }
+        .toggle.off .toggle-text strong { color: var(--muted); font-weight: 500; text-decoration: line-through; }
+        @media (prefers-reduced-motion: reduce) {
+            .toggle-track, .toggle-knob { transition: none; }
+        }
+
         /* Filterzeile über allen Diagrammen — gilt für die ganze Seite */
         .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem 1rem; align-items: end; }
         .filters label { font-size: 0.82rem; margin-bottom: 0.2rem; }
@@ -273,6 +311,7 @@
         @php($isTool = request()->routeIs('tool.*', 'shop.*', 'job.*'))
         @php($isSchools = request()->routeIs('schools.*'))
         @php($isClose = request()->routeIs('close-window.*'))
+        @php($isBalance = request()->routeIs('balance.*'))
         @php($isStats = request()->routeIs('statistics.*'))
         @php($isAdmin = request()->routeIs('admin.*'))
         <a href="{{ route('home') }}" style="color:{{ request()->routeIs('home') ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Startseite</a>
@@ -282,6 +321,8 @@
         <a href="{{ route('schools.index') }}" style="color:{{ $isSchools ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Schul-Onboarding</a>
         <span style="color:#475569;">|</span>
         <a href="{{ route('close-window.index') }}" style="color:{{ $isClose ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Bestellfenster schließen</a>
+        <span style="color:#475569;">|</span>
+        <a href="{{ route('balance.index') }}" style="color:{{ $isBalance ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Auftragsbilanz</a>
         <span style="color:#475569;">|</span>
         <a href="{{ route('statistics.index') }}" style="color:{{ $isStats ? '#ffbb00' : '#cbd5e1' }};text-decoration:none;font-weight:600;font-size:0.9rem;">Statistiken</a>
         {{-- Deutlich abgesetzt: das ist der Prüfstand, nicht ein weiteres Modul --}}
@@ -304,6 +345,7 @@
         <a href="{{ route('tool.index') }}">Auftragsdokumente</a><span>·</span>
         <a href="{{ route('schools.index') }}">Schul-Onboarding</a><span>·</span>
         <a href="{{ route('close-window.index') }}">Bestellfenster schließen</a><span>·</span>
+        <a href="{{ route('balance.index') }}">Auftragsbilanz</a><span>·</span>
         <a href="{{ route('statistics.index') }}">Statistiken</a><span>·</span>
         <a href="{{ route('admin.status') }}"><strong>Admin-Informationen</strong> (Schnittstellen &amp; Webhook prüfen)</a>
     </nav>

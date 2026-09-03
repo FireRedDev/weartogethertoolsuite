@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Exceptions\WooCommerceApiException;
+use App\Models\BalanceOrder;
 use App\Models\SchoolOnboarding;
 use App\Models\SeasonGoal;
 use App\Services\Statistics\RevenueForecast;
@@ -52,14 +53,17 @@ class StatisticsTest extends TestCase
 
     // ---------------------------------------------------------------- Schuljahr
 
-    public function test_schuljahr_beginnt_im_september_und_endet_ende_august(): void
+    public function test_schuljahr_beginnt_im_august_und_endet_ende_juli(): void
     {
         $year = SchoolYear::forDate(Carbon::parse('2026-02-15'));
 
         $this->assertSame(2025, $year->startYear);
         $this->assertSame('2025/26', $year->label());
-        $this->assertSame('2025-09-01', $year->start()->toDateString());
-        $this->assertSame('2026-08-31', $year->end()->toDateString());
+        // Das Geschäftsjahr des Hauses: 1. August bis 31. Juli. Beide Module
+        // müssen denselben Stichtag verwenden, sonst zeigen Auftragsbilanz und
+        // Statistik unterschiedliche Jahressummen.
+        $this->assertSame('2025-08-01', $year->start()->toDateString());
+        $this->assertSame('2026-07-31', $year->end()->toDateString());
     }
 
     public function test_sommerferien_zaehlen_zum_ablaufenden_schuljahr(): void
@@ -67,19 +71,21 @@ class StatisticsTest extends TestCase
         // 20. Juli 2026 liegt in den Ferien NACH dem Unterrichtsjahr 2025/26 —
         // die Bestellung gehört zu diesem Schuljahr, nicht zum nächsten.
         $this->assertSame('2025/26', SchoolYear::forDate(Carbon::parse('2026-07-20'))->label());
-        $this->assertSame('2025/26', SchoolYear::forDate(Carbon::parse('2026-08-31'))->label());
-        $this->assertSame('2026/27', SchoolYear::forDate(Carbon::parse('2026-09-01'))->label());
+        $this->assertSame('2025/26', SchoolYear::forDate(Carbon::parse('2026-07-31'))->label());
+        // Der August gehört schon zur neuen Saison — dort gehen die Fenster
+        // für das kommende Schuljahr auf.
+        $this->assertSame('2026/27', SchoolYear::forDate(Carbon::parse('2026-08-01'))->label());
     }
 
-    public function test_schuljahr_hat_zwoelf_monate_beginnend_im_september(): void
+    public function test_schuljahr_hat_zwoelf_monate_beginnend_im_august(): void
     {
         $months = (new SchoolYear(2025))->months();
 
         $this->assertCount(12, $months);
-        $this->assertSame('Sep', $months[0]['short']);
-        $this->assertSame('September 2025', $months[0]['label']);
-        $this->assertSame('Aug', $months[11]['short']);
-        $this->assertSame('August 2026', $months[11]['label']);
+        $this->assertSame('Aug', $months[0]['short']);
+        $this->assertSame('August 2025', $months[0]['label']);
+        $this->assertSame('Jul', $months[11]['short']);
+        $this->assertSame('Juli 2026', $months[11]['label']);
     }
 
     // ------------------------------------------------------------- Kennzahlen
@@ -141,11 +147,12 @@ class StatisticsTest extends TestCase
         $months = array_values(app(RevenueReport::class)->build($this->filters())['current']['months']);
 
         $this->assertCount(12, $months);
-        $this->assertSame('September 2025', $months[0]['label']);
+        // Erster Monat ist der August — das Geschäftsjahr beginnt am 1.8.
+        $this->assertSame('August 2025', $months[0]['label']);
         // Oktober-Bestellung: 3 × 59,90
-        $this->assertEqualsWithDelta(179.70, $months[1]['revenue'], 0.01);
+        $this->assertEqualsWithDelta(179.70, $months[2]['revenue'], 0.01);
         // Dezember-Nachzügler: 2 × 39,90
-        $this->assertEqualsWithDelta(79.80, $months[3]['revenue'], 0.01);
+        $this->assertEqualsWithDelta(79.80, $months[4]['revenue'], 0.01);
     }
 
     // --------------------------------------------------------------- Ranglisten
@@ -475,8 +482,9 @@ class StatisticsTest extends TestCase
         $data = app(RevenueReport::class)->build($this->filters());
         $months = array_values($data['current']['months']);
 
-        // Die Mitternachtsbestellung (01.11.2025, 3 × 30 € brutto) liegt im November
-        $this->assertEqualsWithDelta(90.0, $months[2]['revenue'], 0.01);
+        // Die Mitternachtsbestellung (01.11.2025, 3 × 30 € brutto) liegt im
+        // November — der vierte Monat, weil das Jahr im August beginnt.
+        $this->assertEqualsWithDelta(90.0, $months[3]['revenue'], 0.01);
     }
 
     // -------------------------------------------------------------------- Seite
@@ -627,6 +635,111 @@ class StatisticsTest extends TestCase
         for ($i = 0; $i < 40 && ! $warmer->progress($filters)['done']; $i++) {
             $warmer->warm($filters);
         }
+    }
+
+    // ------------------------------------------------ Shop-Welt und Bargeldwelt
+
+    /**
+     * Der zentrale Punkt beim Zusammenführen: Aus der Auftragsbilanz kommt nur
+     * das dazu, was der Shop NICHT kennt. Der Online-Anteil eines Auftrags, der
+     * über den Webshop lief, steckt bereits in den Bestellungen.
+     */
+    public function test_sonstige_umsaetze_kommen_dazu_ohne_den_shop_umsatz_doppelt_zu_zaehlen(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+
+        $nurShop = app(RevenueReport::class)->build($this->filters())['current']['revenue'];
+
+        // Ein Auftrag, dessen Online-Anteil schon im Shop steckt: Nur die
+        // 500 € Bargeld dürfen zusätzlich zählen.
+        BalanceOrder::create([
+            'number' => '900', 'school_name' => 'BG Musterstadt', 'school_year' => 2025,
+            'ordered_on' => '2025-11-30', 'online_source' => 'shop',
+            'revenue_online' => 2000.00, 'revenue_cash' => 500.00, 'source' => 'manual',
+        ]);
+        // Ein reiner Barverkauf ohne Shop: zählt in voller Höhe.
+        BalanceOrder::create([
+            'number' => '901', 'school_name' => 'Musikverein Beispiel', 'school_year' => 2025,
+            'ordered_on' => '2026-01-20', 'online_source' => 'manual',
+            'revenue_online' => 0.0, 'revenue_cash' => 300.00, 'source' => 'manual',
+        ]);
+
+        Cache::flush();
+        $this->fakeShop();
+        $data = app(RevenueReport::class)->build($this->filters());
+
+        $this->assertEqualsWithDelta($nurShop + 800.0, $data['current']['revenue'], 0.01);
+        $this->assertEqualsWithDelta($nurShop, $data['current']['shopRevenue'], 0.01);
+        $this->assertEqualsWithDelta(800.0, $data['current']['manualRevenue'], 0.01);
+        $this->assertSame(2, $data['current']['manualOrders']);
+    }
+
+    public function test_sonstige_umsaetze_landen_im_monat_ihres_auftragsdatums(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+
+        $vorher = array_values(app(RevenueReport::class)->build($this->filters())['current']['months']);
+
+        BalanceOrder::create([
+            'number' => '902', 'school_name' => 'Musikverein Beispiel', 'school_year' => 2025,
+            'ordered_on' => '2026-01-20', 'online_source' => 'manual',
+            'revenue_cash' => 300.00, 'source' => 'manual',
+        ]);
+
+        $nachher = array_values(app(RevenueReport::class)->build($this->filters())['current']['months']);
+
+        // Jänner ist der sechste Monat des Schuljahres (August ist der erste).
+        $this->assertSame('Jänner 2026', $nachher[5]['label']);
+        $this->assertEqualsWithDelta($vorher[5]['revenue'] + 300.0, $nachher[5]['revenue'], 0.01);
+        // Und nur dort — die übrigen Monate bleiben unverändert.
+        $this->assertEqualsWithDelta($vorher[4]['revenue'], $nachher[4]['revenue'], 0.01);
+    }
+
+    public function test_ausgeschaltete_quelle_faellt_aus_der_auswertung(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+
+        BalanceOrder::create([
+            'number' => '903', 'school_name' => 'Musikverein Beispiel', 'school_year' => 2025,
+            'ordered_on' => '2026-01-20', 'online_source' => 'manual',
+            'revenue_cash' => 300.00, 'source' => 'manual',
+        ]);
+
+        $ohneSonstige = app(RevenueReport::class)->build($this->filters(['sonstige' => '0']));
+        $this->assertEqualsWithDelta(0.0, $ohneSonstige['current']['manualRevenue'], 0.01);
+
+        // Ohne Shop-Quelle bleibt genau der Bargeldumsatz übrig — und die
+        // Auswertung steht auch ohne einen einzigen geladenen Shop-Monat.
+        Cache::flush();
+        $ohneShop = app(RevenueReport::class)->build($this->filters(['shop' => '0']), allowFetching: false);
+        $this->assertTrue($ohneShop['complete']);
+        $this->assertEqualsWithDelta(300.0, $ohneShop['current']['revenue'], 0.01);
+    }
+
+    public function test_beide_schalter_aus_ist_keine_gueltige_ansicht(): void
+    {
+        // Eine Auswertung ohne Datenquelle wäre eine leere Seite ohne Aussage.
+        $filters = $this->filters(['shop' => '0', 'sonstige' => '0']);
+
+        $this->assertTrue($filters->sourceShop);
+        $this->assertTrue($filters->sourceOther);
+    }
+
+    public function test_die_seite_zeigt_die_quellenschalter(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+        $this->warmUp();
+
+        $response = $this->get(route('statistics.index', ['sonstige' => '0']));
+
+        $response->assertOk();
+        $response->assertSee('Shop-Umsätze');
+        $response->assertSee('Sonstige Umsätze');
+        $response->assertSee('Bargeld und händische Aufträge sind ausgeschaltet', false);
     }
 
     private function filters(array $query = []): StatisticsFilters

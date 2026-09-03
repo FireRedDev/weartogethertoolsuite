@@ -27,9 +27,11 @@
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
             <h1 style="margin:0;">Statistiken
                 <x-info label="Was wird hier ausgewertet?">
-                    Die tatsächlichen Bestellungen aus dem WooCommerce-Shop, zusammengefasst nach
-                    <strong>österreichischem Schuljahr</strong> und verglichen mit dem Vorjahr. Umsatz ist immer die
-                    Summe der Bestellpositionen{{ config('statistics.revenue_includes_tax') ? ' inklusive USt.' : ' ohne USt.' }} —
+                    Zwei Quellen: die tatsächlichen Bestellungen aus dem WooCommerce-Shop und die
+                    <a href="{{ route('balance.index') }}">Auftragsbilanz</a> mit allem, was am Shop vorbeilief
+                    (Bargeld, Direktverkäufe, die Jahre vor dem eigenen Shop). Zusammengefasst nach
+                    <strong>Schuljahr — 1. August bis 31. Juli</strong> — und verglichen mit dem Vorjahr.
+                    Umsatz ist immer der Bruttobetrag{{ config('statistics.revenue_includes_tax') ? ' inklusive USt.' : ' ohne USt.' }};
                     Versandkosten und Gebühren zählen nicht mit, weil sie keinem Produkt und keiner Schule zuzuordnen
                     sind.
                 </x-info>
@@ -47,6 +49,7 @@
             </x-info>
         </p>
 
+        @include('statistics._sources')
         @include('statistics._filters')
     </div>
 
@@ -150,6 +153,17 @@
                         </x-info>
                     </div>
                     <div class="value hero">{{ $euro($current['revenue']) }}</div>
+                    @if ($filters->sourceShop && $filters->sourceOther && ($current['manualRevenue'] ?? 0) > 0)
+                        <div class="delta flat">
+                            {{ $euro($current['shopRevenue']) }} aus dem Shop ·
+                            {{ $euro($current['manualRevenue']) }} sonstige
+                            ({{ $current['manualOrders'] }} {{ $current['manualOrders'] === 1 ? 'Auftrag' : 'Aufträge' }})
+                        </div>
+                    @elseif (! $filters->sourceShop)
+                        <div class="delta warn">Nur sonstige Umsätze — die Shop-Quelle ist ausgeschaltet.</div>
+                    @elseif (! $filters->sourceOther)
+                        <div class="delta warn">Nur Shop-Umsätze — Bargeld und händische Aufträge sind ausgeschaltet.</div>
+                    @endif
                     @if (($current['refundedOrders'] ?? 0) > 0)
                         <div class="delta warn">
                             darin {{ $current['refundedOrders'] }}
@@ -179,7 +193,14 @@
                 @endif
 
                 <div class="kpi">
-                    <div class="label">Ø Umsatz je Bestellung</div>
+                    <div class="label">Ø Umsatz je Bestellung
+                        <x-info label="Welche Bestellungen sind gemeint?">
+                            Einzelbestellungen im Webshop — was eine Schülerin oder ein Elternteil in einem
+                            Einkauf ausgibt. Die Auftragsbilanz kennt keine Einzelbestellungen, sondern ganze
+                            Aufträge; sie bleibt bei dieser Kennzahl deshalb außen vor, auch wenn die sonstigen
+                            Umsätze eingeschaltet sind.
+                        </x-info>
+                    </div>
                     <div class="value">{{ $euro($current['avgPerOrder']) }}</div>
                     <div class="delta {{ $orderDelta ? $orderDelta['tone'] : 'flat' }}">
                         {{ $stk($current['orders']) }} Bestellungen{{ $orderDelta ? ' · '.$orderDelta['text'] : '' }}
@@ -518,4 +539,7 @@
             </x-chart.bars>
         </div>
     </div>
+
+    {{-- Die Auswertungen aus der bisherigen Excel — Gewinn, Marge, Ausgaben --}}
+    @include('statistics._balance')
 @endsection

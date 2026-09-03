@@ -4,6 +4,18 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 
 ## [Unreleased]
 
+### Neu: Modul „Auftragsbilanz" (v26)
+- **Die Excel `Auftragsbilanz_gesamt.xlsx` ist in die Software gezogen.** Neues Modul `/auftragsbilanz`: eine Zeile je Auftrag, Spalten wie bisher. Eingetragen werden Einnahmen (online/bar), Provision, Ausgaben, Umsatzsteuer und die Stückzahlen je Produktart; Einnahmen gesamt, netto, Gewinn und Marge rechnet die Software — das waren in der Excel Formeln und bleiben es.
+- **384 Altaufträge übernommen** (Schuljahre 2019/20 bis 2025/26, `php artisan auftragsbilanz:import`). Die Excel kannte kein Datum je Auftrag; diese Zeilen tragen das Schuljahresende und sind als geschätzt gekennzeichnet.
+- **Fund beim Übernehmen:** In der Excel war die Spalte „Schuljahr" ab Zeile 365 als Zahlenreihe fortgeschrieben (`2025-27`, `2025-28`, …). Dadurch fielen 18 Aufträge aus jeder Auswertung — die Schuljahresbilanz wies für 2025/26 **1.275,84 €** aus statt **48.166,49 €**. Beim Import begradigt, ein Test hält die Jahresverteilung fest.
+- **Online-Einnahmen werden automatisch gepflegt:** Hängt ein Auftrag an einem Bestellfenster, füllt die Software den Online-Betrag aus dem Webshop — dieselbe Rechnung wie im Statistikmodul. Nachgetragen wird nach dem Seitenaufruf und über `php artisan auftragsbilanz:sync`; die Seite wartet nie auf den Shop.
+- **Abweichungshinweis:** Oben im Modul steht je Schuljahr, was der Shop meldet und was eingetragen ist — mit Warnung, wenn beides auseinanderläuft. Die Altwerte aus der Excel bleiben als Vergleich stehen.
+
+### Statistik: beide Welten verheiratet (v26)
+- **Zwei Quellenschalter** über der Auswertung: Shop-Umsätze und sonstige Umsätze (Bargeld, Direktverkäufe, händisch erfasste Aufträge). Doppelt gezählt wird nichts — ein Auftrag, dessen Online-Einnahmen aus dem Shop stammen, steuert nur seinen Bargeldanteil bei. Mit ausgeschalteter Shop-Quelle läuft die Seite auch dann, wenn WooCommerce nicht erreichbar ist.
+- **Neue Auswertungen aus der Excel:** Wirtschaftlichkeit der Saison (Gewinn, Marge, Ausgaben, Provision, Ø je Auftrag), größte Aufträge, Schulen mit Umsatz und Gewinn, Schuljahresbilanz über alle Jahre und verkaufte Teile je Schuljahr mit Ø je Auftrag.
+- **Das Schuljahr läuft jetzt vom 1. August bis 31. Juli** statt 1. September bis 31. August — das Geschäftsjahr des Hauses, nach dem auch die Jahresbilanzen gerechnet werden. Beide Module verwenden denselben Stichtag. **Achtung beim Deploy:** Danach einmal „↻ Daten neu laden" anstoßen, damit sich alte und neue Jahreszuordnung nicht mischen.
+
 ### Modul 4: Saisonziel und Planung
 - **Das Zielumsatz-Feld ist kein Filter mehr**, sondern eine gespeicherte Vorgabe je Schuljahr (`SeasonGoal`): einmal eingetragen gilt sie für alle im Team, bis sie jemand ändert.
 - **Umsätze außerhalb des Webshops** lassen sich eintragen — bereits erzielte zählen zum Ist, zusätzlich erwartete nur in die Hochrechnung. Dazu eine freie Notiz.

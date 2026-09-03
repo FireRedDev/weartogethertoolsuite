@@ -90,13 +90,27 @@
             <span class="btn" style="margin-top:0.5rem;">Zum Bestellfenster-Schließen</span>
         </a>
 
+        <a href="{{ route('balance.index') }}" class="card home-link-card">
+            <h2>📒 Auftragsbilanz</h2>
+            <p class="lead">Die gepflegte Auftragsliste — Nachfolgerin der Excel „Auftragsbilanz_gesamt".
+                Jeder Auftrag eine Zeile mit Einnahmen (online und bar), Provision, Ausgaben, Umsatzsteuer und
+                Stückzahlen je Produktart; Gewinn und Marge rechnet die Software. Hängt ein Auftrag an einem
+                Bestellfenster, holt sie sich die Online-Einnahmen selbst aus dem Webshop und meldet, wenn der
+                eingetragene Wert davon abweicht. Hier wird nur eingetragen und angesehen — ausgewertet wird in
+                den Statistiken.</p>
+            <span class="btn" style="margin-top:0.5rem;">Zur Auftragsbilanz</span>
+        </a>
+
         <a href="{{ route('statistics.index') }}" class="card home-link-card">
             <h2>📈 Statistiken</h2>
-            <p class="lead">Umsatzauswertung nach österreichischem Schuljahr (September bis August, Sommerferien
-                zählen ans ablaufende Jahr), immer im Vergleich zum Vorjahr: Gesamtumsatz und Monatsverlauf,
+            <p class="lead">Umsatzauswertung nach Schuljahr (1. August bis 31. Juli, Sommerferien zählen ans
+                ablaufende Jahr), immer im Vergleich zum Vorjahr: Gesamtumsatz und Monatsverlauf,
                 Ø Umsatz je Bestellung, je Sammelbestellfenster und je On-Demand-Shop, dazu die Ranglisten der
-                meistverkauften Produkte und beliebtesten Farben. Eine Hochrechnung auf den Jahresumsatz aus dem
-                Saisonverlauf der Vorjahre zeigt, ob der Zielumsatz erreicht wird.</p>
+                meistverkauften Produkte und beliebtesten Farben. Eine Hochrechnung aus dem Saisonverlauf der
+                Vorjahre zeigt, ob das Saisonziel erreicht wird, und rechnet aus, wie viele Bestellfenster dafür
+                noch fehlen. Zwei Schalter oben bestimmen, welche Umsätze zählen: die aus dem Webshop, die aus
+                der Auftragsbilanz (Bargeld, Direktverkäufe) oder beide. Gewinn, Marge und Ausgaben kommen aus
+                der Auftragsbilanz.</p>
             <span class="btn" style="margin-top:0.5rem;">Zu den Statistiken</span>
         </a>
 

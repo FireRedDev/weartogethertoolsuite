@@ -1,10 +1,11 @@
 # Wear Together Order Suite
 
 Web-Nachfolger der Wear Together Toolsuite (Python/Tkinter). Die Startseite
-(`/`) zeigt, was gerade zu tun ist, und verlinkt die vier Module:
+(`/`) zeigt, was gerade zu tun ist, und verlinkt die fünf Module:
 **Auftragsdokumente** (Modul 1), **Schul-Onboarding** (Modul 2),
-**Bestellfenster schließen** (Modul 3) und **Statistiken** (Modul 4). Dazu die
-**Admin-Informationen** als Prüfstand für alle Schnittstellen.
+**Bestellfenster schließen** (Modul 3), **Auftragsbilanz** (Modul 4) und
+**Statistiken** (Modul 5). Dazu die **Admin-Informationen** als Prüfstand für
+alle Schnittstellen.
 
 Modul 1 verwandelt den Bestell-Export aus dem Wear-Together-Shop in einem
 geführten 3-Schritte-Flow in vier fertige Auftragsdokumente:
@@ -598,16 +599,86 @@ nur die Stammdaten des Schule-Eintrags (Zeitraum, Shortcode, On-Demand-Kennzeich
 Kategorie). „Bestellfenster offen" und die Versandklassen-Marke gehören den
 jeweiligen Aktionen und bleiben unberührt.
 
-## Modul 4: Statistiken
+## Modul 4: Auftragsbilanz
+
+Aufruf: **Auftragsbilanz** in der Navigationsleiste (`/auftragsbilanz`).
+
+Die Nachfolgerin der Excel `Auftragsbilanz_gesamt.xlsx`. Jeder Auftrag ist eine
+Zeile, die Spalten sind dieselben wie bisher. **Hier wird nur eingetragen und
+angesehen** — ausgewertet wird im Statistikmodul. Die Trennung ist gewollt: Wer
+Zahlen pflegt, will eine Tabelle und keine Diagramme, und wer auswertet, soll
+nichts versehentlich ändern.
+
+**Was eingetragen wird:** Einnahmen Online, Einnahmen Bar und direkt, Provision
+an die Schule, Ausgaben (Produktion, Druck, Versand), Umsatzsteuer und die
+Stückzahlen je Produktart. **Was gerechnet wird:** Einnahmen gesamt, Einnahmen
+ohne USt., Gewinn/Verlust und die Marge. Das waren in der Excel Formeln und
+bleiben es hier — gespeicherte Summen könnten irgendwann nicht mehr zu ihren
+Teilen passen.
+
+**Umsatzsteuer:** Leer gelassen wird sie aus dem Bruttobetrag herausgerechnet
+(× 20/120). Eine ausdrückliche **0** bleibt 0 — das brauchen die Aufträge vor
+der GmbH-Gründung, bei denen keine anfiel.
+
+**Verknüpfung mit dem Webshop.** Ein Auftrag kann an einem Bestellfenster aus
+dem Schul-Onboarding hängen. Steht er dann auf „Online-Einnahmen kommen aus dem
+Webshop", pflegt die Software diesen Betrag selbst: Er ist der Umsatz, den der
+Shop im Zeitraum dieses Fensters für die Kategorie der Schule gemeldet hat —
+dieselbe Rechnung wie im Statistikmodul, damit beide Module nie verschiedene
+Zahlen zeigen. Nachgetragen wird **nach** dem Seitenaufruf; angezeigt wird, was
+gespeichert ist. Ohne Verknüpfung bleibt der Auftrag reine Handeintragung, was
+für Barverkäufe, Vereine und Altdaten genau richtig ist.
+
+**Abgleich mit dem Shop.** Oben steht je Schuljahr, was der Shop meldet und was
+eingetragen ist. Weichen beide ab, sagt der Kasten das mit beiden Zahlen. Die
+Altwerte aus der Excel bleiben dabei unverändert stehen — sie sind der Stand,
+mit dem bisher gerechnet wurde. Der Kasten fragt den Shop nie selbst; er zeigt,
+was die Statistik ohnehin schon geladen hat, und sagt es, wenn noch Monate
+fehlen.
+
+**Die Altdaten.** 384 Aufträge aus den Schuljahren 2019/20 bis 2025/26 wurden
+übernommen (`php artisan auftragsbilanz:import`). Die Excel kannte kein Datum je
+Auftrag, nur ein Schuljahr — diese Zeilen tragen deshalb das Schuljahresende und
+sind als *geschätzt* gekennzeichnet. Für Jahres- und Schulsummen macht das
+keinen Unterschied; im Monatsverlauf sitzen sie alle am Jahresende. Wer ein
+Datum kennt, kann es beim Auftrag eintragen — dann gilt es als gesichert.
+
+> **In der Excel steckte ein Fehler, der die laufende Saison betraf.** Ab Zeile
+> 365 war die Spalte „Schuljahr" als Zahlenreihe fortgeschrieben (`2025-27`,
+> `2025-28`, …), sodass 18 Aufträge aus keiner Auswertung mehr auftauchten. Die
+> Schuljahresbilanz wies für 2025/26 deshalb **1.275,84 €** aus statt der
+> tatsächlichen **48.166,49 €**. Beim Übernehmen ist das begradigt worden.
+
+## Modul 5: Statistiken
 
 Aufruf: **Statistiken** in der Navigationsleiste (`/statistiken`).
 
-Ausgewertet werden die echten Bestellungen aus dem WooCommerce-Shop, immer
-nach **österreichischem Schuljahr** und immer im Vergleich zum Vorjahr.
+Ausgewertet werden zwei Quellen: die echten Bestellungen aus dem
+WooCommerce-Shop und die Auftragsbilanz — immer nach **Schuljahr** und immer im
+Vergleich zum Vorjahr.
 
-**Was „Schuljahr" hier heißt:** 1. September bis 31. August. Die Sommerferien
-zählen damit ans *ablaufende* Schuljahr — Nachzügler- und Ferienbestellungen
-gehören zu dem Bestellfenster, das im Juni endete, nicht zum neuen Jahr.
+**Was „Schuljahr" hier heißt:** 1. August bis 31. Juli, das Geschäftsjahr des
+Hauses. Die Sommerferien zählen damit ans *ablaufende* Schuljahr — Nachzügler-
+und Ferienbestellungen gehören zu dem Bestellfenster, das im Juni endete. Der
+August dagegen ist der erste Monat der neuen Saison, weil dort die Fenster für
+das kommende Schuljahr aufgehen.
+
+**Die zwei Quellenschalter** oben auf der Seite bestimmen, was zählt:
+
+| Schalter | Was er zuschaltet |
+|---|---|
+| **Shop-Umsätze** | die Bestellungen aus dem Webshop |
+| **Sonstige Umsätze** | Bargeld, Direktverkäufe und händisch erfasste Aufträge aus der Auftragsbilanz |
+
+Doppelt gezählt wird nichts: Ein Auftrag, dessen Online-Einnahmen aus dem
+Webshop stammen, steuert hier nur seinen Bargeldanteil bei. Mindestens ein
+Schalter muss an bleiben. Mit ausgeschalteter Shop-Quelle läuft die Seite auch
+dann, wenn der Shop gerade nicht erreichbar ist.
+
+**Wirtschaftlichkeit** (Gewinn, Marge, Ausgaben, Provision, Ø je Auftrag,
+größte Aufträge, Schulen mit Gewinn, Schuljahresbilanz über alle Jahre und
+verkaufte Teile je Schuljahr) kommt immer aus der Auftragsbilanz und hängt
+nicht an den Schaltern: Was ein Auftrag gekostet hat, weiß der Webshop nicht.
 
 **Kennzahlen** (jede mit Vorjahresvergleich):
 
@@ -631,7 +702,7 @@ ohnehin über den Bestellstatus heraus.
 im selben Schuljahr zweimal (etwa über „Folgejahr"), sind das zwei Fenster im
 Durchschnitt — nicht eines.
 
-**Diagramme:** Monatsumsatz (gruppierte Säulen ab September), kumulierter
+**Diagramme:** Monatsumsatz (gruppierte Säulen ab August), kumulierter
 Jahresverlauf mit Hochrechnung und Zielmarke, und drei Ranglisten —
 meistverkaufte Produkte, beliebteste Farben und umsatzstärkste Schulen. Unter
 jedem Diagramm steht „Als Tabelle" mit allen Zahlen.
@@ -751,6 +822,16 @@ ist die Seite schon beim ersten Aufruf des Tages sofort da:
 
 ```
 15 4 * * * cd /pfad/zur/app && php artisan statistics:warm --runs=20
+```
+
+Danach — ebenfalls empfohlen — trägt ein zweiter Cron die Online-Einnahmen der
+verknüpften Aufträge in der Auftragsbilanz nach. Dasselbe passiert gedrosselt
+nach jedem Aufruf der Auftragsbilanz; der Cron sorgt dafür, dass die Zahlen auch
+dann aktuell sind, wenn tagsüber niemand die Seite geöffnet hat. Er braucht die
+Statistik-Daten und gehört deshalb zeitlich dahinter:
+
+```
+45 4 * * * cd /pfad/zur/app && php artisan auftragsbilanz:sync
 ```
 
 ## Admin-Informationen

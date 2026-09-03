@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Balance\BalanceReport;
 use App\Services\Statistics\Charts\BarChart;
 use App\Services\Statistics\Charts\ColumnChart;
 use App\Services\Statistics\Charts\LineChart;
@@ -37,10 +38,15 @@ class StatisticsController extends Controller
         StatisticsWarmer $warmer,
         RevenueReport $report,
         RevenueForecast $forecast,
+        BalanceReport $balance,
     ): View {
         $filters = StatisticsFilters::fromRequest($request);
 
-        if (! $client->isConfigured()) {
+        // Ohne Shop-Zugang geht nur, was ohne Shop auskommt. Ist die Shop-Quelle
+        // abgeschaltet, ist genau das der Fall: Dann beruht die Auswertung
+        // allein auf der Auftragsbilanz — und das ist der Ausweg, wenn der Shop
+        // gerade nicht erreichbar ist.
+        if (! $client->isConfigured() && $filters->sourceShop) {
             return view('statistics.unavailable', [
                 'filters' => $filters,
                 'years' => SchoolYear::recent(),
@@ -56,6 +62,13 @@ class StatisticsController extends Controller
         }
 
         $progress = $warmer->progress($filters);
+
+        // Ist die Shop-Quelle abgeschaltet, braucht die Seite den Shop nicht:
+        // Sie zeigt dann allein die Auftragsbilanz und steht sofort. Das ist
+        // zugleich der Ausweg, wenn der Shop gerade nicht erreichbar ist.
+        if (! $filters->sourceShop) {
+            $progress = ['done' => true] + $progress;
+        }
 
         if (! $progress['done']) {
             $this->warmAfterResponse($warmer, $filters, $progress);
@@ -103,6 +116,17 @@ class StatisticsController extends Controller
             'goal' => $goal,
             'plan' => $plan,
             'fetchedAt' => $data['fetchedAt'],
+            /*
+             * Die Auswertungen aus der bisherigen Excel. Sie beruhen auf der
+             * Auftragsbilanz und nicht auf dem Shop — Ausgaben, Provision und
+             * damit jeder Gewinn stehen nur dort. Deshalb hängen sie auch nicht
+             * an den Quellenschaltern: Ohne Auftragsbilanz gäbe es sie gar nicht.
+             */
+            'balance' => $balance->forYear($filters->year),
+            'balanceYears' => $balance->byYear(),
+            'balanceSchools' => array_slice($balance->bySchool($filters->year), 0, (int) config('statistics.ranking_limit')),
+            'balanceOrders' => array_slice($balance->byOrder($filters->year), 0, (int) config('statistics.ranking_limit')),
+            'balanceProducts' => $balance->products(),
             'monthChart' => (new ColumnChart)->build(
                 $this->monthRows($data['current'], $data['previous']),
                 $data['current']['label'],

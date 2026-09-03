@@ -5,15 +5,15 @@ namespace App\Services\Statistics;
 use Illuminate\Support\Carbon;
 
 /**
- * Ein österreichisches Schuljahr als Zeitraum.
+ * Ein Schuljahr als Zeitraum — die Rechnungsperiode des Hauses.
  *
- * Beginn ist ein fester Stichtag im September (`config('statistics.school_year')`),
- * Ende der Tag davor im Folgejahr. Die Sommerferien fallen damit ans
- * ablaufende Schuljahr — bewusst so, weil Nachzügler- und Ferienbestellungen
- * zu dem Bestellfenster gehören, das im Juni endete, und nicht zum nächsten.
+ * Beginn ist ein fester Stichtag (`config('statistics.school_year')`, derzeit
+ * der 1. August), Ende der Tag davor im Folgejahr. Die Sommerferien fallen
+ * damit ans ablaufende Schuljahr — bewusst so, weil Nachzügler- und
+ * Ferienbestellungen zu dem Bestellfenster gehören, das im Juni endete.
  *
  * Der Wert `$startYear` ist das Kalenderjahr des Schuljahresbeginns:
- * `new SchoolYear(2025)` = 01.09.2025 bis 31.08.2026, Bezeichnung „2025/26".
+ * `new SchoolYear(2025)` = 01.08.2025 bis 31.07.2026, Bezeichnung „2025/26".
  */
 class SchoolYear
 {
@@ -102,7 +102,7 @@ class SchoolYear
     }
 
     /**
-     * Die zwölf Monate des Schuljahres, September zuerst.
+     * Die zwölf Monate des Schuljahres, beginnend mit dem Monat des Stichtags.
      *
      * @return list<array{start: Carbon, end: Carbon, label: string, short: string}>
      */

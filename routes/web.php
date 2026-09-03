@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminStatusController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BalanceOrderController;
 use App\Http\Controllers\CloseOrderWindowController;
 use App\Http\Controllers\FluentFormsWebhookController;
 use App\Http\Controllers\HomeController;
@@ -75,7 +76,15 @@ Route::middleware(ToolAuth::class)->group(function () {
     Route::post('/bestellfenster-schliessen/{onboarding}', [CloseOrderWindowController::class, 'close'])->name('close-window.close');
     Route::post('/bestellfenster-oeffnen/{onboarding}', [CloseOrderWindowController::class, 'reopen'])->name('close-window.reopen');
 
-    // Modul 4: Statistiken (Umsatzauswertung nach Schuljahr)
+    // Modul 4: Auftragsbilanz (Pflege der Aufträge — Nachfolgerin der Excel)
+    Route::get('/auftragsbilanz', [BalanceOrderController::class, 'index'])->name('balance.index');
+    Route::get('/auftragsbilanz/neu', [BalanceOrderController::class, 'create'])->name('balance.create');
+    Route::post('/auftragsbilanz', [BalanceOrderController::class, 'store'])->name('balance.store');
+    Route::get('/auftragsbilanz/{order}', [BalanceOrderController::class, 'edit'])->name('balance.edit');
+    Route::put('/auftragsbilanz/{order}', [BalanceOrderController::class, 'update'])->name('balance.update');
+    Route::delete('/auftragsbilanz/{order}', [BalanceOrderController::class, 'destroy'])->name('balance.destroy');
+
+    // Modul 5: Statistiken (Umsatzauswertung nach Schuljahr)
     Route::get('/statistiken', [StatisticsController::class, 'index'])->name('statistics.index');
     // Fortschritt des Hintergrund-Aufbaus (die Ladeseite fragt das im Takt ab)
     Route::get('/statistiken/fortschritt', [StatisticsController::class, 'progress'])->name('statistics.progress');
