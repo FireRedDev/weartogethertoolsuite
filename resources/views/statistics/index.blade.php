@@ -71,10 +71,19 @@
                             ohne Versandkosten und Gebühren — die lassen sich keiner Schule und keinem Produkt
                             zuordnen. <strong>Erstattungen sind nicht abgezogen:</strong> Eine ganz stornierte
                             Bestellung fällt über den Bestellstatus heraus, eine teilweise erstattete zählt aber
-                            in voller Höhe.
+                            in voller Höhe. Wie viel das ausmacht, steht unter der Zahl — abgezogen wird es nicht,
+                            weil eine Erstattung oft nur den Versand oder eine einzelne Position betrifft und sich
+                            keiner Produktart zuordnen lässt.
                         </x-info>
                     </div>
                     <div class="value hero">{{ $euro($current['revenue']) }}</div>
+                    @if (($current['refundedOrders'] ?? 0) > 0)
+                        <div class="delta warn">
+                            darin {{ $current['refundedOrders'] }}
+                            {{ $current['refundedOrders'] === 1 ? 'Bestellung' : 'Bestellungen' }}
+                            mit Erstattung über zusammen {{ $euro($current['refundedTotal']) }} — nicht abgezogen
+                        </div>
+                    @endif
                     @if ($revenueDelta)
                         <div class="delta {{ $revenueDelta['tone'] }}">{{ $revenueDelta['text'] }} gegenüber {{ $previous['label'] }} (ganzes Jahr)</div>
                     @endif

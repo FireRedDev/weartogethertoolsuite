@@ -976,6 +976,56 @@ class ReviewAuditTest extends TestCase
         return $commission;
     }
 
+    /**
+     * S-05 (behoben): Erstattungen werden bewusst NICHT vom Umsatz abgezogen —
+     * eine Erstattung betrifft oft nur den Versand oder eine einzelne Position
+     * und ließe sich keiner Produktart zuordnen. Sichtbar gemacht werden sie
+     * aber, damit niemand die Zahl für exakt hält.
+     */
+    public function test_S05_refunds_are_counted_and_shown_but_not_subtracted(): void
+    {
+        $year = \App\Services\Statistics\SchoolYear::current();
+        $date = $year->start()->copy()->addDays(20)->format('Y-m-d\TH:i:s');
+
+        Http::fake([
+            'shop.example/wp-json/wc/v3/products/categories*' => Http::response([
+                ['id' => 1, 'name' => 'Schulen', 'count' => 0, 'parent' => 0],
+                ['id' => 7, 'name' => 'AHS Testschule', 'count' => 1, 'parent' => 1],
+            ], 200, ['X-WP-TotalPages' => '1']),
+            'shop.example/wp-json/wc/v3/products*' => Http::response([
+                ['id' => 101, 'name' => 'AHS Testschule Schulhoodie', 'categories' => [['id' => 7]]],
+            ], 200, ['X-WP-TotalPages' => '1']),
+            'shop.example/wp-json/wc/v3/orders*' => function ($request) use ($date) {
+                $inRange = $date > (string) $request->data()['after'] && $date < (string) $request->data()['before'];
+
+                return Http::response($inRange ? [[
+                    'id' => 5001,
+                    'date_created' => $date,
+                    'status' => 'completed',
+                    'line_items' => [[
+                        'product_id' => 101, 'parent_name' => 'AHS Testschule Schulhoodie',
+                        'quantity' => 2, 'total' => '100.00', 'total_tax' => '20.00', 'meta_data' => [],
+                    ]],
+                    // Eine Position wurde nachträglich erstattet
+                    'refunds' => [['id' => 9001, 'total' => '-60.00']],
+                ]] : [], 200, ['X-WP-TotalPages' => '1']);
+            },
+        ]);
+
+        $filters = StatisticsFilters::fromRequest(Request::create('/statistiken'));
+        app(StatisticsWarmer::class)->warm($filters, 60.0);
+        $data = app(RevenueReport::class)->build($filters);
+
+        $this->assertSame(120.0, $data['current']['revenue'], 'Der Umsatz bleibt ungekürzt.');
+        $this->assertSame(1, $data['current']['refundedOrders'], 'Die Erstattung ist gezählt.');
+        $this->assertSame(60.0, $data['current']['refundedTotal'], 'Und beziffert.');
+
+        $this->get('/statistiken')
+            ->assertOk()
+            ->assertSee('mit Erstattung über zusammen', false)
+            ->assertSee('nicht abgezogen', false);
+    }
+
     // ---------------------------------------------------------------- O-01
 
     /**

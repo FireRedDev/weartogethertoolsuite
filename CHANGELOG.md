@@ -14,6 +14,7 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 - **Bestellfenster-Durchschnitte zählen jetzt je Antrag** statt je Shop-Kategorie — der Umsatz früherer Fenster derselben Schule fehlte vorher.
 - **Klassenlisten** werden an Zeilenumbrüchen getrennt (das Feld ist mehrzeilig); vorher entstand eine einzige Auswahloption mit Zeilenumbrüchen darin.
 - **QR-Code des Präsentationsblatts** nutzt den echten Kategorie-Slug aus dem Shop statt einer aus dem Schulnamen abgeleiteten Adresse.
+- **Erstattungen werden beziffert:** Unter dem Umsatz steht, wie viele Bestellungen eine Erstattung enthalten und über welchen Betrag. Abgezogen wird nichts — eine Erstattung betrifft oft nur den Versand oder eine einzelne Position und ließe sich keiner Produktart zuordnen.
 - Weiter: Anmeldung und Webhook gedrosselt, Eingabegrenzen für Preise/Farben/Größen, Medien-Upload mit Typ- und Größenprüfung, Sicherung mit Sperre und Platzprüfung, kurze Zeitabläufe für die Verbindungstests, erklärte Fehlerseiten statt nackter 500er.
 
 ### Modul 2: Schul-Onboarding

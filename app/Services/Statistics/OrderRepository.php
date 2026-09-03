@@ -129,7 +129,7 @@ class OrderRepository
      * kann und die Fensterzuordnung diese Bestellungen braucht.
      *
      * @param  list<string>  $statuses
-     * @return array{orders: list<array{id: int, date: Carbon, items: list<array{product_id: int, name: string, quantity: int, revenue: float, color: ?string}>}>, complete: bool, loaded: int, total: int}
+     * @return array{orders: list<array{id: int, date: Carbon, refund: float, items: list<array{product_id: int, name: string, quantity: int, revenue: float, color: ?string}>}>, complete: bool, loaded: int, total: int}
      */
     public function orders(SchoolYear $year, array $statuses, int $paddingDays = 0, bool $fresh = false): array
     {
@@ -268,7 +268,11 @@ class OrderRepository
     {
         sort($statuses);
 
-        return 'statistics.orders.'.$month.'.'.substr(md5(implode(',', $statuses)), 0, 8);
+        // Die Kennung („v2") gehört zur FORM der gespeicherten Daten. Kommt ein
+        // Feld dazu (hier: die Erstattungen), müssen die Monate neu geholt
+        // werden — sonst zeigte die Auswertung für alles bereits Gespeicherte
+        // dauerhaft null Erstattungen an.
+        return 'statistics.orders.v2.'.$month.'.'.substr(md5(implode(',', $statuses)), 0, 8);
     }
 
     /**
@@ -286,7 +290,7 @@ class OrderRepository
 
     /**
      * @param  list<array<string, mixed>>  $orders
-     * @return list<array{id: int, date: string, items: list<array{product_id: int, name: string, quantity: int, revenue: float, color: ?string}>}>
+     * @return list<array{id: int, date: string, refund: float, items: list<array{product_id: int, name: string, quantity: int, revenue: float, color: ?string}>}>
      */
     private function normalize(array $orders): array
     {
@@ -323,10 +327,34 @@ class OrderRepository
                 'id' => (int) ($order['id'] ?? 0),
                 'date' => Carbon::parse($date)->toDateTimeString(),
                 'items' => $items,
+                // Erstattungen kommen in der Bestellantwort mit (kein eigener
+                // Abruf). Abgezogen werden sie NICHT — sie betreffen oft nur
+                // Versandkosten oder eine einzelne Position und ließen sich
+                // nicht sauber einer Produktart zuordnen. Sichtbar gemacht
+                // werden sie aber, damit niemand die Zahl für exakt hält.
+                'refund' => $this->refundTotal($order),
             ];
         }
 
         return $normalized;
+    }
+
+    /**
+     * Erstatteter Betrag einer Bestellung, als positive Zahl.
+     *
+     * WooCommerce liefert die Erstattungen im Bestellobjekt mit; `total` steht
+     * dort negativ.
+     *
+     * @param  array<string, mixed>  $order
+     */
+    private function refundTotal(array $order): float
+    {
+        $total = 0.0;
+        foreach ($order['refunds'] ?? [] as $refund) {
+            $total += abs((float) ($refund['total'] ?? 0));
+        }
+
+        return round($total, 2);
     }
 
     /** @param array<string, mixed> $item */

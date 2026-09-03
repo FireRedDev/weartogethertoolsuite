@@ -197,6 +197,8 @@
         .kpi .delta.up { color: var(--ok); }
         .kpi .delta.down { color: var(--error); }
         .kpi .delta.flat { color: var(--muted); }
+        /* Einschränkender Hinweis zur Kennzahl, z. B. nicht abgezogene Erstattungen */
+        .kpi .delta.warn { color: var(--warn); }
 
         /* Filterzeile über allen Diagrammen — gilt für die ganze Seite */
         .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem 1rem; align-items: end; }

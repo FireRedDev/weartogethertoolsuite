@@ -122,6 +122,7 @@ class RevenueReport
         $empty = fn (SchoolYear $year) => [
             'year' => $year, 'label' => $year->label(), 'complete' => false, 'loaded' => 0, 'total' => 0,
             'revenue' => 0.0, 'quantity' => 0, 'orders' => 0, 'avgPerOrder' => null, 'unassigned' => 0.0,
+            'refundedOrders' => 0, 'refundedTotal' => 0.0,
             'months' => $this->emptyMonths($year), 'days' => [],
             'collective' => ['count' => 0, 'revenue' => 0.0, 'avg' => null, 'list' => []],
             'ondemand' => ['count' => 0, 'revenue' => 0.0, 'avg' => null, 'list' => []],
@@ -235,6 +236,8 @@ class RevenueReport
         $revenue = 0.0;
         $quantity = 0;
         $orderIds = [];
+        $refundedOrders = [];
+        $refundedTotal = 0.0;
         $unassigned = 0.0;
         $months = $this->emptyMonths($year);
         $days = [];
@@ -273,6 +276,13 @@ class RevenueReport
                 $revenue += $item['revenue'];
                 $quantity += $item['quantity'];
                 $orderIds[$order['id']] = true;
+                // Erstattungen werden nicht abgezogen (sie lassen sich keiner
+                // Produktart zuordnen), aber gezählt — damit auf der Seite
+                // steht, wie belastbar die Zahl ist.
+                if (($order['refund'] ?? 0) > 0 && ! isset($refundedOrders[$order['id']])) {
+                    $refundedOrders[$order['id']] = true;
+                    $refundedTotal += (float) $order['refund'];
+                }
 
                 if ($school === null) {
                     $unassigned += $item['revenue'];
@@ -314,6 +324,8 @@ class RevenueReport
             'orders' => $orderCount,
             'avgPerOrder' => $orderCount > 0 ? round($revenue / $orderCount, 2) : null,
             'unassigned' => round($unassigned, 2),
+            'refundedOrders' => count($refundedOrders),
+            'refundedTotal' => round($refundedTotal, 2),
             'months' => array_values($months),
             'days' => $days,
             'collective' => $this->windowSummary($windows, $windowRevenue, 'collective'),
