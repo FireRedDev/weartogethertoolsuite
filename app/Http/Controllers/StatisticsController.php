@@ -7,11 +7,14 @@ use App\Services\Statistics\Charts\ColumnChart;
 use App\Services\Statistics\Charts\LineChart;
 use App\Services\Statistics\RevenueForecast;
 use App\Services\Statistics\RevenueReport;
+use App\Models\SeasonGoal;
 use App\Services\Statistics\SchoolYear;
 use App\Services\Statistics\StatisticsFilters;
+use App\Services\Statistics\SeasonPlan;
 use App\Services\Statistics\StatisticsWarmer;
 use App\Services\WooCommerceClient;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -82,7 +85,9 @@ class StatisticsController extends Controller
             ]);
         }
 
-        $projection = $forecast->build($data['current'], $data['history'], $filters->target);
+        $goal = SeasonGoal::forYear($filters->year);
+        $projection = $forecast->build($data['current'], $data['history'], $goal);
+        $plan = (new SeasonPlan)->build($data['current'], $data['previous'], $projection, $goal);
 
         return view('statistics.index', [
             'filters' => $filters,
@@ -95,6 +100,9 @@ class StatisticsController extends Controller
             'colorRanking' => $data['colors'],
             'schoolRanking' => $data['schoolRanking'],
             'forecast' => $projection,
+            'goal' => $goal,
+            'plan' => $plan,
+            'fetchedAt' => $data['fetchedAt'],
             'monthChart' => (new ColumnChart)->build(
                 $this->monthRows($data['current'], $data['previous']),
                 $data['current']['label'],
@@ -133,6 +141,42 @@ class StatisticsController extends Controller
                 '€',
             ),
         ]);
+    }
+
+    /**
+     * Saisonziel und die Umsätze außerhalb des Webshops speichern.
+     *
+     * Bewusst eine eigene Aktion und kein Filter: Das Ziel ist eine
+     * Vereinbarung im Team, keine Ansicht. Es bleibt stehen, bis es jemand
+     * ändert, und gilt für alle gleich.
+     */
+    public function saveGoal(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'schuljahr' => ['required', 'string'],
+            'target_revenue' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
+            'manual_revenue' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
+            'manual_forecast' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
+            'manual_note' => ['nullable', 'string', 'max:200'],
+        ], [
+            'target_revenue.numeric' => 'Der Zielumsatz muss eine Zahl sein.',
+            'target_revenue.min' => 'Der Zielumsatz kann nicht negativ sein.',
+        ]);
+
+        $year = SchoolYear::parse($validated['schuljahr']) ?? SchoolYear::current();
+        $goal = SeasonGoal::forYear($year);
+        $goal->fill([
+            'target_revenue' => $validated['target_revenue'] === null || $validated['target_revenue'] === ''
+                ? null
+                : round((float) $validated['target_revenue'], 2),
+            'manual_revenue' => round((float) ($validated['manual_revenue'] ?? 0), 2),
+            'manual_forecast' => round((float) ($validated['manual_forecast'] ?? 0), 2),
+            'manual_note' => $validated['manual_note'] ?? null,
+        ])->save();
+
+        return redirect()
+            ->to(route('statistics.index', $request->except(['_token', 'target_revenue', 'manual_revenue', 'manual_forecast', 'manual_note'])).'#saisonziel')
+            ->with('goalSaved', true);
     }
 
     /**

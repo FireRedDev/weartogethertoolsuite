@@ -2,6 +2,7 @@
 
 namespace App\Services\Statistics;
 
+use App\Models\SeasonGoal;
 use Illuminate\Support\Carbon;
 
 /**
@@ -15,8 +16,10 @@ use Illuminate\Support\Carbon;
  *
  *     Prognose = Umsatz bis heute ÷ erwarteter Anteil bis heute
  *
- * Zusätzlich lässt sich ein Zielumsatz vorgeben; ohne Eingabe gilt der
- * Vorjahreswert als Ziel.
+ * Der Zielumsatz kommt aus der gespeicherten Saisonvorgabe (`SeasonGoal`);
+ * ohne Eintrag gilt der Vorjahreswert. Dort stehen auch die Umsätze außerhalb
+ * des Webshops: bereits erzielte zählen zum Ist, zusätzlich erwartete nur in
+ * die Hochrechnung.
  */
 class RevenueForecast
 {
@@ -25,14 +28,22 @@ class RevenueForecast
      * @param  array<string, mixed>  $current
      * @return array<string, mixed>
      */
-    public function build(array $current, array $history, ?float $target, ?Carbon $today = null): array
+    public function build(array $current, array $history, ?SeasonGoal $goal = null, ?Carbon $today = null): array
     {
         /** @var SchoolYear $year */
         $year = $current['year'];
         $today = $today ?? Carbon::today();
         $previousTotal = (float) ($history[0]['revenue'] ?? 0.0);
+
+        $target = $goal?->target_revenue;
         $targetIsDefault = $target === null;
         $target = $target ?? $previousTotal;
+
+        // Umsätze außerhalb des Webshops: `manualRevenue` ist bereits erzielt
+        // und zählt zum Ist, `manualForecast` ist zusätzlich erwartet und
+        // zählt nur in die Hochrechnung.
+        $manualRevenue = $goal?->manualRevenue() ?? 0.0;
+        $manualForecast = $goal?->manualForecast() ?? 0.0;
 
         $usable = array_values(array_filter($history, static fn ($a) => (float) $a['revenue'] > 0));
         $shape = $this->seasonalShape($usable);
@@ -57,23 +68,32 @@ class RevenueForecast
 
         $monthsLeft = $monthIndex === null ? 0 : max(0, 11 - $monthIndex);
 
+        // Ist und Hochrechnung jeweils inklusive der manuellen Umsätze — das
+        // sind die Zahlen, gegen die das Ziel gemessen wird.
+        $achieved = round($ytd + $manualRevenue, 2);
+        $projectionTotal = $projection === null ? null : round($projection + $manualRevenue + $manualForecast, 2);
+
         return [
             'possible' => $projection !== null && ! $complete,
             'complete' => $complete,
             'reason' => $reason,
             'basis' => array_map(static fn ($a) => (string) $a['label'], $usable),
             'ytd' => round($ytd, 2),
+            'manualRevenue' => $manualRevenue,
+            'manualForecast' => $manualForecast,
+            'achieved' => $achieved,
             'cumulativeShare' => round($cumulativeShare, 4),
             'projection' => $projection,
+            'projectionTotal' => $projectionTotal,
             'remaining' => $projection === null ? null : round(max(0, $projection - $ytd), 2),
             'target' => round($target, 2),
             'targetIsDefault' => $targetIsDefault,
             'previousTotal' => round($previousTotal, 2),
-            'targetShare' => $target > 0 ? round($ytd / $target, 4) : null,
-            'gapToTarget' => $projection === null ? null : round($projection - $target, 2),
-            'openToTarget' => round(max(0, $target - $ytd), 2),
+            'targetShare' => $target > 0 ? round($achieved / $target, 4) : null,
+            'gapToTarget' => $projectionTotal === null ? null : round($projectionTotal - $target, 2),
+            'openToTarget' => round(max(0, $target - $achieved), 2),
             'monthsLeft' => $monthsLeft,
-            'neededPerMonth' => $monthsLeft > 0 ? round(max(0, $target - $ytd) / $monthsLeft, 2) : null,
+            'neededPerMonth' => $monthsLeft > 0 ? round(max(0, $target - $achieved) / $monthsLeft, 2) : null,
             'curve' => $this->curve($current, $history[0] ?? null, $shape, $monthIndex, $projection),
         ];
     }

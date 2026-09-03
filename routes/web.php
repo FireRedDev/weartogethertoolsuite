@@ -79,6 +79,8 @@ Route::middleware(ToolAuth::class)->group(function () {
     Route::get('/statistiken', [StatisticsController::class, 'index'])->name('statistics.index');
     // Fortschritt des Hintergrund-Aufbaus (die Ladeseite fragt das im Takt ab)
     Route::get('/statistiken/fortschritt', [StatisticsController::class, 'progress'])->name('statistics.progress');
+    // Saisonziel und Umsätze außerhalb des Webshops — gespeichert, kein Filter
+    Route::post('/statistiken/ziel', [StatisticsController::class, 'saveGoal'])->name('statistics.goal');
 
     // Admin-Informationen: Live-Status aller Schnittstellen
     Route::get('/admin-informationen', [AdminStatusController::class, 'index'])->name('admin.status');

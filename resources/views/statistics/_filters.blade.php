@@ -78,17 +78,6 @@
                     <input type="number" id="nachlauf" name="nachlauf" min="0" max="{{ config('statistics.window_padding.max') }}" value="{{ $filters->paddingAfter }}">
                 </div>
 
-                <div>
-                    <label for="ziel">Zielumsatz (€)
-                        <x-info label="Wofür der Zielumsatz?">
-                            Dein Umsatzziel für das ganze Schuljahr — es setzt die Zielmarke im Verlaufsdiagramm und
-                            die Restrechnung darunter. Bleibt das Feld leer, wird der <strong>tatsächlich erreichte
-                            Umsatz des Vorjahres</strong> als Ziel angenommen (also: mindestens so gut wie letztes
-                            Jahr). Betrifft nur die Prognose, keine anderen Zahlen.
-                        </x-info>
-                    </label>
-                    <input type="number" id="ziel" name="ziel" min="0" step="100" placeholder="{{ $forecast['previousTotal'] ?? '' }}" value="{{ $filters->target }}">
-                </div>
             </div>
 
             <details class="explain" style="margin-top:0.9rem;">
@@ -117,8 +106,8 @@
                     <li><strong>Vorlauf/Nachlauf</strong> — wirken <em>ausschließlich</em> auf „Ø je
                         Sammelbestellfenster" und „Ø je On-Demand-Shop". Gesamtumsatz, Monatsverlauf und die
                         Ranglisten ändern sich dadurch nicht, weil dort das Bestelldatum zählt und nicht das Fenster.</li>
-                    <li><strong>Zielumsatz</strong> — wirkt <em>ausschließlich</em> auf die Prognose (Zielmarke,
-                        Zielerreichung, nötiger Umsatz je Restmonat).</li>
+                    <li><strong>Das Saisonziel ist kein Filter</strong> — es steht als eigene Karte über der
+                        Auswertung, wird gespeichert und gilt für alle im Team, bis es jemand ändert.</li>
                 </ul>
             </x-explain>
 

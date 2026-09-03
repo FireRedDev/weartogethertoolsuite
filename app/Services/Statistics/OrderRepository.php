@@ -31,6 +31,11 @@ use Illuminate\Support\Facades\Cache;
  * Ganze Kalendermonate deshalb, weil sich dieselben Monate zwischen zwei
  * Schuljahren überlappen (Puffer über den Jahresrand) und so nur einmal
  * geholt werden müssen.
+ *
+ * Gespeichert wird je Monat `{fetched_at, orders}` — der Zeitstempel ist der
+ * „Datenstand", den die Auswertung anzeigt. Ändert sich die FORM dieser Daten,
+ * muss die Kennung im Cache-Schlüssel (`statistics.orders.v3.…`) hochgezählt
+ * werden, sonst bleiben bereits gespeicherte Monate auf der alten Form stehen.
  */
 class OrderRepository
 {
@@ -129,7 +134,7 @@ class OrderRepository
      * kann und die Fensterzuordnung diese Bestellungen braucht.
      *
      * @param  list<string>  $statuses
-     * @return array{orders: list<array{id: int, date: Carbon, refund: float, items: list<array{product_id: int, name: string, quantity: int, revenue: float, color: ?string}>}>, complete: bool, loaded: int, total: int}
+     * @return array{orders: list<array{id: int, date: Carbon, refund: float, items: list<array{product_id: int, name: string, quantity: int, revenue: float, color: ?string}>}>, complete: bool, loaded: int, total: int, fetchedAt: ?Carbon}
      */
     public function orders(SchoolYear $year, array $statuses, int $paddingDays = 0, bool $fresh = false): array
     {
@@ -139,6 +144,7 @@ class OrderRepository
         $orders = [];
         $loaded = 0;
         $complete = true;
+        $fetchedAt = null;
         $months = $this->months($from, $to);
 
         foreach ($months as $month) {
@@ -156,14 +162,20 @@ class OrderRepository
 
                     continue;
                 }
-                $cached = $this->normalize(
-                    $this->client->ordersForStatistics($statuses, $month['after'], $month['before']),
-                );
+                $cached = [
+                    'fetched_at' => now()->toIso8601String(),
+                    'orders' => $this->normalize(
+                        $this->client->ordersForStatistics($statuses, $month['after'], $month['before']),
+                    ),
+                ];
                 Cache::put($key, $cached, $this->ttl($month['key']));
             }
 
             $loaded++;
-            foreach ($cached as $order) {
+            // Der Datenstand ist so alt wie der ÄLTESTE Baustein — nur so ist
+            // die Aussage „alles ist mindestens so aktuell" wahr.
+            $fetchedAt = $this->olderOf($fetchedAt, $cached['fetched_at'] ?? null);
+            foreach ($cached['orders'] ?? [] as $order) {
                 $date = Carbon::parse($order['date']);
                 if ($date->lt($from) || $date->gt($to)) {
                     continue;
@@ -180,6 +192,7 @@ class OrderRepository
             'complete' => $complete,
             'loaded' => $loaded,
             'total' => count($months),
+            'fetchedAt' => $fetchedAt === null ? null : Carbon::parse($fetchedAt),
         ];
     }
 
@@ -212,10 +225,23 @@ class OrderRepository
      */
     public function loadMonth(array $month, array $statuses): void
     {
-        $orders = $this->normalize(
-            $this->client->ordersForStatistics($statuses, $month['after'], $month['before']),
-        );
-        Cache::put($this->cacheKey($month['key'], $statuses), $orders, $this->ttl($month['key']));
+        $payload = [
+            'fetched_at' => now()->toIso8601String(),
+            'orders' => $this->normalize(
+                $this->client->ordersForStatistics($statuses, $month['after'], $month['before']),
+            ),
+        ];
+        Cache::put($this->cacheKey($month['key'], $statuses), $payload, $this->ttl($month['key']));
+    }
+
+    /** Der ältere von zwei Zeitpunkten (null zählt nicht mit). */
+    private function olderOf(?string $a, ?string $b): ?string
+    {
+        if ($a === null || $b === null) {
+            return $a ?? $b;
+        }
+
+        return $a < $b ? $a : $b;
     }
 
     public function hasProducts(): bool
@@ -272,7 +298,7 @@ class OrderRepository
         // Feld dazu (hier: die Erstattungen), müssen die Monate neu geholt
         // werden — sonst zeigte die Auswertung für alles bereits Gespeicherte
         // dauerhaft null Erstattungen an.
-        return 'statistics.orders.v2.'.$month.'.'.substr(md5(implode(',', $statuses)), 0, 8);
+        return 'statistics.orders.v3.'.$month.'.'.substr(md5(implode(',', $statuses)), 0, 8);
     }
 
     /**

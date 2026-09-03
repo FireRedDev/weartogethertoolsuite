@@ -4,6 +4,13 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 
 ## [Unreleased]
 
+### Modul 4: Saisonziel und Planung
+- **Das Zielumsatz-Feld ist kein Filter mehr**, sondern eine gespeicherte Vorgabe je Schuljahr (`SeasonGoal`): einmal eingetragen gilt sie für alle im Team, bis sie jemand ändert.
+- **Umsätze außerhalb des Webshops** lassen sich eintragen — bereits erzielte zählen zum Ist, zusätzlich erwartete nur in die Hochrechnung. Dazu eine freie Notiz.
+- **Bedarfsrechnung:** Unter der Prognose steht, wie viele Bestellfenster bis zum Ziel noch fehlen — je Art getrennt, weil Sammelbestellfenster und On-Demand-Shops unterschiedlich viel bringen. Der Ø je Fenster kommt aus den abgeschlossenen Fenstern der laufenden Saison und des Vorjahres; laufende zählen nicht mit.
+- **Fensterzahlen je Art:** Die beiden Fenster-Kacheln zeigen jetzt, wie viele Fenster der Saison schon gelaufen sind und wie viele gerade laufen.
+- **Datenstand:** Über der Filterzeile steht, von wann die angezeigten Zahlen stammen (Zeitpunkt des ältesten Bausteins).
+
 ### Code-Review: behobene Befunde (v17–v22)
 - **Marge rechnete Brutto gegen Netto.** Die Shop-Preise sind Bruttopreise, die Printify-Kosten netto — jede angezeigte Marge lag rund 20 Prozentpunkte zu hoch. Verglichen wird jetzt netto gegen netto (`schoolshop.printify.vat_rate`), angezeigt wird der Mindestpreis brutto.
 - **Doppelanlage ausgeschlossen:** Sperre je Antrag um „Shop anlegen", Nachladen innerhalb der Sperre, und alle externen IDs (WooCommerce-Produkt, Printify-Produkt, jedes Mockup) werden sofort nach dem Aufruf gespeichert. Bezahlte Mockup-Renders gehen bei einem Abbruch nicht mehr verloren.

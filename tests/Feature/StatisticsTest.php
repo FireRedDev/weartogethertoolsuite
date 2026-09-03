@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Exceptions\WooCommerceApiException;
 use App\Models\SchoolOnboarding;
+use App\Models\SeasonGoal;
 use App\Services\Statistics\RevenueForecast;
+use App\Services\Statistics\SeasonPlan;
 use App\Services\Statistics\RevenueReport;
 use App\Services\Statistics\SchoolYear;
 use App\Services\Statistics\StatisticsFilters;
@@ -239,6 +241,111 @@ class StatisticsTest extends TestCase
         $this->assertSame(0, $ondemand['current']['collective']['count']);
     }
 
+    // ------------------------------------------------------- Saisonziel & Plan
+
+    public function test_zielumsatz_wird_gespeichert_und_bleibt_stehen(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+        $this->warmUp();
+
+        $this->post(route('statistics.goal'), [
+            'schuljahr' => SchoolYear::current()->key(),
+            'target_revenue' => 25000,
+            'manual_revenue' => 1500,
+            'manual_forecast' => 800,
+            'manual_note' => 'Listenbestellung Musikverein',
+        ])->assertRedirect();
+
+        // Gespeichert — nicht in der Adresszeile, sondern in der Datenbank
+        $goal = SeasonGoal::forYear(SchoolYear::current());
+        $this->assertSame(25000.0, $goal->target_revenue);
+        $this->assertSame(1500.0, $goal->manualRevenue());
+
+        // … und beim nächsten Aufruf ohne jeden Parameter wieder da
+        $this->get(route('statistics.index'))
+            ->assertOk()
+            ->assertSee('Saisonziel', false)
+            ->assertSee('Listenbestellung Musikverein', false);
+    }
+
+    public function test_manuelle_umsaetze_zaehlen_ins_ist_und_in_die_hochrechnung(): void
+    {
+        $goal = new SeasonGoal([
+            'target_revenue' => 20000.0,
+            'manual_revenue' => 1000.0,
+            'manual_forecast' => 500.0,
+        ]);
+
+        $forecast = app(RevenueForecast::class)->build(
+            current: $this->aggregate(2025, [0, 4000.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            history: [$this->aggregate(2024, [0, 5000.0, 0, 0, 0, 0, 0, 0, 5000.0, 0, 0, 0])],
+            goal: $goal,
+            today: Carbon::parse('2026-02-15'),
+        );
+
+        // Ist = Webshop 4.000 + 1.000 außerhalb
+        $this->assertEqualsWithDelta(5000.0, $forecast['achieved'], 0.01);
+        // Hochrechnung = 8.000 aus dem Shop + 1.000 erzielt + 500 erwartet
+        $this->assertEqualsWithDelta(9500.0, $forecast['projectionTotal'], 1.0);
+        // Offen bis zum Ziel misst gegen das Ist inklusive der manuellen Umsätze
+        $this->assertEqualsWithDelta(15000.0, $forecast['openToTarget'], 0.01);
+    }
+
+    public function test_bedarfsrechnung_trennt_die_fensterarten(): void
+    {
+        // Laufende Saison: ein abgeschlossenes Sammelfenster (2.000 €),
+        // ein abgeschlossener On-Demand-Shop (500 €).
+        $current = $this->aggregate(2025, [2500.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        $current['collective'] = ['count' => 2, 'done' => 1, 'running' => 1, 'upcoming' => 0,
+            'revenue' => 2000.0, 'doneRevenue' => 2000.0, 'avg' => 1000.0, 'avgDone' => 2000.0, 'list' => []];
+        $current['ondemand'] = ['count' => 1, 'done' => 1, 'running' => 0, 'upcoming' => 0,
+            'revenue' => 500.0, 'doneRevenue' => 500.0, 'avg' => 500.0, 'avgDone' => 500.0, 'list' => []];
+
+        $forecast = ['target' => 12500.0, 'achieved' => 2500.0, 'projection' => 5000.0, 'projectionTotal' => 5000.0];
+        $plan = (new SeasonPlan)->build($current, null, $forecast, new SeasonGoal);
+
+        $this->assertEqualsWithDelta(10000.0, $plan['open'], 0.01);
+        // 10.000 offen bei 2.000 je Sammelfenster = 5 Fenster …
+        $this->assertSame(5, $plan['types']['collective']['needed']);
+        // … oder bei 500 je On-Demand-Shop 20 Shops. Die Arten bringen
+        // unterschiedlich viel, deshalb zwei Zahlen statt einer.
+        $this->assertSame(20, $plan['types']['ondemand']['needed']);
+        // Gezählt wird, was schon gelaufen ist
+        $this->assertSame(1, $plan['types']['collective']['done']);
+        $this->assertSame(2, $plan['types']['collective']['total']);
+    }
+
+    public function test_laufende_fenster_druecken_den_planungsdurchschnitt_nicht(): void
+    {
+        // Ein abgeschlossenes Fenster mit 2.000 €, ein laufendes mit erst 100 €.
+        $current = $this->aggregate(2025, [2100.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        $current['collective'] = ['count' => 2, 'done' => 1, 'running' => 1, 'upcoming' => 0,
+            'revenue' => 2100.0, 'doneRevenue' => 2000.0, 'avg' => 1050.0, 'avgDone' => 2000.0, 'list' => []];
+        $current['ondemand'] = ['count' => 0, 'done' => 0, 'running' => 0, 'upcoming' => 0,
+            'revenue' => 0.0, 'doneRevenue' => 0.0, 'avg' => null, 'avgDone' => null, 'list' => []];
+
+        $forecast = ['target' => 6100.0, 'achieved' => 2100.0, 'projection' => 3000.0, 'projectionTotal' => 3000.0];
+        $plan = (new SeasonPlan)->build($current, null, $forecast, new SeasonGoal);
+
+        // 4.000 offen, Durchschnitt aus dem ABGESCHLOSSENEN Fenster (2.000)
+        $this->assertEqualsWithDelta(2000.0, $plan['types']['collective']['avg'], 0.01);
+        $this->assertSame(2, $plan['types']['collective']['needed']);
+        $this->assertNull($plan['types']['ondemand']['needed'], 'Ohne Grundlage keine Zahl.');
+    }
+
+    public function test_datenstand_wird_angezeigt(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+        $this->warmUp();
+
+        $this->get(route('statistics.index'))
+            ->assertOk()
+            ->assertSee('Datenstand', false)
+            ->assertSee(now()->format('d.m.Y'), false);
+    }
+
     // ---------------------------------------------------------------- Prognose
 
     public function test_prognose_rechnet_mit_dem_saisonverlauf_der_vorjahre(): void
@@ -246,7 +353,7 @@ class StatisticsTest extends TestCase
         $forecast = app(RevenueForecast::class)->build(
             current: $this->aggregate(2025, [0, 4000.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             history: [$this->aggregate(2024, [0, 5000.0, 0, 0, 0, 0, 0, 0, 5000.0, 0, 0, 0])],
-            target: null,
+            goal: null,
             today: Carbon::parse('2026-02-15'),
         );
 
@@ -264,7 +371,7 @@ class StatisticsTest extends TestCase
         $forecast = app(RevenueForecast::class)->build(
             current: $this->aggregate(2025, [0, 4000.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             history: [$this->aggregate(2024, [0, 5000.0, 0, 0, 0, 0, 0, 0, 5000.0, 0, 0, 0])],
-            target: null,
+            goal: null,
             today: Carbon::parse('2026-02-15'),
         );
 
@@ -278,7 +385,7 @@ class StatisticsTest extends TestCase
         $forecast = app(RevenueForecast::class)->build(
             current: $this->aggregate(2025, [0, 4000.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             history: [$this->aggregate(2024, [0, 5000.0, 0, 0, 0, 0, 0, 0, 5000.0, 0, 0, 0])],
-            target: 7000.0,
+            goal: new SeasonGoal(['target_revenue' => 7000.0]),
             today: Carbon::parse('2026-02-15'),
         );
 
@@ -293,7 +400,7 @@ class StatisticsTest extends TestCase
         $forecast = app(RevenueForecast::class)->build(
             current: $this->aggregate(2025, [0, 4000.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             history: [],
-            target: null,
+            goal: null,
             today: Carbon::parse('2026-02-15'),
         );
 
@@ -560,6 +667,12 @@ class StatisticsTest extends TestCase
             'window_end' => SchoolOnboarding::ONDEMAND_WINDOW_END,
             'created_at' => '2025-09-15',
         ]);
+    }
+
+    /** Datenbestand aufbauen, damit die Seite die Auswertung statt der Ladeseite zeigt. */
+    private function warmUp(): void
+    {
+        app(StatisticsWarmer::class)->warm($this->filters(), 60.0);
     }
 
     private function fakeShop(): void

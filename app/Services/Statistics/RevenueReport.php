@@ -102,6 +102,7 @@ class RevenueReport
             'complete' => $current['complete'] && $previous['complete'],
             'loaded' => $current['loaded'] + $previous['loaded'],
             'months' => $current['total'] + $previous['total'],
+            'fetchedAt' => $current['fetchedAt'],
             'previousAtSamePoint' => $previousAtSamePoint,
             'products' => $this->mergeRanking($current['products'], $previous['products']),
             'colors' => $this->mergeRanking($current['colors'], $previous['colors']),
@@ -120,12 +121,12 @@ class RevenueReport
     private function incomplete(StatisticsFilters $filters): array
     {
         $empty = fn (SchoolYear $year) => [
-            'year' => $year, 'label' => $year->label(), 'complete' => false, 'loaded' => 0, 'total' => 0,
+            'year' => $year, 'label' => $year->label(), 'complete' => false, 'loaded' => 0, 'total' => 0, 'fetchedAt' => null,
             'revenue' => 0.0, 'quantity' => 0, 'orders' => 0, 'avgPerOrder' => null, 'unassigned' => 0.0,
             'refundedOrders' => 0, 'refundedTotal' => 0.0,
             'months' => $this->emptyMonths($year), 'days' => [],
-            'collective' => ['count' => 0, 'revenue' => 0.0, 'avg' => null, 'list' => []],
-            'ondemand' => ['count' => 0, 'revenue' => 0.0, 'avg' => null, 'list' => []],
+            'collective' => ['count' => 0, 'done' => 0, 'running' => 0, 'upcoming' => 0, 'revenue' => 0.0, 'doneRevenue' => 0.0, 'avg' => null, 'avgDone' => null, 'list' => []],
+            'ondemand' => ['count' => 0, 'done' => 0, 'running' => 0, 'upcoming' => 0, 'revenue' => 0.0, 'doneRevenue' => 0.0, 'avg' => null, 'avgDone' => null, 'list' => []],
             'schoolsWithoutWindow' => 0, 'products' => [], 'colors' => [], 'schools' => [],
         ];
 
@@ -137,6 +138,7 @@ class RevenueReport
             'complete' => false,
             'loaded' => 0,
             'months' => 0,
+            'fetchedAt' => null,
             'previousAtSamePoint' => 0.0,
             'products' => [],
             'colors' => [],
@@ -319,6 +321,7 @@ class RevenueReport
             'complete' => $fetch['complete'],
             'loaded' => $fetch['loaded'],
             'total' => $fetch['total'],
+            'fetchedAt' => $fetch['fetchedAt'],
             'revenue' => round($revenue, 2),
             'quantity' => $quantity,
             'orders' => $orderCount,
@@ -435,19 +438,34 @@ class RevenueReport
      */
     private function windowSummary(array $windows, array $revenue, string $type): array
     {
+        $today = Carbon::today();
         $list = [];
         $total = 0.0;
+        // Abgeschlossene Fenster getrennt zählen: Ein noch laufendes Fenster
+        // hat naturgemäß weniger Umsatz und würde den Durchschnitt drücken,
+        // auf dem die Planung („wie viele Fenster fehlen noch?") beruht.
+        $doneCount = 0;
+        $doneTotal = 0.0;
+        $running = 0;
         foreach ($windows as $id => $window) {
             if ($window['type'] !== $type) {
                 continue;
             }
             $value = round($revenue[$id] ?? 0.0, 2);
             $total += $value;
+            $isDone = $window['to']->lt($today);
+            if ($isDone) {
+                $doneCount++;
+                $doneTotal += $value;
+            } elseif ($window['from']->lte($today)) {
+                $running++;
+            }
             $list[] = [
                 'name' => $window['school']['name'],
                 'revenue' => $value,
                 'from' => $window['from']->format('d.m.Y'),
                 'to' => $window['to']->format('d.m.Y'),
+                'done' => $isDone,
             ];
         }
 
@@ -456,8 +474,14 @@ class RevenueReport
 
         return [
             'count' => $count,
+            'done' => $doneCount,
+            'running' => $running,
+            'upcoming' => $count - $doneCount - $running,
             'revenue' => round($total, 2),
+            'doneRevenue' => round($doneTotal, 2),
             'avg' => $count > 0 ? round($total / $count, 2) : null,
+            // Grundlage der Planung: nur was wirklich gelaufen ist.
+            'avgDone' => $doneCount > 0 ? round($doneTotal / $doneCount, 2) : null,
             'list' => $list,
         ];
     }

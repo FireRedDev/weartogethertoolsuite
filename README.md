@@ -653,8 +653,51 @@ Rangliste ein Produkt falsch oder doppelt auf, gehört die Schreibweise in
 
 **Was die Filter beeinflussen:** Schuljahr, Lieferart, Schule und Bestellstatus
 wirken auf die ganze Seite. Vorlauf/Nachlauf wirken **nur** auf „Ø je
-Sammelbestellfenster" und „Ø je On-Demand-Shop". Der Zielumsatz wirkt **nur**
-auf die Prognose. Im Tool steht das unter „Was die Filter beeinflussen".
+Sammelbestellfenster" und „Ø je On-Demand-Shop". Im Tool steht das unter „Was
+die Filter beeinflussen".
+
+### Saisonziel und Planung
+
+Das **Saisonziel ist kein Filter**, sondern eine Vereinbarung: Es wird
+gespeichert, gilt für alle im Team und bleibt stehen, bis es jemand ändert.
+Eingetragen wird es in der Karte „Saisonziel" über der Auswertung, je
+Schuljahr. Ohne Eintrag gilt der tatsächlich erreichte Umsatz des Vorjahres.
+
+Dort stehen auch die **Umsätze außerhalb des Webshops** — Listenbestellungen,
+Direktverkäufe, Rechnungen an Vereine:
+
+| Feld | Wirkung |
+|---|---|
+| Bereits erzielt außerhalb des Shops | zählt zum **Ist** und damit zur Zielerreichung |
+| Zusätzlich erwartet außerhalb des Shops | zählt **nur in die Hochrechnung** |
+| Notiz | freier Text, erscheint im ⓘ neben „Bereits erreicht" |
+
+In keiner Rangliste tauchen diese Beträge auf — dazu gibt es keine
+Bestellpositionen.
+
+**Wie viele Bestellfenster fehlen noch?** Unter der Prognose steht, wie viele
+Bestellfenster es bis zum Ziel noch braucht. Gerechnet wird: was bis zum Ziel
+noch offen ist, geteilt durch den durchschnittlichen Umsatz eines
+Bestellfensters. Zwei Dinge sind daran wichtig:
+
+* **Je Art getrennt.** Ein Sammelbestellfenster bringt typischerweise deutlich
+  mehr als ein On-Demand-Shop, deshalb steht je Art eine eigene Zahl. Es sind
+  **Alternativen** („entweder 5 Sammelfenster oder 20 On-Demand-Shops") — in
+  der Praxis wird es eine Mischung.
+* **Nur abgeschlossene Fenster zählen in den Durchschnitt**, und zwar aus der
+  laufenden Saison *und* dem Vorjahr zusammen. Ein noch laufendes Fenster hat
+  naturgemäß weniger Umsatz und würde die Rechnung zu pessimistisch machen. Je
+  mehr Fenster die laufende Saison schon abgeschlossen hat, desto stärker
+  bestimmt sie den Wert.
+
+Bei den beiden Fenster-Kacheln steht außerdem, **wie viele Fenster der Saison
+schon gelaufen sind** und wie viele gerade laufen — etwa „7 von 12 Fenstern
+gelaufen, 2 laufend".
+
+**Datenstand:** Über der Filterzeile steht, von wann die angezeigten Daten
+stammen. Das ist der Zeitpunkt des *ältesten* Bausteins — alles Angezeigte ist
+also mindestens so aktuell. Abgeschlossene Monate ändern sich nicht mehr und
+werden 24 Stunden gehalten, der laufende Monat höchstens 30 Minuten.
 
 **Der Fensterpuffer (wichtig zu verstehen):** Für „Ø je Bestellfenster" wird
 jede Bestellung dem Fenster ihrer Schule zugeordnet. Der Zeitraum wird dabei
@@ -677,12 +720,13 @@ keine.
 *Saisonverlauf* der abgeschlossenen Vorjahre — ein Schuljahr verläuft stark
 ungleichmäßig, die meisten Bestellfenster liegen im Herbst und im Frühjahr.
 Der Umsatz bis heute wird durch den nach diesem Muster erwarteten Anteil
-geteilt. Der **Zielumsatz** ist frei einstellbar; ohne Eingabe gilt der
-Gesamtumsatz des Vorjahres.
+geteilt. Zur Hochrechnung kommen die außerhalb des Shops erwarteten Umsätze
+aus der Saisonziel-Karte dazu.
 
 **Filter für die ganze Seite:** Schuljahr, Lieferart, einzelne Schule,
-Puffertage, Bestellstatus und Zielumsatz. Alles steht in der Adresszeile — eine
-Auswertung lässt sich als Lesezeichen speichern und weitergeben.
+Puffertage und Bestellstatus. Alles steht in der Adresszeile — eine Auswertung
+lässt sich als Lesezeichen speichern und weitergeben. Das Saisonziel gehört
+bewusst nicht dazu (siehe oben).
 
 **Der erste Aufruf:** Beim allerersten Mal — oder nach „↻ Daten neu laden" —
 sind noch keine Bestelldaten gespeichert. Dann zeigt die Seite eine

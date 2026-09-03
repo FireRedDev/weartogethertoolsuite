@@ -5,9 +5,12 @@ namespace App\Services\Statistics;
 use Illuminate\Http\Request;
 
 /**
- * Die Einstellungen der Statistik-Seite, aus der Adresszeile gelesen und auf
- * gültige Werte gebracht. Die Seite ist damit als Lesezeichen speicherbar und
- * teilbar.
+ * Die Filter der Statistik-Seite, aus der Adresszeile gelesen und auf gültige
+ * Werte gebracht. Die Seite ist damit als Lesezeichen speicherbar und teilbar.
+ *
+ * Der Zielumsatz gehört bewusst NICHT hierher: Er ist kein Blickwinkel auf die
+ * Daten, sondern eine Vereinbarung im Team — gespeichert in `SeasonGoal` und
+ * für alle gleich.
  */
 class StatisticsFilters
 {
@@ -25,7 +28,6 @@ class StatisticsFilters
         public readonly int $paddingBefore,
         public readonly int $paddingAfter,
         public readonly array $statuses,
-        public readonly ?float $target,
         public readonly bool $fresh,
     ) {}
 
@@ -48,7 +50,6 @@ class StatisticsFilters
         }
 
         $school = $request->query('schule');
-        $target = $request->query('ziel');
 
         return new self(
             year: SchoolYear::parse($request->query('schuljahr')) ?? SchoolYear::current(),
@@ -57,7 +58,6 @@ class StatisticsFilters
             paddingBefore: self::clamp($request->query('vorlauf'), (int) config('statistics.window_padding.before'), $max),
             paddingAfter: self::clamp($request->query('nachlauf'), (int) config('statistics.window_padding.after'), $max),
             statuses: $statuses,
-            target: is_numeric($target) && (float) $target >= 0 ? round((float) $target, 2) : null,
             fresh: $request->boolean('neu'),
         );
     }
@@ -98,7 +98,6 @@ class StatisticsFilters
             'vorlauf' => $this->paddingBefore,
             'nachlauf' => $this->paddingAfter,
             'status' => $this->statuses,
-            'ziel' => $this->target,
         ] + $overrides, static fn ($value) => $value !== null);
     }
 

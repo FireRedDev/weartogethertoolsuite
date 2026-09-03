@@ -37,7 +37,68 @@
             <a class="btn secondary" href="{{ route('statistics.index', $filters->query(['neu' => 1])) }}">↻ Daten neu laden</a>
         </div>
 
+        <p class="hint" style="margin:0.35rem 0 0;">
+            Datenstand: <strong>{{ $fetchedAt ? $fetchedAt->format('d.m.Y, H:i') : 'unbekannt' }}</strong> Uhr
+            <x-info label="Was heißt Datenstand?">
+                So alt ist der älteste Baustein dieser Auswertung — alles Angezeigte ist also mindestens so aktuell.
+                Abgerufen wird monatsweise: Abgeschlossene Monate ändern sich nicht mehr und werden 24 Stunden
+                gehalten, der laufende Monat höchstens 30 Minuten. Wer die Zahlen sofort frisch braucht, klickt
+                „↻ Daten neu laden".
+            </x-info>
+        </p>
+
         @include('statistics._filters')
+    </div>
+
+    @if (session('goalSaved'))
+        <div class="alert ok">Saisonziel gespeichert. Es gilt jetzt für alle im Team, bis es jemand ändert.</div>
+    @endif
+
+    <div class="card" id="saisonziel">
+        <h2 style="margin-top:0;">Saisonziel {{ $current['label'] }}
+            <x-info label="Warum steht das hier und nicht bei den Filtern?">
+                Ein Ziel ist keine Ansicht, sondern eine Vereinbarung. Es wird gespeichert, gilt für alle im Team
+                und bleibt stehen, bis es jemand ändert — anders als die Filter, die nur den eigenen Blick auf die
+                Daten verändern.
+            </x-info>
+        </h2>
+
+        <div class="kpis" style="margin-bottom:1rem;">
+            <div class="kpi">
+                <div class="label">Ziel</div>
+                <div class="value hero">{{ $euro($forecast['target']) }}</div>
+                @if ($forecast['targetIsDefault'])
+                    <div class="delta flat">kein eigenes Ziel eingetragen — es gilt der Vorjahresumsatz</div>
+                @endif
+            </div>
+            <div class="kpi">
+                <div class="label">Bereits erreicht
+                    @if ($forecast['manualRevenue'] > 0)
+                        <x-info label="Woraus setzt sich das zusammen?">
+                            {{ $euro($forecast['ytd']) }} aus dem Webshop plus
+                            {{ $euro($forecast['manualRevenue']) }} außerhalb des Shops{{ $goal->manual_note ? ' ('.$goal->manual_note.')' : '' }}.
+                        </x-info>
+                    @endif
+                </div>
+                <div class="value">{{ $euro($forecast['achieved']) }}</div>
+                <div class="delta {{ $forecast['openToTarget'] > 0 ? 'flat' : 'up' }}">
+                    {{ $forecast['targetShare'] === null ? '—' : number_format($forecast['targetShare'] * 100, 1, ',', '.').' % vom Ziel' }}
+                </div>
+            </div>
+            <div class="kpi">
+                <div class="label">Noch offen</div>
+                <div class="value {{ $plan['reached'] ? '' : 'hero' }}">
+                    {{ $plan['reached'] ? 'Ziel erreicht' : $euro($plan['open']) }}
+                </div>
+                @if (! $plan['reached'] && $plan['expectedRest'] !== null)
+                    <div class="delta {{ ($plan['gapAfterForecast'] ?? 0) > 0 ? 'down' : 'up' }}">
+                        Hochrechnung deckt davon {{ $euro($plan['expectedRest']) }}{{ ($plan['gapAfterForecast'] ?? 0) > 0 ? ', es fehlen '.$euro($plan['gapAfterForecast']) : '' }}
+                    </div>
+                @endif
+            </div>
+        </div>
+
+        @include('statistics._goal-form')
     </div>
 
     @php
@@ -47,6 +108,18 @@
         $collectiveDelta = $delta($current['collective']['avg'], $previous['collective']['avg']);
         $ondemandDelta = $delta($current['ondemand']['avg'], $previous['ondemand']['avg']);
         $quantityDelta = $delta((float) $current['quantity'], (float) $previous['quantity']);
+
+        // Zählzeile der Fenster-Kacheln. Bewusst hier und nicht in der Ansicht:
+        // Ein @if direkt hinter einem Wort erkennt Blade nicht als Direktive,
+        // es landete wörtlich auf der Seite.
+        $windowCount = function (array $box, string $noun) {
+            $text = $box['done'].' von '.$box['count'].' '.$noun;
+            if ($box['running'] > 0) {
+                $text .= ', '.$box['running'].' laufend';
+            }
+
+            return $text;
+        };
     @endphp
 
         <div class="card">
@@ -132,7 +205,7 @@
                     </div>
                     <div class="value">{{ $euro($current['collective']['avg']) }}</div>
                     <div class="delta {{ $collectiveDelta ? $collectiveDelta['tone'] : 'flat' }}">
-                        {{ $current['collective']['count'] }} Fenster{{ $collectiveDelta ? ' · '.$collectiveDelta['text'] : '' }}
+                        {{ $windowCount($current['collective'], 'Fenstern gelaufen') }}{{ $collectiveDelta ? ' · '.$collectiveDelta['text'] : '' }}
                     </div>
                 </div>
 
@@ -149,7 +222,7 @@
                     </div>
                     <div class="value">{{ $euro($current['ondemand']['avg']) }}</div>
                     <div class="delta {{ $ondemandDelta ? $ondemandDelta['tone'] : 'flat' }}">
-                        {{ $current['ondemand']['count'] }} Shops{{ $ondemandDelta ? ' · '.$ondemandDelta['text'] : '' }}
+                        {{ $windowCount($current['ondemand'], 'Shops abgeschlossen') }}{{ $ondemandDelta ? ' · '.$ondemandDelta['text'] : '' }}
                     </div>
                 </div>
 
@@ -206,8 +279,20 @@
 
             <div class="kpis">
                 <div class="kpi">
-                    <div class="label">Hochgerechneter Jahresumsatz</div>
-                    <div class="value hero">{{ $euro($forecast['projection']) }}</div>
+                    <div class="label">Hochgerechneter Jahresumsatz
+                        @if ($forecast['manualRevenue'] > 0 || $forecast['manualForecast'] > 0)
+                            <x-info label="Woraus setzt sich das zusammen?">
+                                {{ $euro($forecast['projection']) }} aus dem Webshop.
+                                @if ($forecast['manualRevenue'] > 0)
+                                    Dazu {{ $euro($forecast['manualRevenue']) }} bereits außerhalb des Shops erzielt.
+                                @endif
+                                @if ($forecast['manualForecast'] > 0)
+                                    Dazu {{ $euro($forecast['manualForecast']) }} außerhalb des Shops erwartet.
+                                @endif
+                            </x-info>
+                        @endif
+                    </div>
+                    <div class="value hero">{{ $euro($forecast['projectionTotal'] ?? $forecast['projection']) }}</div>
                     @if ($forecast['possible'])
                         <div class="delta flat">davon noch offen: {{ $euro($forecast['remaining']) }}</div>
                     @endif
@@ -219,7 +304,8 @@
                                 Es wurde kein eigenes Ziel eingetragen, deshalb gilt der <strong>tatsächlich
                                 erreichte Umsatz von {{ $previous['label'] }}</strong>
                                 ({{ $euro($forecast['previousTotal']) }}) als Ziel — also: mindestens so gut werden
-                                wie im Vorjahr. Ein eigenes Ziel lässt sich oben in der Filterzeile eintragen.
+                                wie im Vorjahr. Ein eigenes Ziel lässt sich oben unter „Saisonziel" eintragen —
+                                es wird gespeichert und gilt für alle im Team.
                             </x-info>
                         @endif
                     </div>
@@ -249,6 +335,59 @@
                     </div>
                 @endif
             </div>
+
+            @if (! $plan['reached'])
+                <div class="need-block">
+                    <h3>Wie viele Bestellfenster fehlen noch?
+                        <x-info label="Wie wird das gerechnet?">
+                            Noch offen bis zum Ziel ({{ $euro($plan['open']) }}) geteilt durch den durchschnittlichen
+                            Umsatz eines Bestellfensters. Der Durchschnitt kommt aus den <strong>abgeschlossenen</strong>
+                            Fenstern dieser Saison und des Vorjahres zusammen — laufende Fenster zählen nicht mit, sie
+                            hätten naturgemäß weniger Umsatz und würden die Rechnung zu pessimistisch machen.
+                            Sammelbestellfenster und On-Demand-Shops bringen unterschiedlich viel, deshalb steht hier
+                            je Art eine eigene Zahl. Es sind <strong>Alternativen</strong>: entweder so viele der
+                            einen Art, oder so viele der anderen — in der Praxis wird es eine Mischung.
+                        </x-info>
+                    </h3>
+
+                    @if (! $plan['hasBasis'])
+                        <div class="alert info">Für die Rechnung fehlt die Grundlage: In dieser Saison und im Vorjahr
+                            ist noch kein Bestellfenster abgeschlossen, aus dem sich ein Durchschnitt bilden ließe.</div>
+                    @else
+                        <div class="kpis">
+                            @foreach ($plan['types'] as $type)
+                                <div class="kpi">
+                                    <div class="label">Nötig: {{ $type['label'] }}</div>
+                                    @if ($type['needed'] === null)
+                                        <div class="value">—</div>
+                                        <div class="delta flat">noch kein abgeschlossenes Fenster dieser Art</div>
+                                    @else
+                                        <div class="value hero">{{ $type['needed'] }}×</div>
+                                        <div class="delta flat">
+                                            à Ø {{ $euro($type['avg']) }} · Grundlage {{ $type['avgBasis'] }}
+                                            abgeschlossene{{ $type['avgFromPrevious'] > 0 ? ' (inkl. '.$type['avgFromPrevious'].' aus dem Vorjahr)' : '' }}
+                                        </div>
+                                    @endif
+                                </div>
+                            @endforeach
+                        </div>
+
+                        @if ($plan['expectedRest'] !== null)
+                            <p class="hint" style="margin-top:0.6rem;">
+                                Die Hochrechnung erwartet bis Schuljahresende ohnehin noch
+                                <strong>{{ $euro($plan['expectedRest']) }}</strong>.
+                                @if (($plan['gapAfterForecast'] ?? 0) > 0)
+                                    Darüber hinaus fehlen <strong>{{ $euro($plan['gapAfterForecast']) }}</strong> —
+                                    das ist der Teil, der ohne zusätzliche Schulen nicht zusammenkommt.
+                                @else
+                                    Damit wäre das Ziel rechnerisch erreicht, wenn die Saison so weiterläuft wie in
+                                    den Vorjahren.
+                                @endif
+                            </p>
+                        @endif
+                    @endif
+                </div>
+            @endif
 
             <x-chart.lines :chart="$curveChart" title="Kumulierter Umsatz im Schuljahresverlauf">
                 <x-info label="Was zeigt die strichlierte Linie?">

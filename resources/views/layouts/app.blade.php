@@ -199,6 +199,13 @@
         .kpi .delta.flat { color: var(--muted); }
         /* Einschränkender Hinweis zur Kennzahl, z. B. nicht abgezogene Erstattungen */
         .kpi .delta.warn { color: var(--warn); }
+        /* Bedarfsrechnung der Saisonplanung — abgesetzt, aber keine eigene Karte */
+        .need-block {
+            margin-top: 1.25rem;
+            padding-top: 1.1rem;
+            border-top: 1px solid var(--line);
+        }
+        .need-block h3 { margin: 0 0 0.8rem; font-size: 1rem; }
 
         /* Filterzeile über allen Diagrammen — gilt für die ganze Seite */
         .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem 1rem; align-items: end; }
