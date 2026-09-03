@@ -166,6 +166,12 @@ dürfen vorhanden sein: `Klasse`, `Karton` und `Individualisierungstext(…)` we
 
 **Mindestprovision:** Wenn Summe < 20 und `n ≥ 50` ⇒ Provision = 20.
 Verifizierte Stützwerte: `n=32 → 0` · `n=49 → 0` · `n=50 → 20` · `n=120 → 45` · `n=250 → 187,5` · `n=600 → 750`.
+
+*Hinweis zur Umsetzung:* Die Tabelle beschreibt die Staffel je Stück. Gerechnet
+wird sie je **Staffelstufe** (Anzahl der hineinfallenden Stück × Betrag) statt in
+einer Schleife über jedes einzelne Stück — Ergebnis identisch, aber eine
+unplausibel große Menge aus einem fehlerhaften Export lässt den Vorgang nicht
+mehr praktisch hängen. Ein Test vergleicht beide Rechenwege.
 Ausgabe als Zahl (nicht formatiert, keine Währungsangabe) in Zelle A1 des Sheets `Provisionsinformationen` (nur customer).
 
 ### 4.5 Excel-Reports — gemeinsame Struktur (alle 3 Dateien)

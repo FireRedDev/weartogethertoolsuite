@@ -114,7 +114,7 @@ aufklappbaren technischen Details für den Support.
 
 | Variable | Bedeutung | Default |
 |---|---|---|
-| `TOOL_PASSWORD` | Team-Passwort für den Zugang. **Leer = kein Login** (nur lokal empfohlen!) | leer |
+| `TOOL_PASSWORD` | Team-Passwort für den Zugang. **Leer = kein Login** (nur lokal empfohlen!). Die Anmeldung ist auf 5 Fehlversuche je Minute gedrosselt. | leer |
 | `ORDER_RETENTION_HOURS` | Automatische Löschung von Uploads/Reports nach X Stunden (DSGVO) | 24 |
 | `WC_STORE_URL` | Shop-Adresse für Weg 1 (ohne `/wp-json`) | leer (Weg 1 deaktiviert) |
 | `WC_CONSUMER_KEY` / `WC_CONSUMER_SECRET` | Read-only-API-Schlüssel des Shops | leer |
@@ -122,6 +122,16 @@ aufklappbaren technischen Details für den Support.
 Fachliche Defaults (Größenliste, Kartongröße 20, Artikelmapping,
 Provisionsstaffel, PDF-Spaltenfilter) liegen in `config/ordersuite.php` —
 Änderungen dort ändern den Standard-Output!
+
+Werte, die man selten, aber gezielt anfassen will:
+
+| Schlüssel | Bedeutung | Default |
+|---|---|---|
+| `ordersuite.woocommerce.max_pages` | Notbremse für seitenweise Abrufe. Ohne sie blättert eine Schleife endlos weiter, sobald der Shop immer wieder volle Seiten liefert. | 200 |
+| `schoolshop.printify.vat_rate` | USt.-Satz für den Vergleich Verkaufspreis (brutto) ↔ Printify-Kosten (netto). Für alle Produkte der Normalsatz. | 0,20 |
+| `schoolshop.status_timeout_seconds` | Zeitablauf der Verbindungstests auf der Admin-Seite | 5 |
+| `schoolshop.mockups.budget_seconds` | Zeitbudget für die Mockups eines Produkts je Durchgang | 120 |
+| `statistics.error_retry_seconds` | Wie lange ein Shop-Fehler den Statistik-Aufbau anhält | 120 |
 
 ## Deployment auf RunCloud (Git Atomic Deployment)
 
@@ -245,6 +255,20 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
    Rohdatensatz wird trotzdem als Antrag gespeichert (mit Warnhinweis und
    einsehbaren Rohdaten in „Anfrage-Daten"), sodass er in der Schulliste
    auftaucht und manuell nachbearbeitet werden kann.
+
+   **Doppelte Einsendungen** werden erkannt: Kommt dieselbe Submission ein
+   zweites Mal an (Wiederholung durch FluentForms, doppelt gedrückter
+   Absendeknopf), verweist die Antwort auf den bestehenden Antrag, statt einen
+   zweiten anzulegen. Der Webhook ist zudem auf 60 Aufrufe je Minute
+   gedrosselt.
+
+   **Das Bestellfenster-Datum wird streng gelesen.** Unmögliche oder
+   mehrdeutige Angaben (`31.02.2026`, `04/16/2026`) werden **nicht** stumm
+   umgerechnet, sondern als unbekannt behandelt — PHP würde daraus sonst den
+   03.03.2026 bzw. den 04.04.**2027** machen, und dieser falsche Tag stünde
+   später im Schule-Eintrag, auf dem gedruckten Präsentationsblatt und in der
+   Statistik. Solche Anträge erscheinen auf der Startseite unter
+   „Bestellzeitraum fehlt" und wollen von Hand ergänzt werden.
 2. **Konfigurator:** Produkte (Vorlagenkatalog aus den bisherigen
    Musterschule-Excel-Vorlagen), Preise, Individualisierungs-Aufpreis, Größen,
    Farben, Klassenliste, Bestellfenster und Lieferart anpassen — alles
@@ -252,12 +276,28 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
    sich auch Produkte anlegen, die nicht im Vorlagenkatalog stehen (Name,
    Preis, Größen, Farben frei eintragen). Bestellfenster und Klassenliste
    werden bei Lieferart On-Demand ausgeblendet (siehe unten).
+
+   **Klassenliste:** Eine Klasse je Zeile oder durch Komma bzw. Semikolon
+   getrennt — alle drei Schreibweisen funktionieren. Aus jeder Klasse wird eine
+   Auswahloption im Shop.
+
+   **Grenzen der Eingaben:** Preise zwischen 0 und 9.999 €, höchstens 60
+   Größen bzw. Farben à 40 Zeichen. Das ist keine Schikane: Aus Farben und
+   Größen entstehen in WooCommerce **shopweite** Attribut-Terms, die für alle
+   Schulen gelten und sich über das Tool nicht wieder löschen lassen.
 3. **Shop-Anlage** (ein Klick, mit Vorschau/Dry-Run): Produktkategorie
    „Schulen > {Name}", variable Produkte mit Variationen (Individualisierung
    Ja/Nein), Individualisierungs-Eingabefeld (Product Input Fields),
    Versandklasse (On-Demand) und Pods-CPT-Eintrag „schule". Jeder Schritt wird
    protokolliert; bei Fehlern bricht die Anlage ab und kann nach Behebung
    fortgesetzt werden (bereits Angelegtes wird übersprungen).
+
+   Der Vorgang läuft **nur einmal gleichzeitig** je Schule. Ein zweiter Klick
+   während des laufenden Vorgangs wird mit einer Meldung abgewiesen, statt
+   alles ein zweites Mal anzulegen. Jede extern vergebene ID (Kategorie,
+   Produkt, Printify-Produkt, jedes Mockup) wird sofort nach dem Aufruf
+   gespeichert — bricht der Vorgang danach ab, kennt das Tool das bereits
+   Angelegte und legt es beim nächsten Versuch nicht erneut an.
 4. **Sammelbestellfenster:** Bestellemail an die Partnerdruckerei nach Vorlage
    (inkl. Lieferanten-Artikelnummern), zum Kopieren oder per mailto.
    **On-Demand:** Die Produkte werden in Printify angelegt und in den Shop
@@ -269,7 +309,7 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
    nötig), alternativ am Server mit `php artisan printify:check
    --blueprints=… / --providers=…` oder direkt auf printify.com nachsehen
    (das ⓘ an den Spaltenköpfen fasst das zusammen). Ablauf:
-   „Im Shop anlegen" prüft automatisch die Marge (Verkaufspreis ≥
+   „Im Shop anlegen" prüft automatisch die Marge (Verkaufspreis **netto** ≥
    (Produktionskosten + Versand) × 1,10, sonst Abbruch mit Rechnung) und
    published → einige Minuten warten, bis Printify die Shop-Produkte erstellt
    hat → „On-Demand-Nachbearbeitung" klicken: setzt Versandklasse `on-demand`
@@ -303,14 +343,28 @@ Automatisiert den Bestellablauf für neue Schulen — vom Webshopstartfragebogen
    Findet sich zu keiner gewünschten Farbe/Größe ein Treffer, bricht die
    Anlage mit einer Meldung ab, die die tatsächlich verfügbaren Werte auflistet.
    Einzelne nicht gefundene Farben/Größen werden nur im Protokoll vermerkt.
+   Übersteigt die Auswahl die 100 Varianten, wird **reihum je Farbe** gekürzt,
+   damit keine gewünschte Farbe ganz herausfällt; passiert das trotzdem (mehr
+   Farben als Variantenplätze), stehen die entfallenen Farben im Protokoll.
 
    **Kostenübersicht im Konfigurator:** Je On-Demand-Produkt zeigt die Tabelle
    Region des Print-Providers, **Einkaufspreis** (Produktionskosten je Stück,
    als Spanne über die angelegten Varianten), **Versand** (erster Artikel nach
    Österreich — das ⓘ nennt Herkunfts- und Zielländer des Versandprofils)
    und die **Marge**. Rot bedeutet: unter der Mindestmarge, die Shop-Anlage
-   würde das Produkt ablehnen; daneben steht der nötige Mindestpreis. Die
-   Werte kommen live aus dem Printify-Katalog und sind 24 h gecacht.
+   würde das Produkt ablehnen; daneben steht der nötige Mindestpreis (brutto,
+   also direkt vergleichbar mit dem Preis im Konfigurator). Die Werte kommen
+   live aus dem Printify-Katalog und sind 24 h gecacht; unmittelbar vor dem
+   Anlegen werden sie frisch geholt, damit die Preisprüfung nicht mit
+   tagesalten Kosten läuft.
+
+   **Brutto und netto — wichtig für die Marge:** Der Preis im Konfigurator ist
+   der Bruttopreis, den die Kundin im Shop sieht. Die Kosten von Printify sind
+   Nettopreise. Verglichen wird deshalb netto gegen netto: Der Verkaufspreis
+   wird vor dem Vergleich durch `1 + schoolshop.printify.vat_rate` geteilt
+   (Standard 20 % USt., für alle Produkte der Normalsatz). Ohne diese
+   Umrechnung sähe jede Marge rund 20 Prozentpunkte besser aus, als sie ist —
+   ein Produkt mit „+10 % Marge" wäre in Wahrheit ein Verlustgeschäft.
 
    On-Demand-Produkte werden laufend einzeln an die Privatadresse der
    Kund:innen verschickt — es gibt kein Bestellfenster und keine Klassenliste
@@ -362,10 +416,15 @@ Ein von Hand geändertes Enddatum gibt die Verlängerung wieder frei.
 ### Was das Tool sonst noch abnimmt
 
 * **Startseite = Aufgabenliste.** Was heute ansteht: Fenster, die ablaufen oder
-  abgelaufen aber noch offen sind, unbearbeitete Anträge, fehlende
-  Präsentationsblätter, geschlossene Fenster ohne Auftragsdokumente.
-* **Bestellzahlen live** je Schule (Bestellungen und Teile im Bestellzeitraum),
-  abgeglichen mit der im Formular erwarteten Anzahl.
+  abgelaufen aber noch offen sind, Anträge ohne Bestellzeitraum, unbearbeitete
+  Anträge, fehlende Präsentationsblätter, geschlossene Fenster ohne
+  Auftragsdokumente.
+* **Bestellzahlen** je Schule (Bestellungen und Teile im Bestellzeitraum),
+  abgeglichen mit der im Formular erwarteten Anzahl. Sie werden **nach** dem
+  Seitenaufbau geholt und 15 Minuten gehalten — beim allerersten Aufruf einer
+  Schule erscheinen sie deshalb erst beim nächsten Laden. Grund: Der Abruf
+  braucht eine eigene Abfrage je Produkt der Schule und würde die Seite sonst
+  minutenlang aufhalten.
 * **Auftragsdokumente per Klick** aus dem Antrag heraus — Kategorie und Zeitraum
   vorbefüllt; der Export wird am Antrag vermerkt.
 * **E-Mail an die Schule** als Vorlage: Link, Zeitraum, Produktliste; das
@@ -373,7 +432,11 @@ Ein von Hand geändertes Enddatum gibt die Verlängerung wieder frei.
 * **Folgejahr per Klick** — Produkte, Preise, Farben und Logos werden
   übernommen, Bestellfenster und Klassenliste beginnen neu.
 * **Bestellseite prüfen** — ruft die Adresse ab, auf die der QR-Code zeigt, und
-  meldet 404 oder eine Seite ohne Produkte, bevor das Blatt aushängt.
+  meldet 404 oder eine Seite ohne Produkte, bevor das Blatt aushängt. Die
+  Adresse stammt aus dem echten Kategorie-Slug des Shops; nur bei Schulen, die
+  vor dieser Version angelegt wurden, wird sie noch aus dem Namen abgeleitet
+  (bei Umlauten schreibt WordPress anders um — dort lohnt die Prüfung
+  besonders, oder einmal „Im Shop anlegen" erneut ausführen).
 * **Logo-Qualitätsprüfung** beim Upload: Warnung bei zu geringer Auflösung oder
   nicht freigestelltem Hintergrund. Beides sieht man erst auf dem Textil.
 * **Datensicherung** — Datenbank und Uploads als ZIP, im Admin-Bereich
@@ -431,10 +494,16 @@ Einrichtung:
    (`model: female/male` bei Model-Fotos, `color` bei Detailfotos — mehrere
    Einträge pro Produkt = mehr Abwechslung zwischen Schulen).
 3. Fertig — Produkte ohne Vorlagen werden einfach übersprungen (mit Hinweis im
-   Protokoll). Fehler beim Rendern brechen die Shop-Anlage nie ab; bereits
-   gerenderte Produkte werden bei erneutem Anlegen übersprungen (keine
-   doppelten Credits). Gilt für Sammelbestellfenster-Produkte; On-Demand-
-   Produkte bekommen ihre Bilder von Printify.
+   Protokoll). Fehler beim Rendern brechen die Shop-Anlage nie ab. Gilt für
+   Sammelbestellfenster-Produkte; On-Demand-Produkte bekommen ihre Bilder von
+   Printify.
+
+   **Credits werden nie doppelt bezahlt.** Jedes fertige Bild wird sofort
+   vermerkt, nicht erst das Produkt als Ganzes. Scheitert ein späteres Bild
+   oder die Zuweisung am Produkt, bleiben die bereits erzeugten erhalten und
+   ein erneuter Klick rendert nur die fehlenden. Pro Produkt gilt außerdem ein
+   Zeitbudget (`schoolshop.mockups.budget_seconds`, Standard 120 s) — was
+   liegen bleibt, meldet das Protokoll und holt der nächste Klick nach.
 
 ### Präsentationsblatt (A4)
 
@@ -517,6 +586,18 @@ Angeboten werden nur Schulen, für die bereits ein Shop angelegt wurde. Jeder
 Schritt wird protokolliert; Fehler werden verständlich erklärt. Nutzt dieselben
 Zugänge wie Modul 2 (`WC_RW_*`, `WP_APP_*`).
 
+**Der Status folgt den Produkten, nicht dem Protokoll.** Sind am Ende alle
+Produkte privat, gilt das Fenster als geschlossen — auch wenn der CPT-Schritt
+scheitert (etwa weil kein Schule-Eintrag hinterlegt ist). Die Schule erscheint
+dann trotzdem in der Öffnen-Liste. Umgekehrt gilt dasselbe beim Wieder-Öffnen.
+Ein wieder geöffnetes Fenster beginnt heute, wenn der alte Start längst vorbei
+ist.
+
+**Ein erneutes „Shop anlegen" schließt kein offenes Fenster.** Es aktualisiert
+nur die Stammdaten des Schule-Eintrags (Zeitraum, Shortcode, On-Demand-Kennzeichen,
+Kategorie). „Bestellfenster offen" und die Versandklassen-Marke gehören den
+jeweiligen Aktionen und bleiben unberührt.
+
 ## Modul 4: Statistiken
 
 Aufruf: **Statistiken** in der Navigationsleiste (`/statistiken`).
@@ -538,6 +619,17 @@ gehören zu dem Bestellfenster, das im Juni endete, nicht zum neuen Jahr.
 - Ø Umsatz je On-Demand-Shop (dort gibt es kein Fenster — gerechnet wird je
   On-Demand-Schule und Schuljahr)
 - Verkaufte Teile
+
+**Erstattungen** werden gezählt, aber **nicht abgezogen**. Unter dem Umsatz
+steht, wie viele Bestellungen eine Erstattung enthalten und über welchen
+Betrag. Abgezogen wird nichts, weil eine Erstattung oft nur den Versand oder
+eine einzelne Position betrifft und sich keiner Produktart zuordnen ließe —
+die Ranglisten würden dadurch falsch. Eine ganz stornierte Bestellung fällt
+ohnehin über den Bestellstatus heraus.
+
+**Ein Bestellfenster zählt je Antrag, nicht je Schule.** Bestellt eine Schule
+im selben Schuljahr zweimal (etwa über „Folgejahr"), sind das zwei Fenster im
+Durchschnitt — nicht eines.
 
 **Diagramme:** Monatsumsatz (gruppierte Säulen ab September), kumulierter
 Jahresverlauf mit Hochrechnung und Zielmarke, und drei Ranglisten —
@@ -572,6 +664,14 @@ Fenster oft noch um eine Woche verlängert (automatische Nachfrist), und
 Nachzügler bestellen auch danach. Da nie mehrere Bestellfenster derselben
 Schule direkt aneinander liegen, kann der Puffer keine fremden Bestellungen
 einsammeln. Das ⓘ neben dem Feld erklärt das auch im Tool.
+
+**Die Seite ruft den Shop nie selbst auf.** Beim ersten Aufruf (und nach
+„↻ Daten neu laden") erscheint eine Ladeseite mit Fortschrittsbalken; geholt
+wird monatsweise im Hintergrund, bewusst langsam und immer nur ein Paket nach
+dem anderen, damit der Webshop auf demselben Server nicht ausgebremst wird.
+Der Aufbau läuft weiter, wenn du die Seite verlässt. Solange nicht alles da
+ist, zeigt die Seite **keine** Kennzahlen — halbe Zahlen wären schlimmer als
+keine.
 
 **Prognose:** Nicht linear hochgerechnet, sondern über den gemittelten
 *Saisonverlauf* der abgeschlossenen Vorjahre — ein Schuljahr verläuft stark
@@ -612,7 +712,9 @@ ist die Seite schon beim ersten Aufruf des Tages sofort da:
 ## Admin-Informationen
 
 Eigener Navigationspunkt „Admin-Informationen" — bei jedem Aufruf werden alle
-API-Anbindungen live geprüft und angezeigt: WooCommerce (Lesen/Schreiben),
+API-Anbindungen live geprüft und angezeigt (mit kurzem Zeitablauf von 5
+Sekunden je Prüfung, damit ausgerechnet diese Seite nicht selbst hängt, wenn
+ein System klemmt): WooCommerce (Lesen/Schreiben),
 WordPress (CPT „schule"), Printify, Dynamic Mockups sowie der FluentForms-
 Webhook (dieser empfängt nur — hier wird stattdessen der letzte protokollierte
 Treffer aus `webhook_logs` angezeigt, kein aktiver Verbindungstest möglich).
