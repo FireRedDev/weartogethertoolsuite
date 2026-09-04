@@ -8,6 +8,19 @@
 return [
 
     /*
+     * Übernimmt die Migration die Altdaten aus `database/data/auftragsbilanz.json`?
+     *
+     * In der Anwendung ja — sonst stünde das Modul nach dem Deploy leer da, bis
+     * jemand einen Befehl ausführt, den er längst vergessen hat.
+     *
+     * In der Testumgebung nein (`phpunit.xml`): Sonst lägen in jedem einzelnen
+     * Test 384 Aufträge herum und jede Umsatz- oder Stückzahlprüfung rechnete
+     * gegen einen Datenberg, der mit dem Test nichts zu tun hat. Die Übernahme
+     * selbst wird trotzdem geprüft — `AuftragsbilanzTest` ruft sie ausdrücklich auf.
+     */
+    'import_on_migrate' => (bool) env('AUFTRAGSBILANZ_IMPORT_ON_MIGRATE', true),
+
+    /*
      * Die Produktarten der Excel, in genau dieser Reihenfolge (so stehen sie
      * dort nebeneinander). Der Schlüssel landet im JSON-Feld `products`, die
      * Beschriftung in Formular, Liste und Auswertung.
@@ -53,10 +66,15 @@ return [
      * frühere Jahre gab es den Shop noch nicht — dort ist der eingetragene Wert
      * die einzige Quelle und wird gezählt.
      *
+     * Der eigene Webshop ging Ende 2020 in Betrieb, also mitten in der Saison
+     * 2020/21. Die Linie liegt deshalb auf der ERSTEN vollständig im Shop
+     * abgewickelten Saison, 2021/22 — für 2020/21 wäre sonst der halbe
+     * Jahresumsatz weder im Shop noch in der Auftragsbilanz gezählt worden.
+     *
      * Ob die Linie richtig liegt, zeigt die Vergleichstabelle im Modul: Sie
      * stellt je Schuljahr den Shop-Wert dem eingetragenen Wert gegenüber.
      */
-    'shop_online_from_year' => 2024,
+    'shop_online_from_year' => 2021,
 
     /*
      * Ab wann eine Abweichung zwischen Shop und Eintrag gemeldet wird —

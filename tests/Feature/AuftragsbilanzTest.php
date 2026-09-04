@@ -72,6 +72,52 @@ class AuftragsbilanzTest extends TestCase
         $this->assertSame(40, $order->productCount());
     }
 
+    /**
+     * In der Excel ließ die Formel `SUMME(M:Y)` die Spalte „Hosen" aus — sie
+     * war später angebaut und die Formel nie nachgezogen worden. Hier zählen
+     * alle Produktarten.
+     */
+    public function test_die_stueckzahl_umfasst_alle_produktarten_auch_die_zuletzt_dazugekommenen(): void
+    {
+        $arten = array_keys((array) config('auftragsbilanz.product_types'));
+        $this->assertContains('pants', $arten, 'Hosen sind eine Produktart.');
+
+        $order = $this->order(['products' => array_fill_keys($arten, 2), 'individual' => 99]);
+
+        $this->assertSame(2 * count($arten), $order->productCount());
+        $this->assertSame(28, $order->productCount(), 'Vierzehn Produktarten zu je zwei Stück.');
+    }
+
+    public function test_individualisierungen_sind_kein_verkauftes_teil(): void
+    {
+        $order = $this->order(['products' => ['hoodies' => 10], 'individual' => 40]);
+
+        $this->assertSame(10, $order->productCount());
+        $this->assertSame(40, $order->individual);
+    }
+
+    /**
+     * Schuljahr und Datum dürfen nie auseinanderlaufen: Die Jahresliste greift
+     * auf die Spalte zu, der Monatsverlauf auf das Datum. Wer sie trennen ließe,
+     * bekäme einen Auftrag, der in der Jahressumme steht, aber in keinem Monat.
+     */
+    public function test_das_schuljahr_folgt_beim_speichern_immer_dem_datum(): void
+    {
+        $order = $this->order(['ordered_on' => '2025-11-30', 'school_year' => 2025]);
+
+        $this->put(route('balance.update', $order), [
+            'number' => $order->number,
+            'school_name' => $order->school_name,
+            // Ein Tag nach dem Schuljahresende: gehört zur nächsten Saison.
+            'ordered_on' => '2026-08-01',
+            'online_source' => 'manual',
+        ]);
+
+        $order->refresh();
+        $this->assertSame(2026, $order->school_year);
+        $this->assertSame('2026/27', $order->schoolYear()->label());
+    }
+
     public function test_umsatzsteuer_wird_aus_dem_bruttobetrag_herausgerechnet(): void
     {
         // 20 % USt. auf brutto: 120 € brutto enthalten 20 € Steuer, nicht 24 €.
@@ -248,24 +294,88 @@ class AuftragsbilanzTest extends TestCase
         unlink($file);
     }
 
-    public function test_ab_dem_webshop_jahr_gilt_die_shop_zahl(): void
+    /**
+     * Die Trennlinie zwischen „gab es den eigenen Shop schon?" und „noch nicht".
+     * Sie entscheidet, ob ein Online-Umsatz aus der Auftragsbilanz gezählt wird
+     * oder aus WooCommerce — genau einmal, nie beides.
+     */
+    public function test_erst_ab_der_ersten_shop_saison_gilt_die_shop_zahl(): void
+    {
+        $grenze = (int) config('auftragsbilanz.shop_online_from_year');
+        $file = tempnam(sys_get_temp_dir(), 'ab').'.json';
+        file_put_contents($file, json_encode([
+            [
+                'number' => '100', 'school_name' => 'Davor', 'school_year' => $grenze - 1,
+                'revenue_online' => 1000.0, 'revenue_cash' => 200.0, 'commission' => 0.0,
+                'expenses' => 0.0, 'vat' => 0.0, 'products' => [], 'individual' => 0, 'note' => null,
+            ],
+            [
+                'number' => '200', 'school_name' => 'Danach', 'school_year' => $grenze,
+                'revenue_online' => 1000.0, 'revenue_cash' => 200.0, 'commission' => 0.0,
+                'expenses' => 0.0, 'vat' => 0.0, 'products' => [], 'individual' => 0, 'note' => null,
+            ],
+        ]));
+
+        $this->artisan('auftragsbilanz:import', ['--file' => $file, '--force' => true])->assertSuccessful();
+
+        $davor = BalanceOrder::firstWhere('number', '100');
+        $danach = BalanceOrder::firstWhere('number', '200');
+
+        // Vor dem eigenen Shop ist der Eintrag die einzige Quelle — alles zählt.
+        $this->assertSame('manual', $davor->online_source);
+        $this->assertSame(1200.00, $davor->revenueOutsideShop());
+        // Danach steckt der Online-Teil in den Shop-Bestellungen; nur das
+        // Bargeld darf zusätzlich zählen.
+        $this->assertSame('shop', $danach->online_source);
+        $this->assertSame(200.00, $danach->revenueOutsideShop());
+
+        unlink($file);
+    }
+
+    public function test_ein_zweiter_import_ueberschreibt_von_hand_geaenderte_betraege_nicht(): void
     {
         $file = tempnam(sys_get_temp_dir(), 'ab').'.json';
         file_put_contents($file, json_encode([[
-            'number' => '350', 'school_name' => 'Gymnasium Dachsberg', 'school_year' => 2025,
-            'revenue_online' => 4864.58, 'revenue_cash' => 0.0, 'commission' => 0.0,
-            'expenses' => 2117.18, 'vat' => 810.76,
-            'products' => ['hoodies' => 54], 'individual' => 34, 'note' => null,
+            'number' => '300', 'school_name' => 'HAK Beispiel', 'school_year' => 2022,
+            'revenue_online' => 1000.0, 'revenue_cash' => 0.0, 'commission' => 0.0,
+            'expenses' => 0.0, 'vat' => 0.0, 'products' => [], 'individual' => 0, 'note' => null,
         ]]));
 
         $this->artisan('auftragsbilanz:import', ['--file' => $file, '--force' => true])->assertSuccessful();
 
-        $order = BalanceOrder::first();
-        $this->assertSame('shop', $order->online_source);
-        // Nur das (hier nicht vorhandene) Bargeld dürfte zusätzlich zählen.
-        $this->assertSame(0.0, $order->revenueOutsideShop());
+        // Jemand trägt die tatsächlichen Ausgaben nach.
+        $order = BalanceOrder::firstWhere('number', '300');
+        $order->update(['expenses' => 450.00]);
+
+        $this->artisan('auftragsbilanz:import', ['--file' => $file, '--force' => true])->assertSuccessful();
+
+        $this->assertSame(450.00, BalanceOrder::firstWhere('number', '300')->expenses);
+
+        // Nur mit --overwrite wird ausdrücklich zurückgesetzt.
+        $this->artisan('auftragsbilanz:import', ['--file' => $file, '--overwrite' => true, '--force' => true])->assertSuccessful();
+        $this->assertSame(0.0, BalanceOrder::firstWhere('number', '300')->expenses);
 
         unlink($file);
+    }
+
+    /**
+     * Beim Deploy darf niemand einen Befehl von Hand nachholen müssen — sonst
+     * steht das Modul leer da und sieht kaputt aus.
+     */
+    public function test_die_migration_uebernimmt_die_altdaten_beim_deploy(): void
+    {
+        $this->assertSame(0, BalanceOrder::count(), 'In Tests ist die Übernahme abgeschaltet.');
+
+        config(['auftragsbilanz.import_on_migrate' => true]);
+        $migration = require database_path('migrations/2026_09_04_091000_import_auftragsbilanz_altdaten.php');
+        $migration->up();
+
+        $this->assertSame(384, BalanceOrder::count());
+        $this->assertSame(384, BalanceOrder::where('source', 'excel')->count());
+
+        // Ein zweiter Durchlauf legt nichts doppelt an.
+        $migration->up();
+        $this->assertSame(384, BalanceOrder::count());
     }
 
     public function test_die_mitgelieferte_importdatei_ist_vollstaendig_und_stimmig(): void

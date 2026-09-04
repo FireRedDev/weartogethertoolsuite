@@ -21,6 +21,13 @@
         <env name="APP_KEY" value="base64:JON2YUru8vNq3WXPi2aZgrOuLNXdunHpjX1DVQTp7kA="/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <!--
+            Die Altdaten der Auftragsbilanz NICHT bei jeder Migration übernehmen:
+            384 Aufträge in jedem Test würden jede Umsatz- und Stückzahlprüfung
+            gegen einen fremden Datenberg rechnen lassen. Die Übernahme selbst
+            prüft AuftragsbilanzTest, indem sie sie ausdrücklich aufruft.
+        -->
+        <env name="AUFTRAGSBILANZ_IMPORT_ON_MIGRATE" value="false"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>

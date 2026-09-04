@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Balance\BalanceReport;
+use App\Services\Balance\ShopComparison;
 use App\Services\Statistics\Charts\BarChart;
 use App\Services\Statistics\Charts\ColumnChart;
 use App\Services\Statistics\Charts\LineChart;
@@ -39,6 +40,7 @@ class StatisticsController extends Controller
         RevenueReport $report,
         RevenueForecast $forecast,
         BalanceReport $balance,
+        ShopComparison $comparison,
     ): View {
         $filters = StatisticsFilters::fromRequest($request);
 
@@ -127,6 +129,11 @@ class StatisticsController extends Controller
             'balanceSchools' => array_slice($balance->bySchool($filters->year), 0, (int) config('statistics.ranking_limit')),
             'balanceOrders' => array_slice($balance->byOrder($filters->year), 0, (int) config('statistics.ranking_limit')),
             'balanceProducts' => $balance->products(),
+            // Shop gegen Eintrag, je Schuljahr. Reine Zwischenspeicher-Abfrage
+            // — für Jahre, die noch nicht geladen sind, bleibt die Spalte leer.
+            'balanceComparison' => $comparison->forYears(
+                array_map(static fn (array $row) => $row['year'], $balance->byYear()),
+            ),
             'monthChart' => (new ColumnChart)->build(
                 $this->monthRows($data['current'], $data['previous']),
                 $data['current']['label'],

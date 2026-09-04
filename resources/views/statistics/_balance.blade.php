@@ -169,10 +169,19 @@
                             <th style="text-align:right;">Marge</th>
                             <th style="text-align:right;">Ø Umsatz/Auftrag</th>
                             <th style="text-align:right;">Teile</th>
+                            <th style="text-align:right;">Shop meldet
+                                <x-info label="Warum steht hier manchmal nichts?">
+                                    Der Vergleich nutzt nur die Monate, die schon aus dem Shop geladen sind —
+                                    diese Tabelle fragt den Shop nie selbst. Für ältere Schuljahre steht deshalb
+                                    ein Strich, bis sie einmal aufgerufen wurden. Den vollständigen Abgleich
+                                    liefert <code>php artisan auftragsbilanz:abgleich</code> auf dem Server.
+                                </x-info>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach ($balanceYears as $row)
+                            @php($vergleich = $balanceComparison[$row['year']->key()] ?? null)
                             <tr @class(['current' => $row['year']->startYear === $filters->year->startYear])
                                 style="{{ $row['year']->startYear === $filters->year->startYear ? 'font-weight:600;background:#fffaeb;' : '' }}">
                                 <td class="stickycol">{{ $row['label'] }}</td>
@@ -187,6 +196,17 @@
                                 <td style="text-align:right;">{{ $pct($row['margin']) }}</td>
                                 <td style="text-align:right;">{{ $euro($row['avgRevenue']) }}</td>
                                 <td style="text-align:right;">{{ $stk($row['products']) }}</td>
+                                <td style="text-align:right;">
+                                    @if ($vergleich === null || ! $vergleich['available'])
+                                        <span class="hint">noch nicht geladen</span>
+                                    @else
+                                        {{ $euro($vergleich['shop']) }}
+                                        <br>
+                                        <span class="hint" style="{{ $vergleich['mismatch'] ? 'color:var(--warn);font-weight:600;' : '' }}">
+                                            {{ $vergleich['difference'] > 0 ? '+' : '' }}{{ $euro($vergleich['difference']) }}
+                                        </span>
+                                    @endif
+                                </td>
                             </tr>
                         @endforeach
                     </tbody>

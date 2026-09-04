@@ -636,12 +636,34 @@ mit dem bisher gerechnet wurde. Der Kasten fragt den Shop nie selbst; er zeigt,
 was die Statistik ohnehin schon geladen hat, und sagt es, wenn noch Monate
 fehlen.
 
-**Die Altdaten.** 384 Aufträge aus den Schuljahren 2019/20 bis 2025/26 wurden
-übernommen (`php artisan auftragsbilanz:import`). Die Excel kannte kein Datum je
-Auftrag, nur ein Schuljahr — diese Zeilen tragen deshalb das Schuljahresende und
-sind als *geschätzt* gekennzeichnet. Für Jahres- und Schulsummen macht das
+**Die Altdaten.** 384 Aufträge aus den Schuljahren 2019/20 bis 2025/26 sind
+übernommen — beim Deploy von selbst, ohne Handgriff. Die Excel kannte kein Datum
+je Auftrag, nur ein Schuljahr; diese Zeilen tragen deshalb das Schuljahresende
+und sind als *geschätzt* gekennzeichnet. Für Jahres- und Schulsummen macht das
 keinen Unterschied; im Monatsverlauf sitzen sie alle am Jahresende. Wer ein
 Datum kennt, kann es beim Auftrag eintragen — dann gilt es als gesichert.
+
+**Welche Online-Zahl gilt.** Der eigene Webshop ging Ende 2020 in Betrieb. Ab
+dem Schuljahr **2021/22** nimmt die Statistik die Online-Umsätze deshalb
+ausschließlich aus WooCommerce und lässt die Spalte „Einnahmen Online" der
+Auftragsbilanz liegen — sonst stünde derselbe Umsatz zweimal in der
+Jahressumme. Für die Jahre davor ist der Eintrag die einzige Quelle und wird
+gezählt. Die Trennlinie steht in `config/auftragsbilanz.php`
+(`shop_online_from_year`).
+
+> **Diese eine Zahl entscheidet über rund 514.000 € Umsatzhistorie.** Liegt sie
+> zu früh und der Shop hat für ein Jahr keine Daten, fehlt dieser Umsatz in der
+> Statistik vollständig — ohne Fehlermeldung. Liegt sie zu spät, zählt derselbe
+> Umsatz doppelt. Einmalig prüfen mit:
+>
+> ```
+> php artisan auftragsbilanz:abgleich --schulen
+> ```
+>
+> Der Befehl stellt je Schuljahr (und auf Wunsch je Schule) den eingetragenen
+> Wert dem gegenüber, was der Shop meldet. Er darf als einziger Weg fehlende
+> Monate nachladen und läuft deshalb einige Minuten. Dasselbe für die bereits
+> geladenen Jahre zeigt die Spalte „Shop meldet" in der Schuljahresbilanz.
 
 > **In der Excel steckte ein Fehler, der die laufende Saison betraf.** Ab Zeile
 > 365 war die Spalte „Schuljahr" als Zahlenreihe fortgeschrieben (`2025-27`,

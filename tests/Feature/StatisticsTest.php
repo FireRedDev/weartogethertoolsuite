@@ -742,6 +742,158 @@ class StatisticsTest extends TestCase
         $response->assertSee('Bargeld und händische Aufträge sind ausgeschaltet', false);
     }
 
+    // ------------------------------------------------ Zuordnung Bestellfenster
+
+    /**
+     * Ein Fenster gehört zu dem Schuljahr, in dem es ENDET — nicht dem, in dem
+     * es aufging. Sonst zählte ein Fenster, das über den Sommer läuft, in die
+     * alte Saison, obwohl der Umsatz in der neuen entsteht.
+     */
+    public function test_ein_fenster_gehoert_zum_schuljahr_in_dem_es_endet(): void
+    {
+        SchoolOnboarding::create([
+            'school_name' => 'BG Musterstadt', 'delivery_type' => 'collective', 'status' => 'angelegt',
+            'woo_category_id' => 7,
+            // Beginnt im Juli 2025 (Saison 2024/25), endet im September 2025
+            // (Saison 2025/26) — es zählt zu 2025/26.
+            'window_start' => '2025-07-15', 'window_end' => '2025-09-20', 'created_at' => '2025-07-01',
+        ]);
+        $this->fakeShop();
+
+        $data = app(RevenueReport::class)->build($this->filters());
+
+        $this->assertSame(1, $data['current']['collective']['count'], 'Das Fenster endet in 2025/26.');
+        $this->assertSame(0, $data['previous']['collective']['count'], 'In 2024/25 darf es nicht auftauchen.');
+    }
+
+    /**
+     * Ein Fenster JE ANTRAG. „Folgejahr" legt regulär einen zweiten Antrag auf
+     * derselben Shop-Kategorie an — zählte nur einer, fehlte der Umsatz des
+     * früheren Fensters im Durchschnitt.
+     */
+    public function test_zwei_antraege_auf_derselben_kategorie_sind_zwei_fenster(): void
+    {
+        foreach ([['2025-09-01', '2025-10-15'], ['2026-01-10', '2026-02-10']] as [$von, $bis]) {
+            SchoolOnboarding::create([
+                'school_name' => 'BG Musterstadt', 'delivery_type' => 'collective', 'status' => 'angelegt',
+                'woo_category_id' => 7, 'window_start' => $von, 'window_end' => $bis, 'created_at' => '2025-08-01',
+            ]);
+        }
+        $this->fakeShop();
+
+        $this->assertSame(2, app(RevenueReport::class)->build($this->filters())['current']['collective']['count']);
+    }
+
+    public function test_eine_listenbestellung_erzeugt_kein_bestellfenster(): void
+    {
+        SchoolOnboarding::create([
+            'school_name' => 'BG Musterstadt', 'delivery_type' => 'list', 'status' => 'angelegt',
+            'woo_category_id' => 7, 'window_start' => '2025-10-01', 'window_end' => '2025-11-30',
+            'created_at' => '2025-09-01',
+        ]);
+        $this->fakeShop();
+
+        $data = app(RevenueReport::class)->build($this->filters());
+
+        // Ohne Webshop gibt es keinen Umsatz, der einem Fenster zuzuordnen wäre.
+        $this->assertSame(0, $data['current']['collective']['count']);
+        $this->assertSame(0, $data['current']['ondemand']['count']);
+    }
+
+    /**
+     * On-Demand hat kein Bestellfenster: Gewertet wird das Schuljahr, aber
+     * frühestens ab dem Tag, an dem der Antrag angelegt wurde — vorher gab es
+     * den Shop dieser Schule noch nicht.
+     */
+    public function test_ondemand_wird_erst_ab_anlage_des_antrags_gewertet(): void
+    {
+        SchoolOnboarding::create([
+            'school_name' => 'BORG Neustadt', 'delivery_type' => 'ondemand', 'status' => 'angelegt',
+            'woo_category_id' => 9,
+            'window_start' => SchoolOnboarding::ONDEMAND_WINDOW_START,
+            'window_end' => SchoolOnboarding::ONDEMAND_WINDOW_END,
+            // Erst im Jänner angelegt — die Bestellung vom Dezember liegt davor.
+            'created_at' => '2026-01-05',
+        ]);
+        $this->fakeShop();
+
+        $windows = app(RevenueReport::class)->build($this->filters())['current']['ondemand']['list'];
+
+        $this->assertCount(1, $windows);
+        $this->assertSame('05.01.2026', $windows[0]['from']);
+    }
+
+    // ------------------------------------- Filter greifen auf beide Datenwelten
+
+    public function test_der_lieferart_filter_greift_auch_auf_auftragsbilanz_auftraege(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+
+        BalanceOrder::create([
+            'number' => '910', 'school_name' => 'Barverkauf Sammelbestellung', 'school_year' => 2025,
+            'ordered_on' => '2026-01-20', 'delivery_type' => 'collective',
+            'online_source' => 'manual', 'revenue_cash' => 400.00, 'source' => 'manual',
+        ]);
+        BalanceOrder::create([
+            'number' => '911', 'school_name' => 'Barverkauf On-Demand', 'school_year' => 2025,
+            'ordered_on' => '2026-01-20', 'delivery_type' => 'ondemand',
+            'online_source' => 'manual', 'revenue_cash' => 700.00, 'source' => 'manual',
+        ]);
+
+        $sammel = app(RevenueReport::class)->build($this->filters(['lieferart' => 'collective']));
+        $ondemand = app(RevenueReport::class)->build($this->filters(['lieferart' => 'ondemand']));
+
+        $this->assertEqualsWithDelta(400.0, $sammel['current']['manualRevenue'], 0.01);
+        $this->assertEqualsWithDelta(700.0, $ondemand['current']['manualRevenue'], 0.01);
+    }
+
+    /**
+     * Der Schulfilter arbeitet mit Shop-Kategorien. Ein händisch erfasster
+     * Auftrag ohne Verknüpfung hat keine — er darf dann auch nicht als Umsatz
+     * dieser einen Schule erscheinen.
+     */
+    public function test_der_schulfilter_laesst_unverknuepfte_auftraege_weg(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+
+        BalanceOrder::create([
+            'number' => '912', 'school_name' => 'Musikverein Beispiel', 'school_year' => 2025,
+            'ordered_on' => '2026-01-20', 'online_source' => 'manual',
+            'revenue_cash' => 500.00, 'source' => 'manual',
+        ]);
+        BalanceOrder::create([
+            'number' => '913', 'school_name' => 'BG Musterstadt', 'school_year' => 2025,
+            'ordered_on' => '2026-01-20', 'online_source' => 'manual', 'woo_category_id' => 7,
+            'revenue_cash' => 300.00, 'source' => 'manual',
+        ]);
+
+        $data = app(RevenueReport::class)->build($this->filters(['schule' => 7]));
+
+        $this->assertEqualsWithDelta(300.0, $data['current']['manualRevenue'], 0.01);
+    }
+
+    public function test_stueckzahlen_der_auftragsbilanz_landen_in_der_schulrangliste(): void
+    {
+        $this->makeSchools();
+        $this->fakeShop();
+
+        BalanceOrder::create([
+            'number' => '914', 'school_name' => 'Musikverein Beispiel', 'school_year' => 2025,
+            'ordered_on' => '2026-01-20', 'online_source' => 'manual', 'revenue_cash' => 500.00,
+            'products' => ['hoodies' => 12, 'pants' => 3], 'individual' => 5, 'source' => 'manual',
+        ]);
+
+        $ranking = app(RevenueReport::class)->build($this->filters())['schoolRanking'];
+        $zeile = collect($ranking)->firstWhere('name', 'Musikverein Beispiel');
+
+        $this->assertNotNull($zeile, 'Eine Schule ohne Shop-Kategorie muss trotzdem in der Rangliste stehen.');
+        $this->assertEqualsWithDelta(500.0, $zeile['revenue'], 0.01);
+        // 12 Hoodies + 3 Hosen; die 5 Individualisierungen sind kein Teil.
+        $this->assertSame(15, $zeile['quantity']);
+    }
+
     private function filters(array $query = []): StatisticsFilters
     {
         return StatisticsFilters::fromRequest(Request::create('/statistiken', 'GET', $query));
