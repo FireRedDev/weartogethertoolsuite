@@ -52,6 +52,9 @@ class BalanceOrderController extends Controller
             'year' => $year,
             'years' => $years,
             'summary' => $report->forYear($year),
+            // Für die Veränderung unter den Kacheln. Reine Datenbankabfrage —
+            // die Auftragsbilanz ruft nie eine Schnittstelle auf.
+            'previous' => $report->forYear($year->previous()),
             'comparison' => $comparison->forYear($year),
             'productTypes' => (array) config('auftragsbilanz.product_types'),
         ]);

@@ -49,12 +49,25 @@ class StatisticsController extends Controller
         // allein auf der Auftragsbilanz — und das ist der Ausweg, wenn der Shop
         // gerade nicht erreichbar ist.
         if (! $client->isConfigured() && $filters->sourceShop) {
+            /*
+             * Wichtig: keine Sackgasse. Ohne Shop fehlen nur die Auswertungen,
+             * die aus Bestellpositionen kommen — Gewinn, Marge, Schuljahres-
+             * bilanz und Stückzahlen stehen vollständig in der Auftragsbilanz
+             * und brauchen keine Schnittstelle. Deshalb bekommt die Seite den
+             * Umfang dieser Daten mit und bietet den Weg dorthin als Knopf an;
+             * vorher war er nur über „?shop=0" in der Adresszeile erreichbar.
+             */
+            $balanceYears = $balance->byYear();
+
             return view('statistics.unavailable', [
                 'filters' => $filters,
                 'years' => SchoolYear::recent(),
                 'error' => 'Die Verbindung zum Shop ist nicht eingerichtet (WC_STORE_URL / WC_CONSUMER_KEY / WC_CONSUMER_SECRET). '
-                    .'Ohne Shop-Zugang gibt es keine Bestelldaten zum Auswerten.',
+                    .'Ohne Shop-Zugang gibt es keine Bestelldaten aus dem Webshop.',
                 'technical' => null,
+                'balanceOrders' => array_sum(array_map(static fn (array $row) => (int) $row['orders'], $balanceYears)),
+                'balanceYears' => count($balanceYears),
+                'balanceRevenue' => array_sum(array_map(static fn (array $row) => (float) $row['revenue'], $balanceYears)),
             ]);
         }
 
@@ -101,7 +114,10 @@ class StatisticsController extends Controller
         }
 
         $goal = SeasonGoal::forYear($filters->year);
-        $projection = $forecast->build($data['current'], $data['history'], $goal);
+        // Das Saisonziel ist eine Vereinbarung, keine Ansicht: Ist eine Quelle
+        // abgeschaltet, darf der Vorjahresumsatz nicht als Vorgabe herhalten.
+        $allSources = $filters->sourceShop && $filters->sourceOther;
+        $projection = $forecast->build($data['current'], $data['history'], $goal, allSources: $allSources);
         $plan = (new SeasonPlan)->build($data['current'], $data['previous'], $projection, $goal);
 
         return view('statistics.index', [
@@ -125,6 +141,10 @@ class StatisticsController extends Controller
              * an den Quellenschaltern: Ohne Auftragsbilanz gäbe es sie gar nicht.
              */
             'balance' => $balance->forYear($filters->year),
+            // Für den Hinweis unter dem Monatsverlauf: die übernommenen
+            // Excel-Aufträge tragen alle das geschätzte Datum des
+            // Schuljahresendes und sitzen im Diagramm als ein Balken im Juli.
+            'balancePrevious' => $balance->forYear($filters->year->previous()),
             'balanceYears' => $balance->byYear(),
             'balanceSchools' => array_slice($balance->bySchool($filters->year), 0, (int) config('statistics.ranking_limit')),
             'balanceOrders' => array_slice($balance->byOrder($filters->year), 0, (int) config('statistics.ranking_limit')),

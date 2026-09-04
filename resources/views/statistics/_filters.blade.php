@@ -58,8 +58,14 @@
                     </select>
                 </div>
 
+                {{--
+                    Vorlauf und Nachlauf gehören zusammen und beschreiben EINEN
+                    Begriff: den Puffer um ein Bestellfenster. Einzeln
+                    beschriftet waren sie zwei nackte Zahlenfelder, deren Sinn
+                    erst im Info-Symbol stand.
+                --}}
                 <div>
-                    <label for="vorlauf">Vorlauf (Tage)
+                    <label for="vorlauf">Puffer: Tage davor
                         <x-info label="Warum ein Puffer um das Bestellfenster?">
                             Für „Ø Umsatz je Bestellfenster" wird jede Bestellung dem Fenster ihrer Schule zugeordnet.
                             Der Zeitraum wird dabei <strong>absichtlich breiter genommen als im Antrag
@@ -74,7 +80,7 @@
                 </div>
 
                 <div>
-                    <label for="nachlauf">Nachlauf (Tage)</label>
+                    <label for="nachlauf">Puffer: Tage danach</label>
                     <input type="number" id="nachlauf" name="nachlauf" min="0" max="{{ config('statistics.window_padding.max') }}" value="{{ $filters->paddingAfter }}">
                 </div>
 
@@ -103,7 +109,7 @@
                 <ul>
                     <li><strong>Schuljahr, Lieferart, Schule, Bestellstatus</strong> — wirken auf alles: Kennzahlen,
                         Monatsverlauf, Prognose und alle drei Ranglisten.</li>
-                    <li><strong>Vorlauf/Nachlauf</strong> — wirken <em>ausschließlich</em> auf „Ø je
+                    <li><strong>Der Puffer (Tage davor/danach)</strong> — wirkt <em>ausschließlich</em> auf „Ø je
                         Sammelbestellfenster" und „Ø je On-Demand-Shop". Gesamtumsatz, Monatsverlauf und die
                         Ranglisten ändern sich dadurch nicht, weil dort das Bestelldatum zählt und nicht das Fenster.</li>
                     <li><strong>Das Saisonziel ist kein Filter</strong> — es steht als eigene Karte über der

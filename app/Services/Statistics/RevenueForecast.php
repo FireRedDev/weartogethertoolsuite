@@ -26,10 +26,16 @@ class RevenueForecast
     /**
      * @param  list<array<string, mixed>>  $history  abgeschlossene Vorjahre (Ergebnisse aus RevenueReport)
      * @param  array<string, mixed>  $current
+     * @param  bool  $allSources  Sind ALLE Umsatzquellen eingeschaltet?
      * @return array<string, mixed>
      */
-    public function build(array $current, array $history, ?SeasonGoal $goal = null, ?Carbon $today = null): array
-    {
+    public function build(
+        array $current,
+        array $history,
+        ?SeasonGoal $goal = null,
+        ?Carbon $today = null,
+        bool $allSources = true,
+    ): array {
         /** @var SchoolYear $year */
         $year = $current['year'];
         $today = $today ?? Carbon::today();
@@ -37,7 +43,18 @@ class RevenueForecast
 
         $target = $goal?->target_revenue;
         $targetIsDefault = $target === null;
-        $target = $target ?? $previousTotal;
+
+        /*
+         * Ohne eingetragenes Ziel gilt der Vorjahresumsatz — aber nur, wenn
+         * ALLE Quellen eingeschaltet sind. Ist eine abgeschaltet, ist der
+         * Vorjahreswert nur ein Ausschnitt: Mit ausgeschalteter Shop-Quelle
+         * bliebe vom Vorjahr allein das Bargeld übrig, und aus 48.166 € würden
+         * 4.400 €. Das Saisonziel ist eine Vereinbarung im Team und darf sich
+         * nicht danach richten, welche Schalter gerade jemand gesetzt hat —
+         * lieber gar kein Ziel als ein zehnmal zu niedriges.
+         */
+        $targetKnown = $target !== null || $allSources;
+        $target = $target ?? ($allSources ? $previousTotal : 0.0);
 
         // Umsätze außerhalb des Webshops: `manualRevenue` ist bereits erzielt
         // und zählt zum Ist, `manualForecast` ist zusätzlich erwartet und
@@ -88,12 +105,14 @@ class RevenueForecast
             'remaining' => $projection === null ? null : round(max(0, $projection - $ytd), 2),
             'target' => round($target, 2),
             'targetIsDefault' => $targetIsDefault,
+            'targetKnown' => $targetKnown,
             'previousTotal' => round($previousTotal, 2),
-            'targetShare' => $target > 0 ? round($achieved / $target, 4) : null,
-            'gapToTarget' => $projectionTotal === null ? null : round($projectionTotal - $target, 2),
+            'previousTotalComplete' => $allSources,
+            'targetShare' => $targetKnown && $target > 0 ? round($achieved / $target, 4) : null,
+            'gapToTarget' => $projectionTotal === null || ! $targetKnown ? null : round($projectionTotal - $target, 2),
             'openToTarget' => round(max(0, $target - $achieved), 2),
             'monthsLeft' => $monthsLeft,
-            'neededPerMonth' => $monthsLeft > 0 ? round(max(0, $target - $achieved) / $monthsLeft, 2) : null,
+            'neededPerMonth' => $targetKnown && $monthsLeft > 0 ? round(max(0, $target - $achieved) / $monthsLeft, 2) : null,
             'curve' => $this->curve($current, $history[0] ?? null, $shape, $monthIndex, $projection),
         ];
     }

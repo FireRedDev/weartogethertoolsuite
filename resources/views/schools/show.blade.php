@@ -599,8 +599,64 @@
         @endif
     </div>
 
+    {{--
+        Auftragsbilanz zu diesem Bestellfenster. Der Weg dorthin war bisher
+        eine Einbahnstraße: Von der Bilanz führte ein Link zum Antrag, zurück
+        aber keiner — obwohl „Auftrag anlegen" mit vorbefüllter Schule, Datum,
+        Lieferart und Verknüpfung schon fertig gebaut war.
+    --}}
+    <div class="card" id="auftragsbilanz">
+        <h2>Auftragsbilanz
+            <x-info label="Was gehört hier hinein?">
+                Was dieses Bestellfenster eingebracht und gekostet hat: Einnahmen, Provision an die Schule,
+                Produktionskosten. Die Online-Einnahmen trägt die Software selbst nach, sobald der Auftrag
+                mit diesem Bestellfenster verknüpft ist — alles andere wird eingetragen.
+            </x-info>
+        </h2>
+
+        @if ($balanceOrders->isEmpty())
+            <p class="lead" style="margin-bottom:0.8rem;">
+                Für dieses Bestellfenster ist noch kein Auftrag erfasst.
+            </p>
+            <a class="btn" href="{{ route('balance.create', ['antrag' => $onboarding->id]) }}">+ Auftrag anlegen</a>
+        @else
+            {{-- Inline-Form: diese Datei mischt @php-Blöcke nicht (siehe CLAUDE.md). --}}
+            @php($euroBalance = fn ($v) => number_format((float) $v, 2, ',', '.').' €')
+            <div class="tablewrap">
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th>Auftrag</th>
+                            <th>Datum</th>
+                            <th style="text-align:right;">Einnahmen</th>
+                            <th style="text-align:right;">Ausgaben</th>
+                            <th style="text-align:right;">Gewinn</th>
+                            <th style="text-align:right;">Teile</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($balanceOrders as $balanceOrder)
+                            <tr>
+                                <td><a href="{{ route('balance.edit', $balanceOrder) }}">{{ $balanceOrder->label() }}</a></td>
+                                <td>{{ $balanceOrder->date_is_estimate ? 'Schuljahresende (geschätzt)' : $balanceOrder->ordered_on?->format('d.m.Y') }}</td>
+                                <td style="text-align:right;">{{ $euroBalance($balanceOrder->revenueTotal()) }}</td>
+                                <td style="text-align:right;">{{ $euroBalance($balanceOrder->expenses) }}</td>
+                                <td style="text-align:right;">{{ $euroBalance($balanceOrder->profit()) }}</td>
+                                <td style="text-align:right;">{{ $balanceOrder->productCount() }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            <p style="margin-top:0.8rem;">
+                <a class="btn secondary" href="{{ route('balance.create', ['antrag' => $onboarding->id]) }}">+ Weiteren Auftrag anlegen</a>
+                <a href="{{ route('balance.index') }}" style="margin-left:0.6rem;">Zur Auftragsbilanz</a>
+            </p>
+        @endif
+    </div>
+
     {{-- Präsentationsblatt --}}
-    @php($sheetSlots = ['back' => ['Mockup Rückenansicht', 'oben rechts — Person von hinten mit Backprint'], 'front' => ['Mockup Vorderansicht', 'unten links — Person mit Frontprint'], 'detail' => ['Detailaufnahme (optional)', 'für den Kreis; ohne Upload wird die Vorderansicht herangezoomt']])
+    @php($sheetSlots =['back' => ['Mockup Rückenansicht', 'oben rechts — Person von hinten mit Backprint'], 'front' => ['Mockup Vorderansicht', 'unten links — Person mit Frontprint'], 'detail' => ['Detailaufnahme (optional)', 'für den Kreis; ohne Upload wird die Vorderansicht herangezoomt']])
     <div class="card" id="praesentationsblatt">
         <h2>Präsentationsblatt <span class="hint">A4</span>
             <x-info label="Was steht auf dem Blatt?">

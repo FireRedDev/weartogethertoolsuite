@@ -4,6 +4,39 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 
 ## [Unreleased]
 
+### Bedienbarkeit: Auftragsbilanz und Statistik durchgesehen (v28)
+
+Beide Module wurden mit den Augen von jemandem angesehen, der die Software nicht kennt — Bildschirmfotos in Desktop- und Telefonbreite, mit den 384 übernommenen Aufträgen als echtem Inhalt.
+
+**Behobene Fehler**
+- **Die Quellenschalter waren wirkungslos.** Der Link zum Ausschalten trug kein `shop=0`, und der zum Einschalten wurde es nicht mehr los: `StatisticsFilters::query()` verband die Filter per `+` mit den Übersteuerungen, und dabei gewinnt der linke Operand. Die Schalter sahen aus wie Schalter, taten aber nichts.
+- **Ein per JavaScript verstecktes Element blieb sichtbar**, sobald es ein inline gesetztes `display` trug — jetzt gilt `[hidden] { display: none !important; }`.
+- **„Datenstand: unbekannt Uhr"** war kein Satz. Drei ehrliche Zustände: Zeitpunkt, „noch nichts aus dem Shop geladen" oder „Auftragsbilanz, laufend gepflegt".
+
+**Keine Sackgassen mehr**
+- **Ohne Shop-Zugang** zeigte die Statistik nur eine rote Fehlermeldung — obwohl die Auftragsbilanz mit voller Gewinnrechnung danebenliegt. Jetzt steht dort, was ohne Shop trotzdem geht (und was fehlt), mit dem Knopf „Ohne Shop-Zahlen auswerten". Der Ausweg war vorher nur über `?shop=0` in der Adresszeile zu finden.
+- **Vom Bestellfenster in die Auftragsbilanz:** Auf der Antragsseite steht jetzt ein Kasten mit den Aufträgen dieses Fensters und dem Knopf „Auftrag anlegen" — mit vorbefüllter Schule, Datum, Lieferart und Verknüpfung. Der Weg war fertig gebaut, nur nirgends verlinkt.
+- **Das Saisonziel richtet sich nicht mehr nach den Schaltern.** Ist eine Quelle abgeschaltet, gibt es keinen Zielvorschlag mehr: Der Vorjahresumsatz wäre dann nur der Ausschnitt der eingeschalteten Quelle (mit abgeschalteter Shop-Quelle 4.400 € statt 48.166 €). Ein Ziel gilt für alle im Team und darf nicht davon abhängen, welche Schalter gerade jemand gesetzt hat.
+
+**Auftragsbilanz**
+- **Am Telefon wird jede Zeile zur Karte.** Von der 15-spaltigen Tabelle blieb bei 390 px nur die fixierte Namensspalte übrig — eine Liste ohne eine einzige Zahl. Am Desktop bleibt die Tabelle unverändert.
+- **Sortieren nach Auftrag, Datum, Einnahmen, Ausgaben, Gewinn, Marge und Teilen** durch Klick auf die Spaltenüberschrift.
+- **Arbeitsvorrat „Zu prüfen":** Aufträge ohne eingetragene Ausgaben lassen sich mit einem Klick herausfiltern. In 2025/26 sind das 12 Aufträge über 20.201,94 € — sie erzeugen sonst rechnerische Margen von 83 % und stehen damit in jeder Rangliste ganz oben.
+- **Ohne Ausgaben bleibt die Marge leer** statt eine Zahl nahe 100 % zu zeigen.
+- **Geschätzte Daten** heißen jetzt „Schuljahresende (geschätzt)" statt in jeder Zeile dasselbe Datum zu wiederholen. Aufträge ganz ohne Beträge zeigen ihre Anmerkung direkt hinter dem Namen (Musterpakete, Gutscheineinlösungen) und stehen gedämpft.
+- **Der Gewinn steht am Ende der Kachelreihe**, nicht mittendrin, und alle Kacheln tragen die Veränderung zum Vorjahr.
+- **Das Formular rechnet mit:** Einnahmen gesamt, Umsatzsteuer, Gewinn und Marge stehen beim Tippen unter dem Block „Geld" — wie die Formelspalten der Excel. Gespeichert wird davon nichts. Steht die Quelle auf „Webshop", sagt das Feld „Einnahmen Online" jetzt, dass die Software es nachträgt; ohne verknüpftes Bestellfenster warnt es, dass nichts nachgetragen werden kann.
+
+**Statistik**
+- **Ein frisch begonnenes Schuljahr erklärt sich.** Am 4. September ist 2026/27 fünf Wochen alt; die Seite zeigte Nullen, Striche und dreimal „keine Verkäufe erfasst". Jetzt steht dort, dass die Saison am 1. August begonnen hat, mit einem Knopf ins Vorjahr.
+- **Kein „−100 % gegenüber Vorjahr" mehr im laufenden Jahr.** Verglichen wird mit dem Vorjahr zum selben Zeitpunkt; das Ganzjahres-Delta erst, wenn das Jahr abgeschlossen ist.
+- **Leere Ranglisten nennen den Grund:** „Die Shop-Quelle ist gerade ausgeschaltet" statt einer Aussage über die Daten.
+- **Hinweis unter dem Monatsverlauf**, wenn die dargestellten Jahre geschätzte Auftragsdaten enthalten — die übernommenen Excel-Aufträge sitzen alle am 31. Juli und erzeugen dort sonst eine Saisonspitze, die es nie gab.
+- **Sichtbare Trennlinie „Ab hier: aus der Auftragsbilanz"** vor den Karten, die bewusst nicht an den Quellenschaltern hängen.
+- **„Vorlauf/Nachlauf (Tage)"** heißt jetzt „Puffer: Tage davor / Tage danach".
+- **Die zwei Umsatzbegriffe** auf der Seite sind benannt: „Einnahmen ges." ist das Eingetragene, „Umsatz" das, was der Webshop meldet plus alles daneben — sie dürfen abweichen, die Spalte „Shop meldet" ist der Vergleich.
+- **Beide Module verweisen aufeinander:** „Hier wird eingetragen" / „Hier wird ausgewertet".
+
 ### Neu: Modul „Auftragsbilanz" (v26)
 - **Die Excel `Auftragsbilanz_gesamt.xlsx` ist in die Software gezogen.** Neues Modul `/auftragsbilanz`: eine Zeile je Auftrag, Spalten wie bisher. Eingetragen werden Einnahmen (online/bar), Provision, Ausgaben, Umsatzsteuer und die Stückzahlen je Produktart; Einnahmen gesamt, netto, Gewinn und Marge rechnet die Software — das waren in der Excel Formeln und bleiben es.
 - **384 Altaufträge übernommen** (Schuljahre 2019/20 bis 2025/26, `php artisan auftragsbilanz:import`). Die Excel kannte kein Datum je Auftrag; diese Zeilen tragen das Schuljahresende und sind als geschätzt gekennzeichnet.

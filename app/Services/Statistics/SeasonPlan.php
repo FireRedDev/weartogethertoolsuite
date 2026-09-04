@@ -33,7 +33,12 @@ class SeasonPlan
     {
         $target = (float) $forecast['target'];
         $achieved = (float) $forecast['achieved'];
-        $open = round(max(0.0, $target - $achieved), 2);
+        // Ohne bekanntes Ziel gibt es nichts zu planen: Ist eine Umsatzquelle
+        // abgeschaltet, taugt der Vorjahreswert nicht als Vorgabe (siehe
+        // RevenueForecast). Dann bleibt die Bedarfsrechnung leer statt gegen
+        // eine Zahl zu rechnen, die nur die halbe Wahrheit ist.
+        $targetKnown = (bool) ($forecast['targetKnown'] ?? true);
+        $open = $targetKnown ? round(max(0.0, $target - $achieved), 2) : 0.0;
 
         $types = [];
         foreach (['collective' => 'Sammelbestellfenster', 'ondemand' => 'On-Demand-Shop'] as $key => $label) {
@@ -49,9 +54,10 @@ class SeasonPlan
 
         return [
             'target' => round($target, 2),
+            'targetKnown' => $targetKnown,
             'achieved' => round($achieved, 2),
             'open' => $open,
-            'reached' => $open <= 0.0,
+            'reached' => $targetKnown && $open <= 0.0,
             'expectedRest' => $expectedRest,
             'gapAfterForecast' => $gapAfterForecast,
             'types' => $types,

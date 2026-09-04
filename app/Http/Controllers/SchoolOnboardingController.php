@@ -108,6 +108,13 @@ class SchoolOnboardingController extends Controller
             'schoolMailBody' => $schoolMail->body($onboarding),
             'statusOptions' => OnboardingStatus::manualOptions($onboarding),
             'statusActions' => OnboardingStatus::actionOnly($onboarding),
+            // Die Aufträge dieses Bestellfensters aus der Auftragsbilanz.
+            // Reine Datenbankabfrage, kein Schnittstellenaufruf — und der Weg
+            // zurück in Modul 4, den es bisher nur in eine Richtung gab.
+            'balanceOrders' => \App\Models\BalanceOrder::query()
+                ->where('school_onboarding_id', $onboarding->id)
+                ->orderByDesc('ordered_on')
+                ->get(),
             'sheetMissing' => $sheet->missingRequirements($onboarding),
             'sheetRows' => $sheetRows,
             'sheetIcons' => $sheet->availableIcons(),

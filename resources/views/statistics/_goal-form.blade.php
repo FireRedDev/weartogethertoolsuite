@@ -26,14 +26,17 @@
                 <div>
                     <label for="target_revenue">Zielumsatz {{ $current['label'] }} (€)
                         <x-info label="Was passiert ohne Eintrag?">
-                            Dann gilt der <strong>tatsächlich erreichte Umsatz des Vorjahres</strong>
-                            ({{ $euro($forecast['previousTotal']) }}) als Ziel — also: mindestens so gut werden wie
-                            letztes Jahr. Das Ziel setzt die Zielmarke im Verlaufsdiagramm und ist die Grundlage
-                            der Bedarfsrechnung („wie viele Bestellfenster fehlen noch?").
+                            Dann gilt der <strong>tatsächlich erreichte Umsatz des Vorjahres</strong> als Ziel —
+                            also: mindestens so gut werden wie letztes Jahr. Das Ziel setzt die Zielmarke im
+                            Verlaufsdiagramm und ist die Grundlage der Bedarfsrechnung („wie viele
+                            Bestellfenster fehlen noch?").<br><br>
+                            Ist eine Umsatzquelle abgeschaltet, gibt es keinen Vorschlag: Der Vorjahreswert wäre
+                            dann nur der Ausschnitt der eingeschalteten Quelle. Ein Ziel gilt für alle im Team
+                            und darf nicht davon abhängen, welche Schalter gerade jemand gesetzt hat.
                         </x-info>
                     </label>
                     <input type="number" id="target_revenue" name="target_revenue" min="0" step="100"
-                           placeholder="{{ $forecast['previousTotal'] ?: '' }}"
+                           placeholder="{{ $forecast['previousTotalComplete'] ? ($forecast['previousTotal'] ?: '') : '' }}"
                            value="{{ old('target_revenue', $goal->target_revenue) }}">
                 </div>
 

@@ -125,7 +125,14 @@ class StatisticsFilters
      */
     public function query(array $overrides = []): array
     {
-        return array_filter([
+        /*
+         * `$overrides` steht LINKS: Bei `+` gewinnt der linke Operand, und
+         * genau darum ging es hier schon einmal schief — die Quellenschalter
+         * waren wirkungslos, weil ihr Übersteuerungswert vom aktuellen Zustand
+         * überschrieben wurde. Ein ausdrückliches `null` im Override entfernt
+         * den Parameter (array_filter), das ist das „wieder einschalten".
+         */
+        return array_filter($overrides + [
             'schuljahr' => $this->year->key(),
             'lieferart' => $this->deliveryType,
             'schule' => $this->schoolId,
@@ -136,7 +143,7 @@ class StatisticsFilters
             // ohne diese Parameter zeigt damit immer alles.
             'shop' => $this->sourceShop ? null : '0',
             'sonstige' => $this->sourceOther ? null : '0',
-        ] + $overrides, static fn ($value) => $value !== null);
+        ], static fn ($value) => $value !== null);
     }
 
     private static function clamp(mixed $value, int $default, int $max): int

@@ -39,8 +39,25 @@
             <a class="btn secondary" href="{{ route('statistics.index', $filters->query(['neu' => 1])) }}">↻ Daten neu laden</a>
         </div>
 
+        {{-- Die zwei Module gehören zusammen; das war in der Navigation nicht zu sehen. --}}
         <p class="hint" style="margin:0.35rem 0 0;">
-            Datenstand: <strong>{{ $fetchedAt ? $fetchedAt->format('d.m.Y, H:i') : 'unbekannt' }}</strong> Uhr
+            <strong style="color:var(--ink);">Hier wird ausgewertet.</strong> Eingetragen wird nebenan:
+            <a href="{{ route('balance.index') }}">Auftragsbilanz</a> — dort stehen Einnahmen, Ausgaben und
+            Provision je Auftrag.
+        </p>
+
+        @php
+            // Drei ehrliche Zustände statt eines Platzhalters mit angehängtem
+            // „Uhr" — ohne geladene Monate ergab das den Satz „Datenstand:
+            // unbekannt Uhr".
+            $dataState = $fetchedAt
+                ? $fetchedAt->format('d.m.Y, H:i').' Uhr'
+                : (! $filters->sourceShop
+                    ? 'Auftragsbilanz, laufend gepflegt'
+                    : 'noch nichts aus dem Shop geladen');
+        @endphp
+        <p class="hint" style="margin:0.35rem 0 0;">
+            Datenstand: <strong>{{ $dataState }}</strong>
             <x-info label="Was heißt Datenstand?">
                 So alt ist der älteste Baustein dieser Auswertung — alles Angezeigte ist also mindestens so aktuell.
                 Abgerufen wird monatsweise: Abgeschlossene Monate ändern sich nicht mehr und werden 24 Stunden
@@ -69,8 +86,13 @@
         <div class="kpis" style="margin-bottom:1rem;">
             <div class="kpi">
                 <div class="label">Ziel</div>
-                <div class="value hero">{{ $euro($forecast['target']) }}</div>
-                @if ($forecast['targetIsDefault'])
+                <div class="value hero">{{ $forecast['targetKnown'] ? $euro($forecast['target']) : '—' }}</div>
+                @if (! $forecast['targetKnown'])
+                    <div class="delta warn">
+                        Kein Ziel eingetragen, und der Vorjahresumsatz taugt gerade nicht als Vorgabe: Eine
+                        Umsatzquelle ist abgeschaltet, damit wäre er nur ein Ausschnitt.
+                    </div>
+                @elseif ($forecast['targetIsDefault'])
                     <div class="delta flat">kein eigenes Ziel eingetragen — es gilt der Vorjahresumsatz</div>
                 @endif
             </div>
@@ -90,10 +112,14 @@
             </div>
             <div class="kpi">
                 <div class="label">Noch offen</div>
-                <div class="value {{ $plan['reached'] ? '' : 'hero' }}">
-                    {{ $plan['reached'] ? 'Ziel erreicht' : $euro($plan['open']) }}
+                <div class="value {{ $plan['reached'] || ! $plan['targetKnown'] ? '' : 'hero' }}">
+                    @if (! $plan['targetKnown'])
+                        —
+                    @else
+                        {{ $plan['reached'] ? 'Ziel erreicht' : $euro($plan['open']) }}
+                    @endif
                 </div>
-                @if (! $plan['reached'] && $plan['expectedRest'] !== null)
+                @if ($plan['targetKnown'] && ! $plan['reached'] && $plan['expectedRest'] !== null)
                     <div class="delta {{ ($plan['gapAfterForecast'] ?? 0) > 0 ? 'down' : 'up' }}">
                         Hochrechnung deckt davon {{ $euro($plan['expectedRest']) }}{{ ($plan['gapAfterForecast'] ?? 0) > 0 ? ', es fehlen '.$euro($plan['gapAfterForecast']) : '' }}
                     </div>
@@ -123,6 +149,53 @@
 
             return $text;
         };
+
+        /*
+         * Die aus der Excel übernommenen Aufträge tragen alle das geschätzte
+         * Datum des Schuljahresendes. Im Monatsverlauf sitzen sie deshalb als
+         * ein einziger Balken im Juli — ohne diesen Hinweis liest man daraus
+         * eine Saisonspitze, die es nie gab. Die Jahressumme stimmt trotzdem.
+         */
+        $estimateNotice = null;
+        if ($filters->sourceOther) {
+            $estimates = [];
+            foreach ([[$current['label'], $balance], [$previous['label'], $balancePrevious]] as [$yearLabel, $row]) {
+                if (($row['estimatedDates'] ?? 0) > 0) {
+                    $estimates[] = $row['estimatedDates'].' von '.$row['orders'].' Aufträgen in '.$yearLabel;
+                }
+            }
+            if ($estimates !== []) {
+                $estimateNotice = 'Ohne echtes Auftragsdatum aus der Excel übernommen: '.implode(', ', $estimates)
+                    .'. Sie sitzen alle am 31. Juli — der Monatsverlauf dieser Jahre ist deshalb nicht'
+                    .' aussagekräftig, die Jahressumme schon.';
+            }
+        }
+
+        // Ein Schuljahr, das gerade erst begonnen hat, ist nicht leer, weil
+        // etwas fehlt — es ist leer, weil noch nichts passiert ist. Das muss
+        // dort stehen, wo sonst „keine Verkäufe erfasst" steht.
+        $freshSeason = $filters->year->isCurrent() && (float) $current['revenue'] <= 0.0;
+        $shopOff = ! $filters->sourceShop;
+
+        /*
+         * Eine leere Rangliste hat drei mögliche Gründe, und nur einer davon
+         * heißt „es wurde nichts verkauft". Produkte, Farben und Schulen kommen
+         * ausschließlich aus den Bestellpositionen des Shops — ist die Quelle
+         * abgeschaltet, sind sie zwangsläufig leer und dürfen das nicht den
+         * Daten anlasten.
+         */
+        $rankingEmpty = static function (string $fallback) use ($shopOff, $freshSeason) {
+            if ($shopOff) {
+                return 'Diese Rangliste kommt aus den Bestellungen des Webshops. Die Shop-Quelle ist gerade '
+                    .'ausgeschaltet — mit dem Schalter „Shop-Umsätze“ ganz oben kommt sie zurück.';
+            }
+            if ($freshSeason) {
+                return 'Das Schuljahr hat am 1. August begonnen — hier stehen Zahlen, sobald die erste Bestellung '
+                    .'eingegangen ist.';
+            }
+
+            return $fallback;
+        };
     @endphp
 
         <div class="card">
@@ -137,6 +210,21 @@
                     </x-info>
                 @endif
             </h2>
+
+            {{--
+                Ein frisch begonnenes Schuljahr ist nicht kaputt, es ist jung.
+                Ohne diesen Satz stehen darunter nur Nullen und Striche, und der
+                erste Eindruck der Seite ist „hier fehlen die Daten".
+            --}}
+            @if ($freshSeason)
+                <div class="alert info">
+                    <strong>Die Saison {{ $current['label'] }} hat gerade erst begonnen</strong> (Schuljahr:
+                    1. August bis 31. Juli). Umsatz, Ranglisten und Prognose füllen sich, sobald die ersten
+                    Bestellungen eingehen — bis dahin stehen hier Nullen, und das ist richtig so.
+                    <a href="{{ route('statistics.index', $filters->query(['schuljahr' => $filters->year->previous()->key()])) }}">
+                        {{ $previous['label'] }} ansehen</a>, dort sind die Zahlen vollständig.
+                </div>
+            @endif
 
             <div class="kpis">
                 <div class="kpi">
@@ -171,7 +259,14 @@
                             mit Erstattung über zusammen {{ $euro($current['refundedTotal']) }} — nicht abgezogen
                         </div>
                     @endif
-                    @if ($revenueDelta)
+                    {{--
+                        Im laufenden Schuljahr gehört hierher der Vergleich zum SELBEN ZEITPUNKT.
+                        Das ganze Vorjahr danebenzustellen ergibt in den ersten Wochen jedes Jahr
+                        „−100 %" — eine Zahl, die nur beschreibt, dass das Jahr jung ist.
+                    --}}
+                    @if ($filters->year->isCurrent() && $ytdDelta)
+                        <div class="delta {{ $ytdDelta['tone'] }}">{{ $ytdDelta['text'] }} gegenüber {{ $previous['label'] }} zum selben Zeitpunkt</div>
+                    @elseif (! $filters->year->isCurrent() && $revenueDelta)
                         <div class="delta {{ $revenueDelta['tone'] }}">{{ $revenueDelta['text'] }} gegenüber {{ $previous['label'] }} (ganzes Jahr)</div>
                     @endif
                 </div>
@@ -221,7 +316,7 @@
                                 der Toolsuite; ihr Umsatz steht in der Rangliste ganz unten, fließt aber in diesen
                                 Durchschnitt nicht ein.
                             @endif
-                            <br><br>Nur diese Kachel reagiert auf Vorlauf/Nachlauf.
+                            <br><br>Nur diese Kachel reagiert auf den Puffer in der Filterzeile.
                         </x-info>
                     </div>
                     <div class="value">{{ $euro($current['collective']['avg']) }}</div>
@@ -257,10 +352,14 @@
             </div>
 
             <x-chart.columns :chart="$monthChart" title="Umsatz je Monat">
-                <x-info label="Warum September zuerst?">
-                    Das Diagramm folgt dem Schuljahr, nicht dem Kalenderjahr — Monat 1 ist September. Die zweite
+                <x-info label="Warum August zuerst?">
+                    Das Diagramm folgt dem Schuljahr, nicht dem Kalenderjahr — Monat 1 ist August. Die zweite
                     Säule je Monat ist derselbe Monat im Vorjahr.
                 </x-info>
+
+                @if ($estimateNotice)
+                    <p class="hint" style="margin:0.4rem 0 0;">{{ $estimateNotice }}</p>
+                @endif
 
                 <x-slot:table>
                     <div class="tablewrap">
@@ -330,8 +429,10 @@
                             </x-info>
                         @endif
                     </div>
-                    <div class="value">{{ $euro($forecast['target']) }}</div>
-                    @if ($forecast['targetIsDefault'])
+                    <div class="value">{{ $forecast['targetKnown'] ? $euro($forecast['target']) : '—' }}</div>
+                    @if (! $forecast['targetKnown'])
+                        <div class="delta warn">kein Ziel, solange eine Umsatzquelle abgeschaltet ist</div>
+                    @elseif ($forecast['targetIsDefault'])
                         <div class="delta flat">= Umsatz {{ $previous['label'] }} (kein eigenes Ziel eingetragen)</div>
                     @endif
                     @if ($forecast['gapToTarget'] !== null)
@@ -344,9 +445,11 @@
                 <div class="kpi">
                     <div class="label">Zielerreichung bisher</div>
                     <div class="value">{{ $forecast['targetShare'] === null ? '—' : number_format($forecast['targetShare'] * 100, 1, ',', '.').' %' }}</div>
-                    <div class="delta {{ $forecast['openToTarget'] > 0 ? 'flat' : 'up' }}">
-                        {{ $forecast['openToTarget'] > 0 ? 'noch '.$euro($forecast['openToTarget']).' bis zum Ziel' : 'Ziel bereits erreicht' }}
-                    </div>
+                    @if ($forecast['targetKnown'])
+                        <div class="delta {{ $forecast['openToTarget'] > 0 ? 'flat' : 'up' }}">
+                            {{ $forecast['openToTarget'] > 0 ? 'noch '.$euro($forecast['openToTarget']).' bis zum Ziel' : 'Ziel bereits erreicht' }}
+                        </div>
+                    @endif
                 </div>
                 @if ($forecast['openToTarget'] > 0 && $forecast['neededPerMonth'] !== null && $forecast['monthsLeft'] > 0)
                     <div class="kpi">
@@ -438,7 +541,8 @@
         </div>
 
         <div class="card">
-            <x-chart.bars :chart="$productChart" title="Meistverkaufte Produkte">
+            <x-chart.bars :chart="$productChart" title="Meistverkaufte Produkte"
+                          :emptyText="$rankingEmpty('Für diesen Zeitraum sind keine Verkäufe erfasst.')">
                 <x-info label="Wie werden Produkte zusammengefasst?">
                     Nach <strong>Produktart</strong> über alle Schulen hinweg — die Frage ist ja, ob mehr Shirts oder
                     mehr Pullover verkauft wurden. Im Shop heißt jedes Produkt anders (der Schulname steckt im Namen),
@@ -474,7 +578,7 @@
 
         <div class="card">
             <x-chart.bars :chart="$colorChart" title="Beliebteste Produktfarben"
-                          emptyText="Für diesen Zeitraum sind keine Farben erfasst.">
+                          :emptyText="$rankingEmpty('Für diesen Zeitraum sind keine Farben erfasst.')">
                 <x-info label="Woher kommt die Farbe?">
                     Aus dem Farbattribut der Bestellposition. Sammelbestellfenster-Produkte legt die Toolsuite selbst
                     an und tragen „Farbe"; On-Demand-Produkte kommen von Printify und heißen dort teils englisch —
@@ -508,7 +612,7 @@
 
         <div class="card">
             <x-chart.bars :chart="$schoolChart" title="Umsatzstärkste Schulen"
-                          emptyText="Für diesen Zeitraum ist keiner Schule Umsatz zugeordnet.">
+                          :emptyText="$rankingEmpty('Für diesen Zeitraum ist keiner Schule Umsatz zugeordnet.')">
                 <x-info label="Wie wird der Umsatz einer Schule ermittelt?">
                     Über die <strong>Produktkategorie der Schule im Shop</strong>: alles, was im Schuljahr aus dieser
                     Kategorie bestellt wurde. Das gilt unabhängig davon, ob es zur Schule einen Antrag in der

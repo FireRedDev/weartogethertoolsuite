@@ -27,6 +27,17 @@
         </p>
     </div>
 @else
+    {{--
+        Sichtbare Trennlinie: Ab hier hängt nichts mehr an den Quellenschaltern.
+        Vorher sahen diese Karten aus wie der Rest der Seite und schienen die
+        Schalter zu ignorieren — der Grund stand nur im Info-Symbol.
+    --}}
+    <p class="hint" style="margin:1.5rem 0 0.5rem;border-top:1px solid var(--line);padding-top:1rem;">
+        <strong style="color:var(--ink);">Ab hier: aus der Auftragsbilanz</strong> — Ausgaben, Provision und damit
+        jeder Gewinn stehen nur dort. Diese Karten zeigen deshalb immer alle erfassten Aufträge und sind von den
+        Quellenschaltern oben unberührt.
+    </p>
+
     <div class="card">
         <h2 style="margin-top:0;">Wirtschaftlichkeit {{ $current['label'] }}
             <x-info label="Woher kommen diese Zahlen?">
@@ -153,6 +164,16 @@
                     der Excel war. Ein Schuljahr läuft vom 1. August bis 31. Juli.
                 </x-info>
             </h2>
+            {{--
+                Zwei Umsatzbegriffe stehen auf dieser Seite untereinander und
+                dürfen auseinandergehen. Ohne diesen Satz wirkt das wie ein
+                Rechenfehler.
+            --}}
+            <p class="hint" style="margin:-0.3rem 0 0.8rem;">
+                „Einnahmen ges." ist das, was hier <strong>eingetragen</strong> ist. Der „Umsatz {{ $current['label'] }}"
+                weiter oben ist das, was der <strong>Webshop meldet</strong>, plus alles, was am Shop vorbeilief.
+                Beide dürfen abweichen — die Spalte „Shop meldet" rechts ist genau dieser Vergleich.
+            </p>
             <div class="tablewrap">
                 <table class="data">
                     <thead>

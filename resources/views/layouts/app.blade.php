@@ -18,6 +18,12 @@
             --error: #b91c1c;
         }
         * { box-sizing: border-box; }
+        /*
+         * Muss sein: Ein inline gesetztes display (z. B. display:flex) schlägt
+         * sonst die eingebaute Regel [hidden]{display:none} des Browsers, und
+         * ein per JavaScript verstecktes Element bleibt sichtbar.
+         */
+        [hidden] { display: none !important; }
         body {
             margin: 0;
             font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -283,6 +289,49 @@
         table.data th.stickycol, table.data td.stickycol { position: sticky; left: 0; z-index: 2; background: var(--card); box-shadow: 1px 0 0 var(--line); }
         table.data th.stickycol { z-index: 3; background: #eef2f7; }
         table.data tr:nth-child(even) td.stickycol { background: #fafbfc; }
+        /*
+         * Breite Tabellen am Telefon: Jede Zeile wird zu einer Karte.
+         * Ohne das blieb bei 390 px nur die fixierte erste Spalte stehen — eine
+         * Liste von Namen ohne eine einzige Zahl. Die Beschriftung kommt aus
+         * data-label am <td>, damit es nur EINE Auszeichnung im Blade gibt.
+         */
+        /* Ein Knopf, der wie ein Link aussieht — für reine Anzeigeschalter. */
+        .linkish {
+            border: 0; background: none; padding: 0; font: inherit; color: var(--warn);
+            text-decoration: underline; cursor: pointer;
+        }
+        .linkish[aria-pressed="true"] { font-weight: 700; }
+        table.data tr.muted td { color: var(--muted); }
+        table.data th.sortable { cursor: pointer; user-select: none; }
+        table.data th.sortable::after { content: " ⇅"; color: var(--muted); font-weight: 400; }
+        table.data th.sortable[aria-sort="ascending"]::after { content: " ↑"; color: var(--ink); }
+        table.data th.sortable[aria-sort="descending"]::after { content: " ↓"; color: var(--ink); }
+        @media (max-width: 720px) {
+            .tablewrap.cards { overflow-x: visible; border: 0; border-radius: 0; }
+            table.data.cards, table.data.cards tbody, table.data.cards tfoot,
+            table.data.cards tr, table.data.cards td { display: block; }
+            table.data.cards thead { display: none; }
+            table.data.cards tr {
+                background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+                margin-bottom: 0.6rem; padding: 0.55rem 0.75rem;
+            }
+            table.data.cards tr:nth-child(even) td { background: transparent; }
+            table.data.cards td {
+                border: 0; padding: 0.12rem 0; white-space: normal; text-align: left !important;
+                display: flex; justify-content: space-between; gap: 1rem; font-size: 0.88rem;
+            }
+            table.data.cards td::before { content: attr(data-label); color: var(--muted); font-size: 0.78rem; }
+            table.data.cards td.stickycol {
+                position: static; box-shadow: none; display: block;
+                font-weight: 700; font-size: 0.95rem; padding-bottom: 0.3rem;
+            }
+            table.data.cards td.stickycol::before { content: none; }
+            /* Nullwerte und leere Zellen kosten auf der Karte nur Platz. */
+            table.data.cards td.blank { display: none; }
+            table.data.cards tfoot tr { background: var(--ink); border-color: var(--ink); }
+            table.data.cards tfoot td, table.data.cards tfoot td.stickycol { background: transparent; color: #fff; }
+            table.data.cards tfoot td::before { color: #94a3b8; }
+        }
         .tabs { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
         .tab {
             border: 1px solid var(--line);
