@@ -100,10 +100,14 @@
             <div class="label">
                 davon Online
                 <x-info label="Was zählt als Online?">
-                    Alles, was über einen Webshop bezahlt wurde. Für Schuljahre ab
+                    Alles, was über einen Webshop bezahlt wurde. Ob die Statistik diesen Betrag verwendet
+                    oder ihn selbst aus dem Shop holt, entscheidet <strong>je Auftrag</strong> die Einstellung
+                    „Online-Einnahmen kommen": Steht sie auf <strong>Aus dem Webshop</strong>, bleibt diese
+                    Spalte in der Statistik beiseite, damit kein Umsatz doppelt zählt.<br><br>
+                    Bei der Übernahme der Altdaten wurde alles ab dem Schuljahr
                     {{ config('auftragsbilanz.shop_online_from_year') }}/{{ substr((string) (config('auftragsbilanz.shop_online_from_year') + 1), -2) }}
-                    ist das der eigene Shop — dort holt sich die Statistik die Zahlen selbst und
-                    lässt diese Spalte beiseite, damit kein Umsatz doppelt zählt.
+                    auf „Aus dem Webshop" gestellt — das war die erste Saison, die vollständig über den
+                    eigenen Shop lief. Bei einzelnen Aufträgen lässt sich das ändern.
                 </x-info>
             </div>
             <div class="value">{{ $euro($s['revenueOnline']) }}</div>

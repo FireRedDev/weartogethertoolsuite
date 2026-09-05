@@ -4,6 +4,18 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 
 ## [Unreleased]
 
+### Erklärtexte gegen den Code geprüft (v30)
+
+Alle 33 Info-Symbole und Erklärblöcke beider Module einzeln gegen Code, Konfiguration und Daten gehalten. Sieben Aussagen stimmten nicht mehr:
+
+- **„Für Schuljahre ab 2021/22 ist das der eigene Shop"** war als Regel formuliert, ist aber keine. Zur Laufzeit entscheidet ausschließlich die Einstellung **je Auftrag** („Online-Einnahmen kommen"), ob die Statistik den eingetragenen Betrag verwendet. Die Jahreszahl war nur die Vorgabe bei der Übernahme der Altdaten. Derselbe Fehler stand im Abgleich-Hinweis („bei verknüpften Aufträgen"), bei den Quellenschaltern und als Ursache in `CLAUDE.md` — überall berichtigt.
+- **Mit abgeschalteter Umsatzquelle behauptete die Statistik weiter ein Ziel:** Das Info-Symbol „Woher kommt dieses Ziel?" nannte den gefilterten Vorjahresumsatz, und die Bedarfsrechnung rechnete gegen „noch offen: 0,00 €" — mit der falschen Begründung, es fehle ein abgeschlossenes Bestellfenster. Beides erscheint jetzt gar nicht mehr, solange kein Ziel bekannt ist.
+- **„X aus dem Webshop"** stand unter „Bereits erreicht" und unter der Hochrechnung, obwohl in beiden Zahlen auch die Auftragsbilanz steckt — mit abgeschalteter Shop-Quelle sogar ausschließlich sie. Jetzt wird die Aufteilung nach ihren echten Quellen benannt.
+- **Die Ladeseite zählte ein Datenpaket zu wenig auf:** Es sind Produktkatalog, Schulkategorien und je ein Monat.
+- **Der Block „Was die Filter beeinflussen" erwähnte die Quellenschalter nicht** — den folgenreichsten Schalter der Seite. Jetzt steht dort, worauf sie wirken und was von ihnen unberührt bleibt.
+
+Geprüft und bestätigt: Umsatzsteuer-Formel (× 20/120 bei 20 %), Schuljahresgrenze 1.8.–31.7., Puffer 7/21 Tage, Nachfrist „eine Woche" (7 Tage Standard), Zwischenspeicher 24 h / 30 min, „vor der GmbH-Gründung 0,00 € USt." (2019/20 tatsächlich alle 25 Aufträge ohne USt.), Produktgruppen-Stichwörter, Marge = Gewinn ÷ Bruttoumsatz.
+
 ### Auftragsbilanz: Bearbeiten und Löschen in der Zeile (v29)
 - **Beide Aktionen stehen jetzt unter dem Auftragsnamen**, in der fixierten ersten Spalte — der einzigen, die beim seitlichen Scrollen stehen bleibt. Vorher war „Bearbeiten" die **15. Spalte** (am Desktop außerhalb des Sichtfelds, am Telefon ganz ausgeblendet), und „Löschen" gab es ausschließlich unten auf der Bearbeiten-Seite. Beides existierte, war aber nicht zu finden.
 - **Löschen fragt mit dem Namen des Auftrags nach** — in einer Liste von 35 Zeilen muss erkennbar sein, welche man gerade erwischt. Der Name steht in einem `data-confirm`-Attribut statt in `onsubmit`, damit ein Apostroph im Schulnamen das Attribut nicht zerreißt.

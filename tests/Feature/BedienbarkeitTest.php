@@ -389,6 +389,89 @@ class BedienbarkeitTest extends TestCase
 
     /*
      * ---------------------------------------------------------------
+     *  Stimmen die Erklärtexte noch?
+     * ---------------------------------------------------------------
+     *
+     * Erklärtexte veralten leiser als Code: Sie brechen nichts, sie sagen nur
+     * irgendwann etwas Falsches. Die folgenden Fälle halten die Aussagen fest,
+     * die schon einmal an der Wirklichkeit vorbeigingen.
+     */
+
+    /**
+     * Ohne bekanntes Ziel darf nirgends ein Ziel behauptet werden — auch nicht
+     * im Info-Symbol und nicht in der Bedarfsrechnung. Genau dort stand vorher
+     * noch „deshalb gilt der tatsächlich erreichte Umsatz von … als Ziel" mit
+     * der gefilterten Zahl, obwohl die Kachel daneben schon einen Strich zeigte.
+     */
+    public function test_ohne_ziel_behauptet_keine_erklaerung_ein_ziel(): void
+    {
+        $this->order(['revenue_cash' => 500.0]);
+
+        $response = $this->get('/statistiken?shop=0');
+
+        $response->assertOk();
+        $response->assertDontSee('Woher kommt dieses Ziel?');
+        $response->assertDontSee('Wie viele Bestellfenster fehlen noch?');
+        $response->assertDontSee('Noch offen bis zum Ziel');
+    }
+
+    /** Mit allen Quellen ist das Ziel bekannt — dann gehört die Erklärung hin. */
+    public function test_mit_ziel_steht_die_erklaerung_wieder_da(): void
+    {
+        config(['ordersuite.woocommerce.store_url' => '', 'ordersuite.woocommerce.consumer_key' => '']);
+        $this->order(['revenue_cash' => 500.0]);
+
+        // Ohne Shop-Zugang ist „nur sonstige" der einzige mögliche Zustand;
+        // geprüft wird deshalb die Umkehrung am Dienst selbst.
+        $forecast = (new RevenueForecast)->build(
+            $this->yearData(SchoolYear::current(), 100.0),
+            [$this->yearData(SchoolYear::current()->previous(), 48166.49)],
+            null,
+            null,
+            allSources: true,
+        );
+
+        $this->assertTrue($forecast['targetKnown']);
+        $this->assertTrue($forecast['targetIsDefault']);
+    }
+
+    /**
+     * Ob die Statistik den eingetragenen Online-Betrag verwendet, entscheidet
+     * die Einstellung JE AUFTRAG — nicht das Schuljahr. Die Jahreszahl war nur
+     * die Vorgabe bei der Übernahme der Altdaten; ein Text, der daraus eine
+     * Regel macht, führt in die Irre.
+     */
+    public function test_die_online_erklaerung_nennt_die_einstellung_nicht_das_jahr(): void
+    {
+        $this->order(['revenue_online' => 1000.0]);
+
+        $response = $this->get('/auftragsbilanz');
+
+        $response->assertOk();
+        $response->assertSee('Online-Einnahmen kommen');
+        $response->assertSee('Bei der Übernahme der Altdaten', false);
+        $response->assertDontSee('Für Schuljahre ab');
+    }
+
+    /**
+     * Ein Auftrag zählt seinen Online-Betrag NICHT mit, wenn die Einstellung
+     * auf „Aus dem Webshop" steht — unabhängig davon, ob er an einem
+     * Bestellfenster hängt. Genau das behauptet der Erklärtext.
+     */
+    public function test_die_einstellung_entscheidet_nicht_die_verknuepfung(): void
+    {
+        $ohneLink = $this->order([
+            'number' => '010', 'online_source' => 'shop',
+            'revenue_online' => 900.0, 'revenue_cash' => 100.0,
+        ]);
+
+        $this->assertNull($ohneLink->school_onboarding_id);
+        // Trotz fehlender Verknüpfung steuert er nur das Bargeld bei.
+        $this->assertSame(100.0, $ohneLink->revenueOutsideShop());
+    }
+
+    /*
+     * ---------------------------------------------------------------
      *  Hilfsmittel
      * ---------------------------------------------------------------
      */

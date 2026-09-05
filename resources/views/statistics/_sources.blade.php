@@ -33,9 +33,11 @@
             Produkt- und Farbranglisten und die Umsätze je Bestellfenster.<br>
             <strong>Sonstige Umsätze</strong> kommen aus der
             <a href="{{ route('balance.index') }}">Auftragsbilanz</a>: Bargeld, Direktverkäufe und
-            die Online-Einnahmen der Jahre vor dem eigenen Shop.<br>
-            Doppelt gezählt wird nichts: Ein Auftrag, dessen Online-Einnahmen aus dem Webshop
-            stammen, steuert hier nur seinen Bargeldanteil bei.
+            Online-Einnahmen, die der eigene Shop nicht kennt — etwa aus den Jahren davor oder von
+            einem fremden Shop.<br>
+            Doppelt gezählt wird nichts: Steht bei einem Auftrag „Online-Einnahmen kommen: Aus dem
+            Webshop", steuert er hier nur seinen Bargeldanteil bei — der Online-Teil kommt dann aus
+            den Shop-Bestellungen.
         </x-info>
     </span>
 

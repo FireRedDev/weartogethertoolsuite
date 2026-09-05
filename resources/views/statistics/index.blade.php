@@ -98,10 +98,25 @@
             </div>
             <div class="kpi">
                 <div class="label">Bereits erreicht
-                    @if ($forecast['manualRevenue'] > 0)
+                    {{--
+                        Die Aufteilung muss die tatsächlichen Quellen nennen. „X aus dem
+                        Webshop" war falsch: In `ytd` steckt auch, was die Auftragsbilanz
+                        beisteuert — und mit abgeschalteter Shop-Quelle ausschließlich das.
+                    --}}
+                    @if ($forecast['manualRevenue'] > 0 || ($current['manualRevenue'] ?? 0) > 0)
                         <x-info label="Woraus setzt sich das zusammen?">
-                            {{ $euro($forecast['ytd']) }} aus dem Webshop plus
-                            {{ $euro($forecast['manualRevenue']) }} außerhalb des Shops{{ $goal->manual_note ? ' ('.$goal->manual_note.')' : '' }}.
+                            @if ($filters->sourceShop)
+                                {{ $euro($current['shopRevenue'] ?? $forecast['ytd']) }} aus dem Webshop.
+                            @endif
+                            @if (($current['manualRevenue'] ?? 0) > 0)
+                                {{ $euro($current['manualRevenue']) }} aus der
+                                <a href="{{ route('balance.index') }}">Auftragsbilanz</a> (Bargeld und Aufträge
+                                außerhalb des Shops).
+                            @endif
+                            @if ($forecast['manualRevenue'] > 0)
+                                {{ $euro($forecast['manualRevenue']) }} beim Saisonziel von Hand
+                                eingetragen{{ $goal->manual_note ? ' ('.$goal->manual_note.')' : '' }}.
+                            @endif
                         </x-info>
                     @endif
                 </div>
@@ -402,7 +417,8 @@
                     <div class="label">Hochgerechneter Jahresumsatz
                         @if ($forecast['manualRevenue'] > 0 || $forecast['manualForecast'] > 0)
                             <x-info label="Woraus setzt sich das zusammen?">
-                                {{ $euro($forecast['projection']) }} aus dem Webshop.
+                                {{-- Hochgerechnet wird der Umsatz der eingeschalteten Quellen, nicht nur der des Shops. --}}
+                                {{ $euro($forecast['projection']) }} aus dem bisherigen Verlauf hochgerechnet.
                                 @if ($forecast['manualRevenue'] > 0)
                                     Dazu {{ $euro($forecast['manualRevenue']) }} bereits außerhalb des Shops erzielt.
                                 @endif
@@ -419,7 +435,12 @@
                 </div>
                 <div class="kpi">
                     <div class="label">Zielumsatz
-                        @if ($forecast['targetIsDefault'])
+                        {{--
+                            Nur wenn das Ziel überhaupt bekannt ist: Bei abgeschalteter Quelle wäre
+                            „der tatsächlich erreichte Umsatz des Vorjahres" nur ein Ausschnitt, und
+                            genau diese falsche Zahl stand vorher in der Kachel.
+                        --}}
+                        @if ($forecast['targetKnown'] && $forecast['targetIsDefault'])
                             <x-info label="Woher kommt dieses Ziel?">
                                 Es wurde kein eigenes Ziel eingetragen, deshalb gilt der <strong>tatsächlich
                                 erreichte Umsatz von {{ $previous['label'] }}</strong>
@@ -460,7 +481,13 @@
                 @endif
             </div>
 
-            @if (! $plan['reached'])
+            {{--
+                Ohne bekanntes Ziel gibt es nichts zu planen. Sonst stünde hier
+                „Noch offen bis zum Ziel (0,00 €)" und darunter für jede Fensterart
+                ein Strich mit der falschen Begründung, es fehle ein abgeschlossenes
+                Fenster.
+            --}}
+            @if ($plan['targetKnown'] && ! $plan['reached'])
                 <div class="need-block">
                     <h3>Wie viele Bestellfenster fehlen noch?
                         <x-info label="Wie wird das gerechnet?">

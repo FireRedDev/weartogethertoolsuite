@@ -105,10 +105,15 @@
 
             <x-explain title="Was die Filter beeinflussen">
                 <p>Die Filterzeile gilt für die <strong>ganze Seite</strong> — jede Kennzahl, jedes Diagramm und
-                    jede Rangliste zeigt denselben Ausschnitt. Zwei Filter wirken jedoch nur an einer Stelle:</p>
+                    jede Rangliste zeigt denselben Ausschnitt. Einiges wirkt jedoch nur an bestimmten Stellen:</p>
                 <ul>
                     <li><strong>Schuljahr, Lieferart, Schule, Bestellstatus</strong> — wirken auf alles: Kennzahlen,
                         Monatsverlauf, Prognose und alle drei Ranglisten.</li>
+                    <li><strong>Die Quellenschalter</strong> — wirken auf Kennzahlen, Monatsverlauf, Prognose und
+                        Saisonziel. Produkte, Farben und die Umsatzrangliste der Schulen kommen ausschließlich aus
+                        dem Shop und bleiben leer, sobald diese Quelle aus ist. Die Karten der
+                        <a href="{{ route('balance.index') }}">Auftragsbilanz</a> ganz unten — Wirtschaftlichkeit,
+                        Schuljahresbilanz, verkaufte Teile — sind von den Schaltern unberührt.</li>
                     <li><strong>Der Puffer (Tage davor/danach)</strong> — wirkt <em>ausschließlich</em> auf „Ø je
                         Sammelbestellfenster" und „Ø je On-Demand-Shop". Gesamtumsatz, Monatsverlauf und die
                         Ranglisten ändern sich dadurch nicht, weil dort das Bestelldatum zählt und nicht das Fenster.</li>

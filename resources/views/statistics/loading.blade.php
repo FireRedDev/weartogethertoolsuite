@@ -12,7 +12,8 @@
         <h1 style="margin:0 0 0.35rem;">Statistiken
             <x-info label="Warum dauert das?">
                 Ausgewertet werden die echten Bestellungen aus dem Shop. Beim ersten Aufruf holt die Toolsuite dafür
-                {{ $progress['total'] }} Datenpakete (den Produktkatalog und je einen Monat) — bewusst langsam und
+                {{ $progress['total'] }} Datenpakete (den Produktkatalog, die Schulkategorien und je einen
+                Monat) — bewusst langsam und
                 immer nur eines nach dem anderen, damit der Webshop auf demselben Server nicht ausgebremst wird.
                 Danach ist alles gespeichert und die Auswertung erscheint sofort.
             </x-info>

@@ -25,7 +25,9 @@
             Die häufigsten Gründe: In der Excel wurden Erstattungen abgezogen, ein Auftrag lief
             über einen fremden Shop, oder eine Bestellung fehlt hier noch. Die Altwerte aus der
             Excel bleiben unverändert stehen — sie sind der Stand, mit dem bisher gerechnet wurde.
-            Für die Statistik gilt bei verknüpften Aufträgen die Shop-Zahl.
+            Für die Statistik gilt die Shop-Zahl bei jedem Auftrag, dessen Einstellung
+            „Online-Einnahmen kommen" auf <strong>Aus dem Webshop</strong> steht — unabhängig davon,
+            ob er an einem Bestellfenster hängt.
         </x-info>
     @else
         <strong>Deckt sich mit dem Webshop.</strong>
