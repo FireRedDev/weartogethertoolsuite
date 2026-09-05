@@ -301,6 +301,21 @@
             text-decoration: underline; cursor: pointer;
         }
         .linkish[aria-pressed="true"] { font-weight: 700; }
+        .linkish.danger { color: var(--error); }
+        /*
+         * Bearbeiten/Löschen je Zeile — sie stehen in der fixierten ersten
+         * Spalte, weil nur die beim seitlichen Scrollen stehen bleibt. Die
+         * Form-Elemente müssen inline sitzen, sonst reißt jedes Formular eine
+         * eigene Zeile auf.
+         */
+        .rowactions { display: flex; gap: 0.7rem; align-items: center; margin-top: 0.15rem; font-size: 0.76rem; font-weight: 400; }
+        .rowactions form { display: inline; margin: 0; }
+        .rowactions a, .rowactions .linkish { color: var(--muted); font-size: 0.76rem; text-decoration: none; }
+        .rowactions a:hover, .rowactions .linkish:hover { text-decoration: underline; }
+        .rowactions .linkish.danger { color: var(--muted); }
+        .rowactions .linkish.danger:hover { color: var(--error); }
+        table.data tbody tr:hover td, table.data tbody tr:hover td.stickycol { background: #fffaeb; }
+        table.data tbody tr:hover .rowactions a { color: var(--warn); }
         table.data tr.muted td { color: var(--muted); }
         table.data th.sortable { cursor: pointer; user-select: none; }
         table.data th.sortable::after { content: " ⇅"; color: var(--muted); font-weight: 400; }

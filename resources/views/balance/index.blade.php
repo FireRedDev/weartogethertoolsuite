@@ -196,6 +196,12 @@
                 <a href="{{ route('balance.create') }}">Jetzt den ersten anlegen.</a>
             </p>
         @else
+            <p class="hint" style="margin:0 0 0.75rem;">
+                Jede Zeile lässt sich direkt hier <strong style="color:var(--ink);">bearbeiten</strong> oder
+                <strong style="color:var(--ink);">löschen</strong> — die beiden Verweise stehen unter dem
+                Auftragsnamen.
+            </p>
+
             <div class="searchbox">
                 <label for="ordersearch" class="hint">Auftrag oder Schule suchen</label>
                 <input type="search" id="ordersearch" placeholder="z. B. Dachsberg" autocomplete="off">
@@ -213,7 +219,7 @@
                         Ohne Ausgaben ist der Gewinn dieser Aufträge rechnerisch der ganze Nettoumsatz — sie
                         stehen dadurch in jeder Rangliste ganz oben, obwohl sie nur unfertig sind. Die Marge
                         bleibt deshalb leer, bis die Produktionskosten eingetragen sind.
-                    </x-info>:
+                    </x-info><span>:</span>
                     <button type="button" class="linkish" data-filter="ohne-ausgaben">{{ $openExpenses->count() }} {{ $openExpenses->count() === 1 ? 'Auftrag' : 'Aufträge' }} ohne eingetragene Ausgaben ({{ $euro($openExpenses->sum(fn ($o) => $o->revenueTotal())) }} Umsatz)</button>
                 </p>
             @endif
@@ -236,7 +242,6 @@
                             <th style="text-align:right;">Indiv.</th>
                             <th>Verknüpfung</th>
                             <th>Anmerkung</th>
-                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -255,11 +260,27 @@
                                 $z = fn ($v) => (float) $v == 0.0 ? ' blank' : '';
                             @endphp
                             <tr @class(['muted' => $blank]) data-ohne-ausgaben="{{ $needsExpenses ? '1' : '0' }}">
+                                {{--
+                                    Bearbeiten und Löschen stehen in der fixierten ersten
+                                    Spalte, weil nur sie beim Scrollen stehen bleibt — hinten
+                                    in Spalte 15 war „Bearbeiten" am Telefon unerreichbar und
+                                    am Desktop außerhalb des Sichtfelds. „Löschen" gab es
+                                    überhaupt nur unten auf der Bearbeiten-Seite.
+                                --}}
                                 <td class="stickycol">
                                     <a href="{{ route('balance.edit', $order) }}">{{ $order->label() }}</a>
                                     @if ($blank && $order->note)
                                         <span class="hint"> · {{ $order->note }}</span>
                                     @endif
+                                    <span class="rowactions">
+                                        <a href="{{ route('balance.edit', $order) }}">✎ Bearbeiten</a>
+                                        <form method="post" action="{{ route('balance.destroy', $order) }}"
+                                              data-confirm="{{ $order->label() }}">
+                                            @csrf
+                                            @method('delete')
+                                            <button type="submit" class="linkish danger">🗑 Löschen</button>
+                                        </form>
+                                    </span>
                                 </td>
                                 <td data-label="Datum" data-value="{{ $order->ordered_on?->format('Ymd') }}">
                                     @if ($order->date_is_estimate)
@@ -292,7 +313,6 @@
                                     @endif
                                 </td>
                                 <td data-label="Anmerkung" class="{{ $order->note && ! $blank ? '' : 'blank' }}" style="white-space:normal;max-width:22rem;">{{ $order->note }}</td>
-                                <td data-label="" class="blank"><a href="{{ route('balance.edit', $order) }}">Bearbeiten</a></td>
                             </tr>
                         @endforeach
                     </tbody>
@@ -310,7 +330,7 @@
                             <td data-label="Marge" style="text-align:right;">{{ $pct($s['margin']) }}</td>
                             <td data-label="Teile" style="text-align:right;">{{ $s['products'] }}</td>
                             <td data-label="Indiv." class="blank" style="text-align:right;">{{ $s['individual'] }}</td>
-                            <td colspan="3" class="blank"></td>
+                            <td colspan="2" class="blank"></td>
                         </tr>
                     </tfoot>
                 </table>
@@ -327,6 +347,22 @@
         (function () {
             const table = document.getElementById('ordertable');
             if (! table) return;
+
+            /*
+             * Löschen fragt nach — mit dem Namen des Auftrags, damit in einer
+             * Liste von 35 Zeilen erkennbar ist, welche gerade erwischt wurde.
+             * Der Name steht in data-confirm und nicht in onsubmit: Ein
+             * Apostroph im Schulnamen würde das Attribut sonst zerreißen.
+             */
+            table.addEventListener('submit', function (event) {
+                const form = event.target.closest('form[data-confirm]');
+                if (! form) return;
+                const text = '„' + form.dataset.confirm + '" wirklich löschen?'
+                    + ' Das lässt sich nicht rückgängig machen.';
+                if (! window.confirm(text)) {
+                    event.preventDefault();
+                }
+            });
             const box = document.getElementById('ordersearch');
             const body = table.tBodies[0];
             let needle = '';

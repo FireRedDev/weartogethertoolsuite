@@ -4,6 +4,11 @@ Alle nennenswerten Änderungen der Wear Together Order Suite.
 
 ## [Unreleased]
 
+### Auftragsbilanz: Bearbeiten und Löschen in der Zeile (v29)
+- **Beide Aktionen stehen jetzt unter dem Auftragsnamen**, in der fixierten ersten Spalte — der einzigen, die beim seitlichen Scrollen stehen bleibt. Vorher war „Bearbeiten" die **15. Spalte** (am Desktop außerhalb des Sichtfelds, am Telefon ganz ausgeblendet), und „Löschen" gab es ausschließlich unten auf der Bearbeiten-Seite. Beides existierte, war aber nicht zu finden.
+- **Löschen fragt mit dem Namen des Auftrags nach** — in einer Liste von 35 Zeilen muss erkennbar sein, welche man gerade erwischt. Der Name steht in einem `data-confirm`-Attribut statt in `onsubmit`, damit ein Apostroph im Schulnamen das Attribut nicht zerreißt.
+- Zeilen heben sich beim Überfahren hervor, die alte leere Aktionsspalte ist weg.
+
 ### Bedienbarkeit: Auftragsbilanz und Statistik durchgesehen (v28)
 
 Beide Module wurden mit den Augen von jemandem angesehen, der die Software nicht kennt — Bildschirmfotos in Desktop- und Telefonbreite, mit den 384 übernommenen Aufträgen als echtem Inhalt.

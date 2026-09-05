@@ -225,6 +225,60 @@ class BedienbarkeitTest extends TestCase
         $response->assertSee('class="data cards"', false);
     }
 
+    /**
+     * Beides gab es schon, nur nicht auffindbar: „Bearbeiten" stand in der
+     * 15. Spalte (am Desktop außerhalb des Sichtfelds, am Telefon ausgeblendet),
+     * „Löschen" ausschließlich unten auf der Bearbeiten-Seite.
+     */
+    public function test_jede_zeile_traegt_bearbeiten_und_loeschen(): void
+    {
+        $order = $this->order(['revenue_online' => 1000.0]);
+
+        $response = $this->get('/auftragsbilanz');
+
+        $response->assertOk();
+        $response->assertSee('✎ Bearbeiten');
+        $response->assertSee('🗑 Löschen');
+        $response->assertSee(route('balance.destroy', $order), false);
+    }
+
+    /** Sie stehen in der fixierten Spalte — nur die bleibt beim Scrollen stehen. */
+    public function test_die_aktionen_stehen_in_der_fixierten_spalte(): void
+    {
+        $this->order(['revenue_online' => 1000.0]);
+
+        $html = $this->get('/auftragsbilanz')->assertOk()->getContent();
+        $cell = substr($html, (int) strpos($html, '<td class="stickycol">'));
+        $cell = substr($cell, 0, (int) strpos($cell, '</td>'));
+
+        $this->assertStringContainsString('rowactions', $cell);
+        $this->assertStringContainsString('✎ Bearbeiten', $cell);
+        $this->assertStringContainsString('🗑 Löschen', $cell);
+    }
+
+    /** Der Name für die Rückfrage steht als Attribut, nicht im onsubmit. */
+    public function test_loeschen_traegt_den_auftragsnamen_fuer_die_rueckfrage(): void
+    {
+        $this->order(['school_name' => "O'Brien Gymnasium", 'number' => '007']);
+
+        $response = $this->get('/auftragsbilanz');
+
+        $response->assertOk();
+        // Der Apostroph im Schulnamen muss escaped ankommen und darf das
+        // Attribut nicht zerreißen.
+        $response->assertSee('data-confirm="007 - O&#039;Brien Gymnasium"', false);
+    }
+
+    public function test_loeschen_aus_der_liste_entfernt_den_auftrag(): void
+    {
+        $order = $this->order(['revenue_online' => 1000.0]);
+
+        $response = $this->delete(route('balance.destroy', $order));
+
+        $response->assertRedirect();
+        $this->assertDatabaseMissing('balance_orders', ['id' => $order->id]);
+    }
+
     /** Ohne Ausgaben ist die Marge rechnerisch richtig und inhaltlich falsch. */
     public function test_ohne_ausgaben_bleibt_die_marge_leer(): void
     {
